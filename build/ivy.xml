@@ -4,13 +4,10 @@
         <!ENTITY web SYSTEM "../sirius/web/ivy-web.xml">
 ]>
 <ivy-module version="2.0">
-    <info organisation="com.scireum" module="oxomi"/>
+    <info organisation="com.scireum" module="s3ninja"/>
     <dependencies>
         &kernel;
         &web;
-
-        <dependency org="org.elasticsearch" name="elasticsearch" rev="0.90.2" conf="default"/>
-        <dependency org="com.amazonaws" name="aws-java-sdk" rev="1.5.4"/>
 
     </dependencies>
 </ivy-module>

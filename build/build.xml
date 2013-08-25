@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project name="sirius-demo" default="ivy" xmlns:ivy="antlib:org.apache.ivy.ant">
+<project name="s3-ninja" default="ivy" xmlns:ivy="antlib:org.apache.ivy.ant">
     <property name="ivy.jar.version" value="2.1.0"/>
     <property name="ivy.jar.name" value="ivy-${ivy.jar.version}.jar"/>
     <property name="ivy.home" value="${user.home}/.ivy2"/>

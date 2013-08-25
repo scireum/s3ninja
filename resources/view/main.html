@@ -1,0 +1,105 @@
+@*
+ *  Made with all the love in the world
+ *  by scireum in Remshalden, Germany
+ *
+ *  Copyright by scireum GmbH
+ *  http://www.scireum.de - info@scireum.de
+ *@
+@import view.*
+@args String title
+<!DOCTYPE html>
+<!--
+  ~ Made with all the love in the world
+  ~ by scireum in Remshalden, Germany
+  ~
+  ~ Copyright by scireum GmbH
+  ~ http://www.scireum.de - info@@scireum.de
+  -->
+
+<html>
+    <head>
+        <title>@title</title>
+        @if(isDev) {
+            <link rel="stylesheet" media="screen" href="@prefix/assets/bootstrap/bootstrap.css">
+            <link rel="stylesheet" media="screen" href="@prefix/assets/bootstrap/bootstrap-responsive.css">
+        } else {
+            <link rel="stylesheet" media="screen" href="@prefix/assets/bootstrap/bootstrap.min.css">
+            <link rel="stylesheet" media="screen" href="@prefix/assets/bootstrap/bootstrap-responsive.min.css">
+        }
+        <link rel="stylesheet" media="screen" href="@prefix/assets/fileupload/fileuploader.css">
+        <link rel="stylesheet" media="screen" href="@prefix/assets/stylesheets/ninja.css">
+        @if(isDev) {
+            <script src="@prefix/assets/jquery/jquery-1.10.2.js" type="text/javascript"></script>
+            <script src="@prefix/assets/bootstrap/bootstrap.js" type="text/javascript"></script>
+            <script src="@prefix/assets/chosen/chosen.jquery.js" type="text/javascript"></script>
+        } else {
+            <script src="@prefix/assets/jquery/jquery-1.10.2.min.js" type="text/javascript"></script>
+            <script src="@prefix/assets/bootstrap/bootstrap.min.js.js" type="text/javascript"></script>
+            <script src="@prefix/assets/chosen/chosen.jquery.min.js" type="text/javascript"></script>
+        }
+        <script src="@prefix/assets/fileupload/fileuploader.js" type="text/javascript"></script>
+        <script src="@prefix/assets/mustache/mustache.min.js" type="text/javascript"></script>
+
+        <script type="text/javascript">
+            function addInfo(message) {
+                $('<div class="alert alert-info"></div>').html(message).appendTo($('#messageBox'));
+            }
+
+            function addError(message) {
+                $('<div class="alert alert-error"></div>').html(message).appendTo($('#messageBox'));
+            }
+        </script>
+
+        @render(head) {
+        }
+    </head>
+    <body>
+        <div class="container" style="min-height: 350px; padding-top: 30px; padding-bottom: 50px">
+            <div class="row">
+                <div class="span4">
+                    <div class="jumbotron" style="text-align: center">
+                        <a href="@prefix/">
+                            <img src="@prefix/assets/images/ninja.jpg" border="0" />
+                        </a>
+                        <a href="@prefix/" class="span2 btn btn-success" style="float: none; margin-bottom: 20px">Home</a>
+                        <a href="@prefix/ui/log" class="span2 btn" style="float: none">Access Logs</a>
+                    </div>
+
+                    @render(sidebar) {
+                    }
+
+                </div>
+                <div class="span8">
+                    @render(header) {
+                        <div class="jumbotron">
+                            <h1>S3 ninja</h1>
+                            <p class="lead">S3 ninja emulates the S3 API for development and testing purposes.<br /><small>It is however not intended as production system as it neither provides scalability nor replication or proper security.</small></p>
+                            <a href="@prefix/ui/license" class="btn btn-large">License</a>
+                            <a href="@prefix/ui/api" class="btn btn-large">Implemented API</a>
+                        </div>
+                    }
+                    <div class="row">
+                        <div class="span8" id="messageBox">
+                            @for(sirius.web.controller.Message msg : user.getMessages()) {
+                                <div class="alert @msg.getType()">@msg.getMessage()</div>
+                            }
+                        </div>
+                    </div>
+
+                    @render
+                </div>
+            </div>
+        </div>
+        <div class="container">
+            @render(footer) {
+                <hr style="margin-bottom: 0px" />
+                <div class="pull-left">
+                    <small class="muted">S3 ninja is made with all the love in the world by <a href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden</small>
+                </div>
+                <div class="pull-right">
+                    <small class="muted">F**k me on <a href="http://gihub.io/scireum/s3ninja">GitHub</a></small>
+                </div>
+            }
+        </div>
+    </body>
+</html>

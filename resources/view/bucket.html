@@ -1,0 +1,79 @@
+@*
+ *  Made with all the love in the world
+ *  by scireum in Remshalden, Germany
+ *
+ *  Copyright by scireum GmbH
+ *  http://www.scireum.de - info@scireum.de
+ *@
+@args ninja.Bucket bucket
+@extends(view.main.html, title: bucket.getName())
+
+@section(sidebar) {
+    <div class="row">
+        <div class="span4 upload-container"></div>
+    </div>
+    <script type="text/javascript">
+        $('.upload-container').each(function (index) {
+            new qq.FileUploader({
+                element: this,
+                action: '/ui/@bucket.getName()/upload',
+                debug: false,
+                onComplete: function (cmp_id, fileName, responseJSON) {
+                    setTimeout(function() { window.location.reload(); }, 125);
+                },
+                template: '<div class="qq-uploader">' +
+                        '<div class="qq-upload-drop-area"><span>Drag files here to manually upload them...</span></div>' +
+                        '<div class="qq-upload-button btn" style="display: block">Select File</div>' +
+                        '<ul class="qq-upload-list"></ul>' +
+                        '</div>',
+                fileTemplate: '<li>' +
+                        '<span class="qq-upload-file"></span>' +
+                        '<span class="qq-upload-spinner"></span>' +
+                        '<span class="qq-upload-size"></span>' +
+                        '<a class="qq-upload-cancel" href="#">@i18n("NLS.cancel")</a>' +
+                        '<span class="qq-upload-failed-text">Upload failed</span>' +
+                        '</li>'
+            });
+        });
+    </script>
+}
+
+@section(header) {
+    <div class="jumbotron">
+        <h1>@bucket.getName()</h1>
+        <p class="lead">Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone.</p>
+    </div>
+}
+
+<div class="well">
+    <div class="pull-left">
+        @if (bucket.isPrivate()) {
+            <a class="btn btn-success" href="@prefix/ui/@bucket.getName()/makePublic">Make Public</a>
+        } else {
+            <a class="btn btn-danger" href="@prefix/ui/@bucket.getName()/makePrivate">Make Private</a>
+        }
+    </div>
+    <div class="pull-right">
+        <a class="btn" href="@prefix/ui/@bucket.getName()">@i18n("NLS.refresh")</a>
+    </div>
+    <span class="clearfix"></span>
+</div>
+
+<table class="table table-striped table-bordered">
+    <tr>
+        <td colspan="2">Object</td>
+    </tr>
+    @if(bucket.getObjects().isEmpty()) {
+        <tr>
+            <td colspan="2"><i>No objects found...</i></td>
+        </tr>
+    }
+    @for(ninja.StoredObject obj : bucket.getObjects()) {
+        <tr>
+            <td><a href="@prefix/s3/@bucket.getName()/@obj.getName()?noAuth=true">@obj.getName()</a><br /><span class="muted">@obj.getSize()</span><span class="muted pull-right">@obj.getLastModified()</span></td>
+            <td class="align-center span2"><a href="@prefix/ui/@bucket.getName()/@obj.getName()/delete" class="btn btn-danger">@i18n("NLS.delete")</a></td>
+        </tr>
+    }
+</table>
+
+

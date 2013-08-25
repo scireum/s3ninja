@@ -1,0 +1,47 @@
+@*
+ *  Made with all the love in the world
+ *  by scireum in Remshalden, Germany
+ *
+ *  Copyright by scireum GmbH
+ *  http://www.scireum.de - info@scireum.de
+ *@
+@args List buckets
+@extends(view.main.html, title: "Start")
+
+
+<div class="well">
+    <div class="pull-left">
+        <form class="form-inline" action="@prefix/" method="post">
+            <input type="text" name="bucketName" placeholder="New Bucket..." autofocus />
+            <button type="submit" class="btn btn-success">Create</button>
+        </form>
+    </div>
+    <div class="pull-right">
+        <a class="btn" href="@prefix/">@i18n("NLS.refresh")</a>
+    </div>
+    <span class="clearfix"></span>
+</div>
+
+<table class="table table-striped table-bordered">
+    <tr>
+        <td colspan="2">Bucket</td>
+    </tr>
+    @if(buckets.isEmpty()) {
+        <tr>
+            <td colspan="2"><i>No buckets found...</i></td>
+        </tr>
+    }
+    @for(ninja.Bucket bucket : buckets) {
+        <tr @if(bucket.isPrivate()) { class="error" }>
+            <td>
+                <a href="@prefix/ui/@bucket.getName()">@bucket.getName()</a>
+                @if(bucket.isPrivate()) {
+                    <br /><span class="muted">private</span>
+                }
+            </td>
+            <td class="align-center span2"><a href="@prefix/ui/@bucket.getName()/delete" class="btn btn-danger">@i18n("NLS.delete")</a></td>
+        </tr>
+    }
+</table>
+
+

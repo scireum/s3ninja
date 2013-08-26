@@ -2,11 +2,11 @@ package ninja;
 
 import com.google.common.collect.Lists;
 import sirius.kernel.Sirius;
-import sirius.kernel.cache.Cache;
-import sirius.kernel.cache.CacheManager;
+import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
+import sirius.kernel.nls.NLS;
 
 import java.io.File;
 import java.util.List;
@@ -23,10 +23,14 @@ public class Storage {
     private File baseDir;
     protected static final Log LOG = Log.get("storage");
 
+    @ConfigValue("storage.awsAccessKey")
+    private String awsAccessKey;
+
+    @ConfigValue("storage.awsSecretKey")
+    private String awsSecretKey;
+
     protected File getBaseDir() {
-        if (baseDir == null) {
-            baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
-        }
+        baseDir = getBaseDirUnchecked();
 
         if (!baseDir.exists()) {
             throw Exceptions.handle()
@@ -42,6 +46,27 @@ public class Storage {
         }
 
         return baseDir;
+    }
+
+    private File getBaseDirUnchecked() {
+        if (baseDir == null) {
+            baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
+        }
+
+        return baseDir;
+    }
+
+    public String getBasePath() {
+        StringBuilder sb = new StringBuilder(getBaseDirUnchecked().getAbsolutePath());
+        if (!getBaseDirUnchecked().exists()) {
+            sb.append(" (non-existend!)");
+        } else if (!getBaseDirUnchecked().isDirectory()) {
+            sb.append(" (no directory!)");
+        } else {
+            sb.append(" (Free: " + NLS.formatSize(getBaseDir().getFreeSpace()) + ")");
+        }
+
+        return sb.toString();
     }
 
     public List<Bucket> getBuckets() {
@@ -64,5 +89,13 @@ public class Storage {
                             .handle();
         }
         return new Bucket(new File(getBaseDir(), bucket));
+    }
+
+    public String getAwsAccessKey() {
+        return awsAccessKey;
+    }
+
+    public String getAwsSecretKey() {
+        return awsSecretKey;
     }
 }

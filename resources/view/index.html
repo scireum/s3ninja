@@ -5,9 +5,26 @@
  *  Copyright by scireum GmbH
  *  http://www.scireum.de - info@scireum.de
  *@
-@args List buckets
+@args List buckets, String baseUrl, String accessKey, String secretKey
 @extends(view.main.html, title: "Start")
 
+
+@section(sidebar) {
+        <div class="well">
+            <dl>
+                <dt>Storage Path</dt>
+                <dd><small>@baseUrl</small></dd>
+            </dl>
+            <dl>
+                <dt>Access Key</dt>
+                <dd><small>@accessKey</small></dd>
+            </dl>
+            <dl>
+                <dt>Secret Key</dt>
+                <dd><small>@secretKey</small></dd>
+            </dl>
+        </div>
+}
 
 <div class="well">
     <div class="pull-left">

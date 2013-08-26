@@ -20,7 +20,6 @@ import org.jboss.netty.handler.codec.http.multipart.Attribute;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Value;
-import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
@@ -62,11 +61,6 @@ public class S3Controller implements Controller {
     @Part
     private APILog log;
 
-    @ConfigValue("storage.awsAccessKey")
-    private String awsAccessKey;
-
-    @ConfigValue("storage.awsSecretKey")
-    private String awsSecretKey;
 
     private String computeHash(WebContext ctx) {
         try {
@@ -96,7 +90,7 @@ public class S3Controller implements Controller {
 
             stringToSign.append(ctx.getRequestedURI().substring(3));
 
-            SecretKeySpec keySpec = new SecretKeySpec(awsSecretKey.getBytes(), "HmacSHA1");
+            SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
 
             Mac mac = Mac.getInstance("HmacSHA1");
             mac.init(keySpec);

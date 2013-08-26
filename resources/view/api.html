@@ -1,0 +1,30 @@
+@*
+*  Made with all the love in the world
+*  by scireum in Remshalden, Germany
+*
+*  Copyright by scireum GmbH
+*  http://www.scireum.de - info@scireum.de
+*@
+@args ninja.Bucket bucket
+@extends(view.main.html, title: "API")
+
+@section(header) {
+<div class="jumbotron">
+    <h1>Supported API</h1>
+</div>
+}
+
+<div class="well">
+    <p>Basically all object methods are supported. However no ACLs are checked. If the bucket is public, everyone can
+        its contents.
+        Otherwise a valid hash has to be provided as Authorization header. The hash will be checked as
+        expected by amazon, but no multiline-headers are supported yet. (Multi-value headers are supported).
+    </p>
+    <legend>Supported Methods</legend>
+    <ul>
+        <li>GET /bucket/object</li>
+        <li>PUT /bucket/object</li>
+        <li>DELETE /bucket/object</li>
+        <li>HEAD /bucket/object</li>
+    </ul>
+</div>

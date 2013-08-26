@@ -72,8 +72,8 @@
                 <div class="span8">
                     @render(header) {
                         <div class="jumbotron">
-                            <h1>S3 ninja</h1>
-                            <p class="lead">S3 ninja emulates the S3 API for development and testing purposes.<br /><small>It is however not intended as production system as it neither provides scalability nor replication or proper security.</small></p>
+                            <h1>@product <small>Version @version</small></h1>
+                            <p class="lead">@tagLine<br /><small>@claim</small></p>
                             <a href="@prefix/ui/license" class="btn btn-large">License</a>
                             <a href="@prefix/ui/api" class="btn btn-large">Implemented API</a>
                         </div>
@@ -94,7 +94,7 @@
             @render(footer) {
                 <hr style="margin-bottom: 0px" />
                 <div class="pull-left">
-                    <small class="muted">S3 ninja is made with all the love in the world by <a href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden</small>
+                    <small class="muted">@product is made with all the love in the world by <a href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden</small>
                 </div>
                 <div class="pull-right">
                     <small class="muted">F**k me on <a href="https://github.com/scireum/s3ninja">GitHub</a></small>

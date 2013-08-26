@@ -5,3 +5,4 @@ workspace.xml
 *.iml
 logs
 build/lib
+build/dist

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ivy-module [
-        <!ENTITY kernel SYSTEM "../sirius/kernel/ivy-kernel.xml">
-        <!ENTITY web SYSTEM "../sirius/web/ivy-web.xml">
+        <!ENTITY kernel SYSTEM "../sirius/build/ivy-kernel.xml">
+        <!ENTITY web SYSTEM "../sirius/build/ivy-web.xml">
 ]>
 <ivy-module version="2.0">
     <info organisation="com.scireum" module="s3ninja"/>

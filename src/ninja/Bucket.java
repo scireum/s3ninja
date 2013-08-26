@@ -22,7 +22,7 @@ import java.util.List;
 public class Bucket {
 
     private File file;
-    private static Cache<String, Boolean> publicAccessCache = CacheManager.createCache("publicBucketAccess");
+    private static Cache<String, Boolean> publicAccessCache = CacheManager.createCache("public-bucket-access");
 
 
     public Bucket(File file) {

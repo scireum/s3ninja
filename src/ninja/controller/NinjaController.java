@@ -53,7 +53,7 @@ public class NinjaController implements Controller {
         } catch (HandledException e) {
             UserContext.message(Message.error(e.getMessage()));
         }
-        ctx.respondWith().template("view/index.html", buckets);
+        ctx.respondWith().template("view/index.html", buckets, storage.getBasePath(), storage.getAwsAccessKey(), storage.getAwsSecretKey());
     }
 
     @Part
@@ -108,7 +108,7 @@ public class NinjaController implements Controller {
         ctx.respondWith().template("view/bucket.html", bucket);
     }
 
-    @Routed("/ui/:1:2")
+    @Routed("/ui/:1/:2")
     public void object(WebContext ctx, String bucketName, String id) {
         try {
             Bucket bucket = storage.getBucket(bucketName);

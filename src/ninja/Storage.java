@@ -59,7 +59,7 @@ public class Storage {
     public String getBasePath() {
         StringBuilder sb = new StringBuilder(getBaseDirUnchecked().getAbsolutePath());
         if (!getBaseDirUnchecked().exists()) {
-            sb.append(" (non-existend!)");
+            sb.append(" (non-existent!)");
         } else if (!getBaseDirUnchecked().isDirectory()) {
             sb.append(" (no directory!)");
         } else {

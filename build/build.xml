@@ -9,9 +9,16 @@
 
 <project name="s3ninja" default="ivy">
 
-    <import file="../sirius/build/build.xml" />
+    <import file="../sirius/build/build-base.xml" />
 
     <!-- App module is not required -->
     <property name="no-app" value="true" />
+
+    <!-- Version of the product -->
+    <property name="app.version" value="2013/08" />
+    <!-- Name of the product -->
+    <property name="app.name" value="S3 ninja" />
+    <!-- Technical of the product which can be used as filename -->
+    <property name="app.filename" value="s3ninja" />
 
 </project>

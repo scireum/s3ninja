@@ -4,7 +4,7 @@
  * Multiple file upload component with progress-bar, drag-and-drop.
  * © 2010 Andrew Valums ( andrew(at)valums.com )
  *
- * Licensed under GNU GPL 2 or later, see license.txt.
+ * Warning: This file is heavily modified in order to handle multiple uploads efficiently. Do not update.
  */
 
 //

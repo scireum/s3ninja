@@ -46,7 +46,7 @@
         </div>
         <div class="span8">
             <div class="jumbotron">
-                <h1>@PRODUCT@ <small>@VERSION@</small></h1>
+                <h1>@PRODUCT@ <small>Version @VERSION@</small></h1>
                 <p class="lead">S3 ninja emulates the S3 API for development and testing purposes.</p>
                 <a href="@PRODUCT_FILE_NAME@.zip" class="btn btn-large btn-success">Download</a>
                 <a href="docs/index.html" target="_blank" class="btn btn-large">JavaDoc</a>
@@ -71,6 +71,7 @@
                         <b>java IPL</b> to start it manually
                     </li>
                     <li>Navigate to <a href="http://localhost:9444" target="_blank">http://localhost:9444</a> - or the port you set with http.port in the config.</li>
+                    <li>Run S3 API-Calls against <b>http://localhost:9444/s3</b> (e.g. http://localhost:9444/s3/test-bucket/test-object)</li>
                     <li>Use <b>sirius.sh stop</b> or <b>java -Dkill=true -Dport=9191 IPL</b> to terminate the server</li>
                 </ol>
             </div>

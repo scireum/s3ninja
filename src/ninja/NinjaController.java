@@ -1,4 +1,12 @@
-package ninja.controller;
+/*
+ * Made with all the love in the world
+ * by scireum in Remshalden, Germany
+ *
+ * Copyright by scireum GmbH
+ * http://www.scireum.de - info@scireum.de
+ */
+
+package ninja;
 
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
@@ -6,10 +14,6 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import ninja.APILog;
-import ninja.Bucket;
-import ninja.Storage;
-import ninja.StoredObject;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
@@ -34,7 +38,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Created with IntelliJ IDEA.
+ * Takes care of the "management ui".
+ * <p>
+ * Handles all requests required to render the web-pages.
+ * </p>
  *
  * @author Andreas Haufler (aha@scireum.de)
  * @since 2013/08
@@ -53,7 +60,12 @@ public class NinjaController implements Controller {
         } catch (HandledException e) {
             UserContext.message(Message.error(e.getMessage()));
         }
-        ctx.respondWith().template("view/index.html", buckets, storage.getBasePath(), storage.getAwsAccessKey(), storage.getAwsSecretKey());
+        ctx.respondWith()
+           .template("view/index.html",
+                     buckets,
+                     storage.getBasePath(),
+                     storage.getAwsAccessKey(),
+                     storage.getAwsSecretKey());
     }
 
     @Part
@@ -62,6 +74,11 @@ public class NinjaController implements Controller {
     @Part
     private APILog log;
 
+    /**
+     * Handles requests to /
+     *
+     * @param ctx the context describing the current request
+     */
     @Routed("/")
     public void index(WebContext ctx) {
         if (ctx.isPOST() && ctx.get("bucketName").isFilled()) {
@@ -71,16 +88,31 @@ public class NinjaController implements Controller {
         onError(ctx, null);
     }
 
+    /**
+     * Handles requests to /ui/license
+     *
+     * @param ctx the context describing the current request
+     */
     @Routed(value = "/ui/license", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void license(WebContext ctx) {
         ctx.respondWith().template("view/license.html");
     }
 
+    /**
+     * Handles requests to /ui/api
+     *
+     * @param ctx the context describing the current request
+     */
     @Routed(value = "/ui/api", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void api(WebContext ctx) {
         ctx.respondWith().template("view/api.html");
     }
 
+    /**
+     * Handles requests to /ui/log
+     *
+     * @param ctx the context describing the current request
+     */
     @Routed(value = "/ui/log", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void log(WebContext ctx) {
         int start = ctx.get("start").asInt(1) - 1;
@@ -102,12 +134,31 @@ public class NinjaController implements Controller {
                      start + pageSize + 1);
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]
+     * <p>
+     * This will list the contents of the bucket.
+     * </p>
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket to show
+     */
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
         ctx.respondWith().template("view/bucket.html", bucket);
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]/[object]
+     * <p>
+     * This will start a download of the requested object. No access checks will be performed.
+     * </p>
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket to show
+     * @param id         the name of the object to fetch
+     */
     @Routed("/ui/:1/:2")
     public void object(WebContext ctx, String bucketName, String id) {
         try {
@@ -131,6 +182,11 @@ public class NinjaController implements Controller {
         }
     }
 
+    /**
+     * Handles manual object uploads
+     *
+     * @param ctx the context describing the current request
+     */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload")
     public void uploadFile(WebContext ctx, String bucket) {
         try {
@@ -165,6 +221,15 @@ public class NinjaController implements Controller {
         }
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]/delete
+     * <p>
+     * This will delete the given bucket and list the remaining.
+     * </p>
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket name of the bucket to delete
+     */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/delete")
     public void deleteBucket(WebContext ctx, String bucket) {
         storage.getBucket(bucket).delete();
@@ -172,6 +237,16 @@ public class NinjaController implements Controller {
         onError(ctx, null);
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]/[object]/delete
+     * <p>
+     * This will delete the given object and list the remaining.
+     * </p>
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket which contains the object to delete
+     * @param id         name of the object to delete
+     */
     @Routed("/ui/:1/:2/delete")
     public void deleteObject(WebContext ctx, String bucketName, String id) {
         Bucket bucket = storage.getBucket(bucketName);
@@ -185,6 +260,15 @@ public class NinjaController implements Controller {
         bucket(ctx, bucketName);
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]/makePublic
+     * <p>
+     * This will make the given bucket public and list its contents.
+     * </p>
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket name of the bucket to make public
+     */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePublic")
     public void makePublic(WebContext ctx, String bucket) {
         Bucket storageBucket = storage.getBucket(bucket);
@@ -193,6 +277,15 @@ public class NinjaController implements Controller {
         ctx.respondWith().template("view/bucket.html", storageBucket);
     }
 
+    /**
+     * Handles requests to /ui/[bucketName]/makePrivate
+     * <p>
+     * This will make the given bucket private and list its contents.
+     * </p>
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket name of the bucket to make private
+     */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePrivate")
     public void makePrivate(WebContext ctx, String bucket) {
         Bucket storageBucket = storage.getBucket(bucket);

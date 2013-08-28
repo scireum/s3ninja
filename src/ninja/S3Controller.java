@@ -1,4 +1,12 @@
-package ninja.controller;
+/*
+ * Made with all the love in the world
+ * by scireum in Remshalden, Germany
+ *
+ * Copyright by scireum GmbH
+ * http://www.scireum.de - info@scireum.de
+ */
+
+package ninja;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
@@ -8,10 +16,6 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import ninja.APILog;
-import ninja.Bucket;
-import ninja.Storage;
-import ninja.StoredObject;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMethod;
@@ -41,7 +45,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Created with IntelliJ IDEA.
+ * Handles calls to the S3 API.
  *
  * @author Andreas Haufler (aha@scireum.de)
  * @since 2013/08
@@ -62,6 +66,9 @@ public class S3Controller implements Controller {
     private APILog log;
 
 
+    /*
+     * Computes the expected hash for the given request.
+     */
     private String computeHash(WebContext ctx) {
         try {
             StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().getName());
@@ -103,6 +110,9 @@ public class S3Controller implements Controller {
 
     private static final Pattern AWS_AUTH_PATTERN = Pattern.compile("AWS ([^:]+):(.*)");
 
+    /*
+     * Extracts the given hash from the given request. Returns null if no hash was given.
+     */
     private String getAuthHash(WebContext ctx) {
         Value auth = ctx.getHeaderValue(HttpHeaders.Names.AUTHORIZATION);
         if (!auth.isFilled()) {
@@ -116,6 +126,9 @@ public class S3Controller implements Controller {
         return null;
     }
 
+    /*
+     * Writes an API error to the log
+     */
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
         ctx.respondWith().error(status, message);
         log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
@@ -124,6 +137,9 @@ public class S3Controller implements Controller {
                 CallContext.getCurrent().getWatch());
     }
 
+    /*
+     * Writes an API success entry to the log
+     */
     private void signalObjectSuccess(WebContext ctx) {
         log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
                 ctx.getRequestedURI(),
@@ -131,6 +147,14 @@ public class S3Controller implements Controller {
                 CallContext.getCurrent().getWatch());
     }
 
+    /**
+     * Dispatching method handling all object specific calls.
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket which contains the object (must exist)
+     * @param id         name of the object ob interest
+     * @throws Exception in case of IO errors and there like
+     */
     @Routed("/s3/:1/:2")
     public void object(WebContext ctx, String bucketName, String id) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
@@ -173,6 +197,13 @@ public class S3Controller implements Controller {
         }
     }
 
+    /**
+     * Handles DELETE /bucket/id
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to delete
+     * @param id     name of the object to delete
+     */
     private void deleteObject(WebContext ctx, Bucket bucket, String id) {
         StoredObject object = bucket.getObject(id);
         object.delete();
@@ -181,6 +212,13 @@ public class S3Controller implements Controller {
         signalObjectSuccess(ctx);
     }
 
+    /**
+     * Handles PUT /bucket/id
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to upload
+     * @param id     name of the object to upload
+     */
     private void putObject(WebContext ctx, Bucket bucket, String id) throws Exception {
         StoredObject object = bucket.getObject(id);
         Attribute attr = ctx.getContent();
@@ -221,6 +259,13 @@ public class S3Controller implements Controller {
         signalObjectSuccess(ctx);
     }
 
+    /**
+     * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to use as destination
+     * @param id     name of the object to use as destination
+     */
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
@@ -251,6 +296,13 @@ public class S3Controller implements Controller {
         signalObjectSuccess(ctx);
     }
 
+    /**
+     * Handles GET /bucket/id
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to download
+     * @param id     name of the object to use as download
+     */
     private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws Exception {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {

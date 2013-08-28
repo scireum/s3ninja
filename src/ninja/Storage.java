@@ -1,3 +1,11 @@
+/*
+ * Made with all the love in the world
+ * by scireum in Remshalden, Germany
+ *
+ * Copyright by scireum GmbH
+ * http://www.scireum.de - info@scireum.de
+ */
+
 package ninja;
 
 import com.google.common.collect.Lists;
@@ -12,7 +20,7 @@ import java.io.File;
 import java.util.List;
 
 /**
- * Created with IntelliJ IDEA.
+ * Storage service which takes care of organizing buckets on disk.
  *
  * @author Andreas Haufler (aha@scireum.de)
  * @since 2013/08
@@ -56,6 +64,12 @@ public class Storage {
         return baseDir;
     }
 
+    /**
+     * Returns the base directory as string.
+     *
+     * @return a string containing the path of the base directory. Will contain additional infos, if the path is
+     *         not usable
+     */
     public String getBasePath() {
         StringBuilder sb = new StringBuilder(getBaseDirUnchecked().getAbsolutePath());
         if (!getBaseDirUnchecked().exists()) {
@@ -69,6 +83,11 @@ public class Storage {
         return sb.toString();
     }
 
+    /**
+     * Enumerates all known buckets.
+     *
+     * @return a list of all known buckets
+     */
     public List<Bucket> getBuckets() {
         List<Bucket> result = Lists.newArrayList();
         for (File file : getBaseDir().listFiles()) {
@@ -80,6 +99,12 @@ public class Storage {
         return result;
     }
 
+    /**
+     * Returns a bucket with the given name
+     *
+     * @param bucket the name of the bucket to fetch. Must not contain .. or / or \
+     * @return the bucket with the given id. Might not exist, but will never be <tt>null</tt>
+     */
     public Bucket getBucket(String bucket) {
         if (bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
             throw Exceptions.createHandled()
@@ -91,10 +116,20 @@ public class Storage {
         return new Bucket(new File(getBaseDir(), bucket));
     }
 
+    /**
+     * Returns the used AWS access key.
+     *
+     * @return the AWS access key
+     */
     public String getAwsAccessKey() {
         return awsAccessKey;
     }
 
+    /**
+     * Returns the AWS secret key used to verify hashes.
+     *
+     * @return the AWS secret key
+     */
     public String getAwsSecretKey() {
         return awsSecretKey;
     }

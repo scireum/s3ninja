@@ -37,6 +37,9 @@ public class Storage {
     @ConfigValue("storage.awsSecretKey")
     private String awsSecretKey;
 
+    @ConfigValue("storage.autocreateBuckets")
+    private boolean autocreateBuckets;
+
     protected File getBaseDir() {
         baseDir = getBaseDirUnchecked();
 
@@ -132,5 +135,14 @@ public class Storage {
      */
     public String getAwsSecretKey() {
         return awsSecretKey;
+    }
+
+    /**
+     * Determines if buckets should be automatically created.
+     *
+     * @return <tt>true</tt> if buckets can be auto-created upon the first request
+     */
+    public boolean isAutocreateBuckets() {
+        return autocreateBuckets;
     }
 }

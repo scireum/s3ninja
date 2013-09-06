@@ -65,7 +65,6 @@ public class S3Controller implements Controller {
     @Part
     private APILog log;
 
-
     /*
      * Computes the expected hash for the given request.
      */
@@ -77,7 +76,8 @@ public class S3Controller implements Controller {
             stringToSign.append("\n");
             stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
             stringToSign.append("\n");
-            stringToSign.append(ctx.getHeaderValue("x-amz-date").asString(ctx.getHeaderValue("Date").asString("")));
+            stringToSign.append(ctx.get("Expires").asString(ctx.getHeaderValue("x-amz-date")
+                                                     .asString(ctx.getHeaderValue("Date").asString(""))));
             stringToSign.append("\n");
 
             List<String> headers = Lists.newArrayList();
@@ -116,7 +116,7 @@ public class S3Controller implements Controller {
     private String getAuthHash(WebContext ctx) {
         Value auth = ctx.getHeaderValue(HttpHeaders.Names.AUTHORIZATION);
         if (!auth.isFilled()) {
-            return null;
+            return ctx.get("Signature").getString();
         }
         Matcher m = AWS_AUTH_PATTERN.matcher(auth.getString());
         if (m.matches()) {
@@ -159,8 +159,12 @@ public class S3Controller implements Controller {
     public void object(WebContext ctx, String bucketName, String id) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
         if (!bucket.exists()) {
-            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-            return;
+            if (storage.isAutocreateBuckets()) {
+                bucket.create();
+            } else {
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                return;
+            }
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
@@ -194,6 +198,8 @@ public class S3Controller implements Controller {
             deleteObject(ctx, bucket, id);
         } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
             getObject(ctx, bucket, id, false);
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().getName());
         }
     }
 
@@ -222,6 +228,10 @@ public class S3Controller implements Controller {
     private void putObject(WebContext ctx, Bucket bucket, String id) throws Exception {
         StoredObject object = bucket.getObject(id);
         Attribute attr = ctx.getContent();
+        if (attr == null) {
+            signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "No content posted");
+            return;
+        }
         long size = attr.getChannelBuffer().readableBytes();
         ChannelBufferInputStream inputStream = new ChannelBufferInputStream(attr.getChannelBuffer());
         try {

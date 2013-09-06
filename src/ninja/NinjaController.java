@@ -254,7 +254,7 @@ public class NinjaController implements Controller {
             StoredObject object = bucket.getObject(id);
             if (object.exists()) {
                 object.delete();
-                UserContext.message(Message.info("Bucket successfully deleted."));
+                UserContext.message(Message.info("Object successfully deleted."));
             }
         }
         bucket(ctx, bucketName);

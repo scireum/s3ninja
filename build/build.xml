@@ -15,7 +15,7 @@
     <property name="no-app" value="true" />
 
     <!-- Version of the product -->
-    <property name="app.version" value="2013/09" />
+    <property name="app.version" value="2013/10" />
     <!-- Name of the product -->
     <property name="app.name" value="S3 ninja" />
     <!-- Technical of the product which can be used as filename -->

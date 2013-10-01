@@ -14,10 +14,8 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
-import org.jboss.netty.handler.codec.http.multipart.Attribute;
 import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -33,6 +31,7 @@ import sirius.web.http.WebContext;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -193,8 +192,7 @@ public class NinjaController implements Controller {
             String name = ctx.get("filename").asString(ctx.get("qqfile").asString());
             Bucket storageBucket = storage.getBucket(bucket);
             StoredObject object = storageBucket.getObject(name);
-            Attribute attr = ctx.getContent();
-            ChannelBufferInputStream inputStream = new ChannelBufferInputStream(attr.getChannelBuffer());
+            InputStream inputStream = ctx.getContent();
             try {
                 FileOutputStream out = new FileOutputStream(object.getFile());
                 try {

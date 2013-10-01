@@ -16,11 +16,9 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
-import org.jboss.netty.handler.codec.http.multipart.Attribute;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Value;
@@ -38,6 +36,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -227,13 +226,11 @@ public class S3Controller implements Controller {
      */
     private void putObject(WebContext ctx, Bucket bucket, String id) throws Exception {
         StoredObject object = bucket.getObject(id);
-        Attribute attr = ctx.getContent();
-        if (attr == null) {
+        InputStream inputStream = ctx.getContent();
+        if (inputStream == null) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "No content posted");
             return;
         }
-        long size = attr.getChannelBuffer().readableBytes();
-        ChannelBufferInputStream inputStream = new ChannelBufferInputStream(attr.getChannelBuffer());
         try {
             FileOutputStream out = new FileOutputStream(object.getFile());
             try {

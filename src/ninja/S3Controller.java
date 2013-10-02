@@ -40,6 +40,7 @@ import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,6 +65,8 @@ public class S3Controller implements Controller {
     @Part
     private APILog log;
 
+    private Map<String, ReentrantLock> locks = Maps.newConcurrentMap();
+
     /*
      * Computes the expected hash for the given request.
      */
@@ -75,8 +78,9 @@ public class S3Controller implements Controller {
             stringToSign.append("\n");
             stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
             stringToSign.append("\n");
-            stringToSign.append(ctx.get("Expires").asString(ctx.getHeaderValue("x-amz-date")
-                                                     .asString(ctx.getHeaderValue("Date").asString(""))));
+            stringToSign.append(ctx.get("Expires")
+                                   .asString(ctx.getHeaderValue("x-amz-date")
+                                                .asString(ctx.getHeaderValue("Date").asString(""))));
             stringToSign.append("\n");
 
             List<String> headers = Lists.newArrayList();
@@ -131,7 +135,7 @@ public class S3Controller implements Controller {
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
         ctx.respondWith().error(status, message);
         log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
-                ctx.getRequestedURI(),
+                message + " - " + ctx.getRequestedURI(),
                 APILog.Result.ERROR,
                 CallContext.getCurrent().getWatch());
     }
@@ -209,6 +213,7 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to delete
      * @param id     name of the object to delete
      */
+
     private void deleteObject(WebContext ctx, Bucket bucket, String id) {
         StoredObject object = bucket.getObject(id);
         object.delete();
@@ -255,7 +260,11 @@ public class S3Controller implements Controller {
         if (properties.containsKey("Content-MD5")) {
             if (!md5.equals(properties.get("Content-MD5"))) {
                 object.delete();
-                signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Invalid MD5 checksum");
+                signalObjectError(ctx,
+                                  HttpResponseStatus.BAD_REQUEST,
+                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                                                properties.get("Content-MD5"),
+                                                md5));
                 return;
             }
         }

@@ -6,5 +6,4 @@ workspace.xml
 logs
 build/lib
 build/dist
-build/site/docs
-build/site/*.zip
+build/site

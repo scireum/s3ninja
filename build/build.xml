@@ -14,6 +14,9 @@
     <!-- App module is not required -->
     <property name="no-app" value="true" />
 
+    <!-- Load environment -->
+    <property environment="env"/>
+
     <!-- Version of the product -->
     <property name="app.version" value="BUILD-${env.BUILD_NUMBER}" />
     <!-- Name of the product -->

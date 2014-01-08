@@ -16,9 +16,9 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import org.jboss.netty.handler.codec.http.HttpHeaders;
-import org.jboss.netty.handler.codec.http.HttpMethod;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Value;
@@ -53,7 +53,6 @@ import java.util.regex.Pattern;
 @Register
 public class S3Controller implements Controller {
 
-
     @Override
     public void onError(WebContext ctx, HandledException error) {
         signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, error.getMessage());
@@ -72,23 +71,23 @@ public class S3Controller implements Controller {
      */
     private String computeHash(WebContext ctx) {
         try {
-            StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().getName());
+            StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
             stringToSign.append("\n");
             stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
             stringToSign.append("\n");
             stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
             stringToSign.append("\n");
             stringToSign.append(ctx.get("Expires")
-                                   .asString(ctx.getHeaderValue("x-amz-date")
-                                                .asString(ctx.getHeaderValue("Date").asString(""))));
+                    .asString(ctx.getHeaderValue("x-amz-date")
+                            .asString(ctx.getHeaderValue("Date").asString(""))));
             stringToSign.append("\n");
 
             List<String> headers = Lists.newArrayList();
-            for (String name : ctx.getRequest().getHeaderNames()) {
+            for (String name : ctx.getRequest().headers().names()) {
                 if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
                     StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
                     headerBuilder.append(":");
-                    headerBuilder.append(Strings.join(ctx.getRequest().getHeaders(name), ",").trim());
+                    headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
                     headers.add(headerBuilder.toString());
                 }
             }
@@ -134,7 +133,7 @@ public class S3Controller implements Controller {
      */
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
         ctx.respondWith().error(status, message);
-        log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
+        log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                 message + " - " + ctx.getRequestedURI(),
                 APILog.Result.ERROR,
                 CallContext.getCurrent().getWatch());
@@ -144,7 +143,7 @@ public class S3Controller implements Controller {
      * Writes an API success entry to the log
      */
     private void signalObjectSuccess(WebContext ctx) {
-        log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
+        log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                 ctx.getRequestedURI(),
                 APILog.Result.OK,
                 CallContext.getCurrent().getWatch());
@@ -173,7 +172,7 @@ public class S3Controller implements Controller {
         if (hash != null) {
             if (!computeHash(ctx).equals(hash)) {
                 ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Invalid Hash");
-                log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
+                log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
                         CallContext.getCurrent().getWatch());
@@ -182,7 +181,7 @@ public class S3Controller implements Controller {
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
             ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
-            log.log("OBJECT " + ctx.getRequest().getMethod().getName(),
+            log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                     ctx.getRequestedURI(),
                     APILog.Result.REJECTED,
                     CallContext.getCurrent().getWatch());
@@ -202,7 +201,7 @@ public class S3Controller implements Controller {
         } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
             getObject(ctx, bucket, id, false);
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().getName());
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
         }
     }
 
@@ -248,7 +247,7 @@ public class S3Controller implements Controller {
         }
 
         Map<String, String> properties = Maps.newTreeMap();
-        for (String name : ctx.getRequest().getHeaderNames()) {
+        for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
             if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower.equals(
                     "content-type") || nameLower.equals("x-amz-acl")) {
@@ -261,10 +260,10 @@ public class S3Controller implements Controller {
             if (!md5.equals(properties.get("Content-MD5"))) {
                 object.delete();
                 signalObjectError(ctx,
-                                  HttpResponseStatus.BAD_REQUEST,
-                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                                properties.get("Content-MD5"),
-                                                md5));
+                        HttpResponseStatus.BAD_REQUEST,
+                        Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                                properties.get("Content-MD5"),
+                                md5));
                 return;
             }
         }

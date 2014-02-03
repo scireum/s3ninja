@@ -17,12 +17,16 @@
     <!-- Load environment -->
     <property environment="env"/>
 
-    <!-- Version of the product -->
-    <property name="app.version" value="BUILD-${env.BUILD_NUMBER}" />
     <!-- Name of the product -->
     <property name="app.name" value="S3 ninja" />
     <!-- Technical of the product which can be used as filename -->
     <property name="app.filename" value="s3ninja" />
+
+    <!-- defined maven snapshots and staging repository id and url -->
+    <property name="maven-snapshots-repository-id" value="sonatype-nexus-snapshots" />
+    <property name="maven-snapshots-repository-url" value="https://oss.sonatype.org/content/repositories/snapshots/" />
+    <property name="maven-staging-repository-id" value="sonatype-nexus-staging" />
+    <property name="maven-staging-repository-url" value="https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
 
     <target name="build">
         <antcall target="sirius.make" />

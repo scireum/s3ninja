@@ -4,7 +4,7 @@
         <!ENTITY web SYSTEM "../sirius/build/ivy-web.xml">
 ]>
 <ivy-module version="2.0">
-    <info organisation="com.scireum" module="s3ninja" revision="${app.version}">
+    <info organisation="com.scireum" module="s3ninja" revision="1.0-SNAPSHOT">
         <license name="The MIT License (MIT)" url="http://opensource.org/licenses/MIT" />
         <description homepage="http://s3ninja.net">
             S3-Ninja emulates the Amazon S3-API for local testing

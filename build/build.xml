@@ -13,6 +13,8 @@
 
     <!-- App module is not required -->
     <property name="no-app" value="true" />
+    <!-- Search module is not required -->
+    <property name="no-search" value="true" />
 
     <!-- Load environment -->
     <property environment="env"/>

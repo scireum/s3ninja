@@ -24,10 +24,10 @@ import sirius.kernel.health.HandledException;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Message;
 import sirius.web.controller.Routed;
-import sirius.web.controller.UserContext;
 import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
+import sirius.web.security.UserContext;
 
 import java.io.FileOutputStream;
 import java.io.IOException;

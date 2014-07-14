@@ -28,9 +28,9 @@ import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
-import sirius.web.controller.UserContext;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
+import sirius.web.security.UserContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

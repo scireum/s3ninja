@@ -70,7 +70,7 @@ public class S3Controller implements Controller {
     /*
      * Computes the expected hash for the given request.
      */
-    private String computeHash(WebContext ctx) {
+    private String computeHash(WebContext ctx, String pathPrefix) {
         try {
             StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
             stringToSign.append("\n");
@@ -98,7 +98,7 @@ public class S3Controller implements Controller {
                 stringToSign.append("\n");
             }
 
-            stringToSign.append(ctx.getRequestedURI().substring(3));
+            stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
 
             SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
 
@@ -175,7 +175,7 @@ public class S3Controller implements Controller {
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            if (!computeHash(ctx).equals(hash)) {
+            if (!computeHash(ctx, "/s3").equals(hash) && !computeHash(ctx, "").equals(hash)) {
                 ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Invalid Hash");
                 log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                         ctx.getRequestedURI(),

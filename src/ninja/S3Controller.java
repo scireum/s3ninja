@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Handles calls to the S3 API.
@@ -154,11 +155,11 @@ public class S3Controller implements Controller {
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket which contains the object (must exist)
-     * @param id         name of the object ob interest
+     * @param idList     name of the object ob interest
      * @throws Exception in case of IO errors and there like
      */
-    @Routed("/s3/:1/:2")
-    public void object(WebContext ctx, String bucketName, String id) throws Exception {
+    @Routed("/s3/:1/**")
+    public void object(WebContext ctx, String bucketName, List<String> idList) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
         if (!bucket.exists()) {
             if (storage.isAutocreateBuckets()) {
@@ -167,6 +168,10 @@ public class S3Controller implements Controller {
                 signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
                 return;
             }
+        }
+        String id = idList.stream().collect(Collectors.joining("/")).replace('/', '_');
+        if (Strings.isEmpty(id)) {
+            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
@@ -263,7 +268,8 @@ public class S3Controller implements Controller {
                         HttpResponseStatus.BAD_REQUEST,
                         Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
                                 properties.get("Content-MD5"),
-                                md5));
+                                md5)
+                );
                 return;
             }
         }

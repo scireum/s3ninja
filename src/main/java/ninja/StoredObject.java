@@ -61,7 +61,7 @@ public class StoredObject {
      * @return a string representation of the last modification date
      */
     public String getLastModified() {
-        return NLS.toUserString(new DateTime(file.lastModified()), true);
+        return NLS.toUserString(new DateTime(file.lastModified()));
     }
 
     /**

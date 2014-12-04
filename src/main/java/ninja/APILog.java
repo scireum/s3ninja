@@ -9,11 +9,11 @@
 package ninja;
 
 import com.google.common.collect.Lists;
-import org.joda.time.DateTime;
 import sirius.kernel.commons.Watch;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.nls.NLS;
 
+import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.List;
 
@@ -34,19 +34,18 @@ public class APILog {
      * Used to describe if a call was successful or why if failed.
      */
     public static enum Result {
-        OK, REJECTED, ERROR;
+        OK, REJECTED, ERROR
     }
 
     /**
      * Represents a log entry.
      */
     public static class Entry {
-        private String tod = NLS.toUserString(new DateTime(), true);
+        private String tod = NLS.toUserString(LocalDateTime.now());
         private String function;
         private String description;
         private String result;
         private String duration;
-        private String css;
 
         /**
          * Returns the method or function which was called.

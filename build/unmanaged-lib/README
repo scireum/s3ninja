@@ -1,1 +1,0 @@
-This directory contains libraries which are not loaded via maven (as this only fetches one file per artifact).

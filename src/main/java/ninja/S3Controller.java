@@ -171,6 +171,14 @@ public class S3Controller implements Controller {
         }
         String id = idList.stream().collect(Collectors.joining("/")).replace('/', '_');
         if (Strings.isEmpty(id)) {
+            // if it's a request to the bucket, it's usually a bucket create command.
+            // so if we allow bucket creation, a bucket was created, thus send a positive response
+            if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
+                // create bucket...
+                ctx.respondWith().error(HttpResponseStatus.OK);
+                return;
+            }
+
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
         }
         String hash = getAuthHash(ctx);

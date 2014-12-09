@@ -98,7 +98,7 @@ public class S3Controller implements Controller {
                 stringToSign.append("\n");
             }
 
-            stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
+            stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
 
             SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
 

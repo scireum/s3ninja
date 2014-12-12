@@ -10,7 +10,7 @@ import javax.annotation.Nonnull;
 public class StatusBackupCommand implements Command {
 
     @Part
-    private BackupAgent backupAgent;
+    private OX2BackupAgent backupAgent;
 
     @Override
     public void execute(Output output, String... strings) throws Exception {

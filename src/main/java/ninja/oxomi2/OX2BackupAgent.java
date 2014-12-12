@@ -1,5 +1,6 @@
 package ninja.oxomi2;
 
+import com.google.common.base.Charsets;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -27,13 +28,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-@Register(classes = BackupAgent.class)
-public class BackupAgent implements Runnable {
+@Register(classes = OX2BackupAgent.class)
+public class OX2BackupAgent implements Runnable {
 
     @ConfigValue("backupAgent.baseUrl")
     public static String baseUrl;
@@ -52,7 +55,6 @@ public class BackupAgent implements Runnable {
     private static AtomicLong bytesTransferred = new AtomicLong(0l);
 
     private static boolean running = false;
-
 
 
     @Override
@@ -113,12 +115,7 @@ public class BackupAgent implements Runnable {
      * @throws IOException on error
      */
     private StructuredInput callOxomiServiceForBackupFiles(String serviceUrl) throws IOException {
-        final Context context = new Context();
-        context.put("agentName", agentName);
-        context.put("key", key);
-
-        final Outcall outcall = new Outcall(new URL(serviceUrl), context);
-
+        final Outcall outcall = new Outcall(new URL(serviceUrl), signRequest());
         return new XMLStructuredInput(outcall.getInput(), true);
     }
 
@@ -133,7 +130,7 @@ public class BackupAgent implements Runnable {
      * @param running true to start the backup agent, false to stop it
      */
     public void setRunning(final boolean running) {
-        BackupAgent.running = running;
+        OX2BackupAgent.running = running;
     }
 
     /**
@@ -158,24 +155,15 @@ public class BackupAgent implements Runnable {
     }
 
 
-
     private static InputStream downloadBackupFile(String fileId) throws IOException {
-        final Context context = new Context();
-        context.put("key", key);
-        context.put("agentName", agentName);
-
-        final Outcall fileRequest = new Outcall(new URL(baseUrl + "/backup-agent/" + fileId), context);
-        return fileRequest.getInput();
+        return new Outcall(new URL(baseUrl + "/backup-agent/" + fileId), signRequest()).getInput();
     }
 
     private static void storeFileToBucket(String fileId, String filename, Bucket bucket, InputStream is) throws IOException {
         StoredObject object = bucket.getObject(fileId);
         try {
-            FileOutputStream out = new FileOutputStream(object.getFile());
-            try {
+            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
                 ByteStreams.copy(is, out);
-            } finally {
-                out.close();
             }
         } finally {
             is.close();
@@ -187,5 +175,15 @@ public class BackupAgent implements Runnable {
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
         properties.put("Content-MD5", md5);
         object.storeProperties(properties);
+    }
+
+    private static Context signRequest() {
+        final Context context = new Context();
+        context.put("agentName", agentName);
+
+        final String signatureString = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0).format(DateTimeFormatter.ISO_DATE) + "@" + agentName + "@" + key;
+        context.put("key", Hashing.md5().hashString(signatureString, Charsets.UTF_8).toString());
+
+        return context;
     }
 }

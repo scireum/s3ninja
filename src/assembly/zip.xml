@@ -31,18 +31,8 @@
             <outputDirectory>app</outputDirectory>
         </fileSet>
         <fileSet>
-            <directory>src/assembly</directory>
-            <outputDirectory>/logs</outputDirectory>
-            <excludes>
-                <exclude>*</exclude>
-            </excludes>
-        </fileSet>
-        <fileSet>
-            <directory>src/assembly</directory>
-            <outputDirectory>/data/s3</outputDirectory>
-            <excludes>
-                <exclude>*</exclude>
-            </excludes>
+            <directory>${project.basedir}/dist</directory>
+            <outputDirectory>/</outputDirectory>
         </fileSet>
     </fileSets>
 </assembly>

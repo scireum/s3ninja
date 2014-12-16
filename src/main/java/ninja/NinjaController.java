@@ -184,7 +184,8 @@ public class NinjaController implements Controller {
     /**
      * Handles manual object uploads
      *
-     * @param ctx the context describing the current request
+     * @param ctx    the context describing the current request
+     * @param bucket the name of the target bucket
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload")
     public void uploadFile(WebContext ctx, String bucket) {

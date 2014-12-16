@@ -160,7 +160,7 @@ public class Bucket {
      * @return the object with the given id, might not exist, but is always non null
      */
     public StoredObject getObject(String id) {
-        if (id.contains("..") || id.contains("/") || id.contains("\\")) {
+        if (id.contains("") || id.contains("/") || id.contains("\\")) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
                                     "Invalid object name: %s. A object name must not contain '..' '/' or '\\'",

@@ -109,7 +109,7 @@ public class Storage {
      * @return the bucket with the given id. Might not exist, but will never be <tt>null</tt>
      */
     public Bucket getBucket(String bucket) {
-        if (bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
+        if (bucket.contains("") || bucket.contains("/") || bucket.contains("\\")) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
                                     "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",

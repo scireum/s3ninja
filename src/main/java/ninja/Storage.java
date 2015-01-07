@@ -61,7 +61,12 @@ public class Storage {
 
     private File getBaseDirUnchecked() {
         if (baseDir == null) {
-            baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
+            if (Sirius.isStartedAsTest()) {
+                baseDir = new File(System.getProperty("java.io.tmpdir"), "s3ninja_test");
+                baseDir.mkdirs();
+            } else {
+                baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
+            }
         }
 
         return baseDir;
@@ -71,7 +76,7 @@ public class Storage {
      * Returns the base directory as string.
      *
      * @return a string containing the path of the base directory. Will contain additional infos, if the path is
-     *         not usable
+     * not usable
      */
     public String getBasePath() {
         StringBuilder sb = new StringBuilder(getBaseDirUnchecked().getAbsolutePath());
@@ -109,7 +114,7 @@ public class Storage {
      * @return the bucket with the given id. Might not exist, but will never be <tt>null</tt>
      */
     public Bucket getBucket(String bucket) {
-        if (bucket.contains("") || bucket.contains("/") || bucket.contains("\\")) {
+        if (bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
                                     "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",

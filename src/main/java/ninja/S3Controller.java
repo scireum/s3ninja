@@ -72,46 +72,104 @@ public class S3Controller implements Controller {
      */
     private String computeHash(WebContext ctx, String pathPrefix) {
         try {
-            StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
-            stringToSign.append("\n");
-            stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
-            stringToSign.append("\n");
-            stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
-            stringToSign.append("\n");
-            stringToSign.append(ctx.get("Expires")
-                    .asString(ctx.getHeaderValue("x-amz-date")
-                            .asString(ctx.getHeaderValue("Date").asString(""))));
-            stringToSign.append("\n");
-
-            List<String> headers = Lists.newArrayList();
-            for (String name : ctx.getRequest().headers().names()) {
-                if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
-                    StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
-                    headerBuilder.append(":");
-                    headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
-                    headers.add(headerBuilder.toString());
-                }
+            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
+            if (aws4Header.matches()) {
+                return computeAWS4Hash(ctx, aws4Header);
+            } else {
+                return computeAWSLegacyHash(ctx, pathPrefix);
             }
-            Collections.sort(headers);
-            for (String header : headers) {
-                stringToSign.append(header);
-                stringToSign.append("\n");
-            }
-
-            stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
-
-            SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
-
-            Mac mac = Mac.getInstance("HmacSHA1");
-            mac.init(keySpec);
-            byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
-            return BaseEncoding.base64().encode(result);
         } catch (Throwable e) {
             throw Exceptions.handle(UserContext.LOG, e);
         }
     }
 
+    /*
+     * Computes the "classic" authentication hash.
+     */
+    private String computeAWSLegacyHash(WebContext ctx, String pathPrefix) throws Exception {
+        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
+        stringToSign.append("\n");
+        stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
+        stringToSign.append("\n");
+        stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
+        stringToSign.append("\n");
+        stringToSign.append(ctx.get("Expires")
+                               .asString(ctx.getHeaderValue("x-amz-date")
+                                            .asString(ctx.getHeaderValue("Date").asString(""))));
+        stringToSign.append("\n");
+
+        List<String> headers = Lists.newArrayList();
+        for (String name : ctx.getRequest().headers().names()) {
+            if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
+                StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
+                headerBuilder.append(":");
+                headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
+                headers.add(headerBuilder.toString());
+            }
+        }
+        Collections.sort(headers);
+        for (String header : headers) {
+            stringToSign.append(header);
+            stringToSign.append("\n");
+        }
+
+        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
+
+        SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
+        Mac mac = Mac.getInstance("HmacSHA1");
+        mac.init(keySpec);
+        byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
+        return BaseEncoding.base64().encode(result);
+    }
+
+    /*
+     * Computes the AWS Version 4 signing hash
+     */
+    private String computeAWS4Hash(WebContext ctx, Matcher aws4Header) throws Exception {
+        StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().getMethod().name());
+        canonicalRequest.append("\n");
+        canonicalRequest.append(ctx.getRequestedURI());
+        canonicalRequest.append("\n");
+        canonicalRequest.append(ctx.getQueryString());
+        canonicalRequest.append("\n");
+        for (String name : aws4Header.group(4).split(";")) {
+            canonicalRequest.append(name.trim());
+            canonicalRequest.append(":");
+            canonicalRequest.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
+            canonicalRequest.append("\n");
+        }
+        canonicalRequest.append("\n");
+        canonicalRequest.append(aws4Header.group(4));
+        canonicalRequest.append("\n");
+        canonicalRequest.append(ctx.getHeader("x-amz-content-sha256"));
+
+        StringBuilder stringToSign = new StringBuilder("AWS4-HMAC-SHA256\n");
+        stringToSign.append(ctx.getHeader("x-amz-date"));
+        stringToSign.append("\n");
+        stringToSign.append(ctx.getHeader("x-amz-date").substring(0, 8));
+        stringToSign.append("/");
+        stringToSign.append(aws4Header.group(3));
+        stringToSign.append("/s3/aws4_request\n");
+        stringToSign.append(Hashing.sha256().hashString(canonicalRequest, Charsets.UTF_8).toString());
+
+        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), aws4Header.group(2));
+        byte[] dateRegionKey = hmacSHA256(dateKey, aws4Header.group(3));
+        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, "s3");
+        byte[] signingKey = hmacSHA256(dateRegionServiceKey, "aws4_request");
+
+        return BaseEncoding.base16().lowerCase().encode(hmacSHA256(signingKey, stringToSign.toString()));
+    }
+
+    private byte[] hmacSHA256(byte[] key, String value) throws Exception {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value.getBytes(Charsets.UTF_8));
+    }
+
     private static final Pattern AWS_AUTH_PATTERN = Pattern.compile("AWS ([^:]+):(.*)");
+    private static final Pattern AWS_AUTH4_PATTERN = Pattern.compile(
+            "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)");
 
     /*
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -124,6 +182,11 @@ public class S3Controller implements Controller {
         Matcher m = AWS_AUTH_PATTERN.matcher(auth.getString());
         if (m.matches()) {
             return m.group(2);
+        }
+
+        m = AWS_AUTH4_PATTERN.matcher(auth.getString());
+        if (m.matches()) {
+            return m.group(5);
         }
 
         return null;
@@ -175,8 +238,12 @@ public class S3Controller implements Controller {
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            if (!computeHash(ctx, "/s3").equals(hash) && !computeHash(ctx, "").equals(hash)) {
-                ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Invalid Hash");
+            String expectedHash = computeHash(ctx, "/s3");
+            String alternativeHash = computeHash(ctx, "");
+            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+                ctx.respondWith()
+                   .error(HttpResponseStatus.UNAUTHORIZED,
+                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
                 log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
@@ -265,11 +332,10 @@ public class S3Controller implements Controller {
             if (!md5.equals(properties.get("Content-MD5"))) {
                 object.delete();
                 signalObjectError(ctx,
-                        HttpResponseStatus.BAD_REQUEST,
-                        Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                properties.get("Content-MD5"),
-                                md5)
-                );
+                                  HttpResponseStatus.BAD_REQUEST,
+                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                                                properties.get("Content-MD5"),
+                                                md5));
                 return;
             }
         }

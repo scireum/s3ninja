@@ -113,7 +113,7 @@ public class S3Controller implements Controller {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
+        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
@@ -234,6 +234,14 @@ public class S3Controller implements Controller {
         }
         String id = idList.stream().collect(Collectors.joining("/")).replace('/', '_');
         if (Strings.isEmpty(id)) {
+            // if it's a request to the bucket, it's usually a bucket create command.
+            // As we allow bucket creation, thus send a positive response
+            if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
+                signalObjectSuccess(ctx);
+                ctx.respondWith().status(HttpResponseStatus.OK);
+                return;
+            }
+
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
         }
         String hash = getAuthHash(ctx);

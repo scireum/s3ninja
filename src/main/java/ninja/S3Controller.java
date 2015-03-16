@@ -26,6 +26,7 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
 import sirius.web.http.Response;
@@ -37,6 +38,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.ZoneOffset;
+import java.time.chrono.IsoChronology;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -349,10 +354,17 @@ public class S3Controller implements Controller {
         }
 
         object.storeProperties(properties);
-        String etag = hash.toString();
-        ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).status(HttpResponseStatus.OK);
+        ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK);
         signalObjectSuccess(ctx);
     }
+
+    private String etag(HashCode hash) {
+        return "\"" + hash + "\"";
+    }
+
+    private DateTimeFormatter dateTimeFormatter =
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").toFormatter()
+                    .withChronology(IsoChronology.INSTANCE).withZone(ZoneOffset.UTC);
 
     /**
      * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
@@ -363,16 +375,18 @@ public class S3Controller implements Controller {
      */
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
+        /*
         if (!object.exists()) {
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
             return;
         }
+        */
         if (!copy.contains("/")) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source must contain '/'");
             return;
         }
-        String srcBucketName = copy.substring(0, copy.lastIndexOf("/"));
-        String srcId = copy.substring(copy.lastIndexOf("/"));
+        String srcBucketName = copy.substring(1, copy.lastIndexOf("/"));
+        String srcId = copy.substring(copy.lastIndexOf("/") + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source bucket does not exist");
@@ -387,7 +401,17 @@ public class S3Controller implements Controller {
         if (src.getPropertiesFile().exists()) {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
-        ctx.respondWith().status(HttpResponseStatus.OK);
+        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+        String etag = etag(hash);
+        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).xml();
+        structuredOutput.beginOutput("CopyObjectResult");
+        structuredOutput.beginObject("LastModified");
+        structuredOutput.text(dateTimeFormatter.format(object.getLastModifiedInstant()));
+        structuredOutput.endObject();
+        structuredOutput.beginObject("ETag");
+        structuredOutput.text(etag);
+        structuredOutput.endObject();
+        structuredOutput.endOutput();
         signalObjectSuccess(ctx);
     }
 

@@ -11,7 +11,7 @@ package ninja;
 import sirius.kernel.Sirius;
 import sirius.kernel.commons.Tuple;
 import sirius.kernel.di.std.Register;
-import sirius.web.templates.RythmExtension;
+import sirius.web.templates.rythm.RythmExtension;
 
 import java.util.function.Consumer;
 

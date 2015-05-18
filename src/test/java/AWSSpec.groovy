@@ -9,6 +9,7 @@
 import com.amazonaws.ClientConfiguration
 import com.amazonaws.auth.AWSCredentials
 import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.auth.SignerFactory
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.S3ClientOptions
 import com.amazonaws.services.s3.model.ObjectMetadata
@@ -22,20 +23,21 @@ class AWSSpec extends BaseSpecification {
     public static AmazonS3Client getClient() {
         AWSCredentials credentials = new BasicAWSCredentials("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
         AmazonS3Client newClient = new AmazonS3Client(credentials,
-                new ClientConfiguration().withSignerOverride());
+                new ClientConfiguration());
         newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true));
         newClient.setEndpoint("http://localhost:9444/s3");
 
         return newClient;
     }
 
-    def "PUT and then GET work as expected"() {
+    def "PUT and then GET work as expected with AWS4 signer"() {
         given:
-        AmazonS3Client client = getClient();
+        def client = getClient();
         when:
         client.putObject("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), new ObjectMetadata());
         def content = new String(ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()), Charsets.UTF_8);
         then:
         content == "Test"
     }
+
 }

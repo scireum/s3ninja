@@ -77,7 +77,7 @@ public class S3Controller implements Controller {
      */
     private String computeHash(WebContext ctx, String pathPrefix) {
         try {
-            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
+            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
             if (aws4Header.matches()) {
                 return computeAWS4Hash(ctx, aws4Header);
             } else {
@@ -118,7 +118,7 @@ public class S3Controller implements Controller {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
+        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
@@ -251,8 +251,8 @@ public class S3Controller implements Controller {
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            String expectedHash = computeHash(ctx, "/s3");
-            String alternativeHash = computeHash(ctx, "");
+            String expectedHash = computeHash(ctx, "");
+            String alternativeHash = computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,

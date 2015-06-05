@@ -8,7 +8,6 @@
 
 package ninja;
 
-import org.odftoolkit.odfdom.type.DateTime;
 import sirius.kernel.nls.NLS;
 
 import java.io.File;
@@ -16,7 +15,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -63,7 +61,11 @@ public class StoredObject {
      * @return a string representation of the last modification date
      */
     public String getLastModified() {
-        return NLS.toUserString(Instant.ofEpochMilli(file.lastModified()));
+        return NLS.toUserString(getLastModifiedInstant());
+    }
+
+    public Instant getLastModifiedInstant() {
+        return Instant.ofEpochMilli(file.lastModified());
     }
 
     /**

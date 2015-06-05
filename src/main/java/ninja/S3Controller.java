@@ -32,10 +32,28 @@ import sirius.kernel.commons.Value;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.ZoneOffset;
+import java.time.chrono.IsoChronology;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
@@ -64,6 +82,61 @@ public class S3Controller implements Controller {
     private AwsHashCalculator hashCalculator;
 
     private Map<String, ReentrantLock> locks = Maps.newConcurrentMap();
+
+    /*
+     * Computes the expected hash for the given request.
+     */
+    private String computeHash(WebContext ctx, String pathPrefix) {
+        try {
+            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
+            if (aws4Header.matches()) {
+                return computeAWS4Hash(ctx, aws4Header);
+            } else {
+                return computeAWSLegacyHash(ctx, pathPrefix);
+            }
+        } catch (Throwable e) {
+            throw Exceptions.handle(UserContext.LOG, e);
+        }
+    }
+
+    /*
+     * Computes the "classic" authentication hash.
+     */
+    private String computeAWSLegacyHash(WebContext ctx, String pathPrefix) throws Exception {
+        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
+        stringToSign.append("\n");
+        stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
+        stringToSign.append("\n");
+        stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
+        stringToSign.append("\n");
+        stringToSign.append(ctx.get("Expires")
+                               .asString(ctx.getHeaderValue("x-amz-date")
+                                            .asString(ctx.getHeaderValue("Date").asString(""))));
+        stringToSign.append("\n");
+
+        List<String> headers = Lists.newArrayList();
+        for (String name : ctx.getRequest().headers().names()) {
+            if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
+                StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
+                headerBuilder.append(":");
+                headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
+                headers.add(headerBuilder.toString());
+            }
+        }
+        Collections.sort(headers);
+        for (String header : headers) {
+            stringToSign.append(header);
+            stringToSign.append("\n");
+        }
+
+        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
+
+        SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
+        Mac mac = Mac.getInstance("HmacSHA1");
+        mac.init(keySpec);
+        byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
+        return BaseEncoding.base64().encode(result);
+    }
 
     /*
      * Computes the AWS Version 4 signing hash
@@ -146,8 +219,8 @@ public class S3Controller implements Controller {
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            String expectedHash = computeHash(ctx, "/s3");
-            String alternativeHash = computeHash(ctx, "");
+            String expectedHash = computeHash(ctx, "");
+            String alternativeHash = computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
                     .error(HttpResponseStatus.UNAUTHORIZED,
@@ -263,10 +336,17 @@ public class S3Controller implements Controller {
         }
 
         object.storeProperties(properties);
-        String etag = hash.toString();
-        ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).status(HttpResponseStatus.OK);
+        ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK);
         signalObjectSuccess(ctx);
     }
+
+    private String etag(HashCode hash) {
+        return "\"" + hash + "\"";
+    }
+
+    private DateTimeFormatter dateTimeFormatter =
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").toFormatter()
+                    .withChronology(IsoChronology.INSTANCE).withZone(ZoneOffset.UTC);
 
     /**
      * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
@@ -278,16 +358,18 @@ public class S3Controller implements Controller {
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy)
         throws IOException {
         StoredObject object = bucket.getObject(id);
+        /*
         if (!object.exists()) {
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
             return;
         }
+        */
         if (!copy.contains("/")) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source must contain '/'");
             return;
         }
-        String srcBucketName = copy.substring(0, copy.lastIndexOf("/"));
-        String srcId = copy.substring(copy.lastIndexOf("/"));
+        String srcBucketName = copy.substring(1, copy.lastIndexOf("/"));
+        String srcId = copy.substring(copy.lastIndexOf("/") + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source bucket does not exist");
@@ -302,7 +384,17 @@ public class S3Controller implements Controller {
         if (src.getPropertiesFile().exists()) {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
-        ctx.respondWith().status(HttpResponseStatus.OK);
+        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+        String etag = etag(hash);
+        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).xml();
+        structuredOutput.beginOutput("CopyObjectResult");
+        structuredOutput.beginObject("LastModified");
+        structuredOutput.text(dateTimeFormatter.format(object.getLastModifiedInstant()));
+        structuredOutput.endObject();
+        structuredOutput.beginObject("ETag");
+        structuredOutput.text(etag);
+        structuredOutput.endObject();
+        structuredOutput.endOutput();
         signalObjectSuccess(ctx);
     }
 

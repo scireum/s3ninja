@@ -20,6 +20,10 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.ZoneOffset;
+import java.time.chrono.IsoChronology;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
@@ -37,23 +41,6 @@ import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.time.ZoneOffset;
-import java.time.chrono.IsoChronology;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
@@ -82,61 +69,6 @@ public class S3Controller implements Controller {
     private AwsHashCalculator hashCalculator;
 
     private Map<String, ReentrantLock> locks = Maps.newConcurrentMap();
-
-    /*
-     * Computes the expected hash for the given request.
-     */
-    private String computeHash(WebContext ctx, String pathPrefix) {
-        try {
-            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
-            if (aws4Header.matches()) {
-                return computeAWS4Hash(ctx, aws4Header);
-            } else {
-                return computeAWSLegacyHash(ctx, pathPrefix);
-            }
-        } catch (Throwable e) {
-            throw Exceptions.handle(UserContext.LOG, e);
-        }
-    }
-
-    /*
-     * Computes the "classic" authentication hash.
-     */
-    private String computeAWSLegacyHash(WebContext ctx, String pathPrefix) throws Exception {
-        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
-        stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
-        stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
-        stringToSign.append("\n");
-        stringToSign.append(ctx.get("Expires")
-                               .asString(ctx.getHeaderValue("x-amz-date")
-                                            .asString(ctx.getHeaderValue("Date").asString(""))));
-        stringToSign.append("\n");
-
-        List<String> headers = Lists.newArrayList();
-        for (String name : ctx.getRequest().headers().names()) {
-            if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
-                StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
-                headerBuilder.append(":");
-                headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
-                headers.add(headerBuilder.toString());
-            }
-        }
-        Collections.sort(headers);
-        for (String header : headers) {
-            stringToSign.append(header);
-            stringToSign.append("\n");
-        }
-
-        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
-
-        SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
-        Mac mac = Mac.getInstance("HmacSHA1");
-        mac.init(keySpec);
-        byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
-        return BaseEncoding.base64().encode(result);
-    }
 
     /*
      * Computes the AWS Version 4 signing hash

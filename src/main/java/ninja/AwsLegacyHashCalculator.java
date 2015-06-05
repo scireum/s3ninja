@@ -46,7 +46,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
+        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
@@ -59,9 +59,9 @@ public class AwsLegacyHashCalculator {
         return name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase());
     }
 
-    private String toHeaderStringRepresentation(final String headerName,
-        final HttpHeaders requestHeaders) {
-        return
-            headerName.toLowerCase().trim() + ":" + join(requestHeaders.getAll(headerName), ",").trim();
+    private String toHeaderStringRepresentation(
+        final String headerName, final HttpHeaders requestHeaders) {
+        return headerName.toLowerCase().trim() + ":" + 
+            join(requestHeaders.getAll(headerName), ",").trim();
     }
 }

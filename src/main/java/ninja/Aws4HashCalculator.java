@@ -38,7 +38,7 @@ public class Aws4HashCalculator {
     }
 
     private Matcher buildMatcher(final WebContext ctx) {
-        return AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
+        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
     }
 
     public String computeHash(WebContext ctx) throws Exception {

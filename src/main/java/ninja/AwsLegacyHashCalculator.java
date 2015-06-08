@@ -15,14 +15,14 @@ import sirius.web.http.WebContext;
 import static sirius.kernel.commons.Strings.join;
 
 /**
- * @author Milos Milivojevic | mmilivojevic@deployinc.com
+ * Hash calculator for legacy AWS signature calculation
  */
 @Register(classes = AwsLegacyHashCalculator.class)
 public class AwsLegacyHashCalculator {
 
     @Part
     private Storage storage;
-    
+
     public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
         stringToSign.append("\n");

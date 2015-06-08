@@ -8,7 +8,10 @@ import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
 
 /**
- * @author Milos Milivojevic | mmilivojevic@deployinc.com
+ * Class in charge of generating the appropriate hash for the given request and path prefix by 
+ * delegating the computation to either {@link Aws4HashCalculator} or {@link
+ * AwsLegacyHashCalculator} depending of whether or not  Aws4HashCalculator supports the request 
+ * or not
  */
 @Register(classes = AwsHashCalculator.class)
 public class AwsHashCalculator {
@@ -20,16 +23,27 @@ public class AwsHashCalculator {
 
     @Part
     private AwsLegacyHashCalculator legacyHashCalculator;
-    
+
+    /**
+     * Computes
+     *
+     * @param ctx
+     * @param pathPrefix
+     * @return
+     */
     public String computeHash(WebContext ctx, String pathPrefix) {
         try {
-            if (aws4HashCalculator.supports(ctx)) {
-                return aws4HashCalculator.computeHash(ctx);
-            } else {
-                return legacyHashCalculator.computeHash(ctx, pathPrefix);
-            }
+            return doComputeHash(ctx, pathPrefix);
         } catch (Throwable e) {
             throw Exceptions.handle(UserContext.LOG, e);
+        }
+    }
+
+    private String doComputeHash(final WebContext ctx, final String pathPrefix) throws Exception {
+        if (aws4HashCalculator.supports(ctx)) {
+            return aws4HashCalculator.computeHash(ctx);
+        } else {
+            return legacyHashCalculator.computeHash(ctx, pathPrefix);
         }
     }
 }

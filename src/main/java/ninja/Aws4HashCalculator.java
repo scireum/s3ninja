@@ -16,12 +16,14 @@ import static com.google.common.hash.Hashing.sha256;
 import static com.google.common.io.BaseEncoding.base16;
 
 /**
- * @author Milos Milivojevic | mmilivojevic@deployinc.com
+ * Hash calculator for <a href="http://docs.aws.amazon
+ * .com/AmazonS3/latest/API/sig-v4-header-based-auth.html">AWS signature v4 calculation</a>
  */
 @Register(classes = Aws4HashCalculator.class)
 public class Aws4HashCalculator {
     public static final Pattern AWS_AUTH4_PATTERN = Pattern.compile(
-        "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)");
+        "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^," 
+            + "]+), Signature=(.+)");
 
 
     @Part
@@ -43,8 +45,9 @@ public class Aws4HashCalculator {
 
     public String computeHash(WebContext ctx) throws Exception {
         final MatchResult aws4Header = initializedMatcher(ctx);
-        
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), aws4Header.group(2));
+
+        byte[] dateKey =
+            hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), aws4Header.group(2));
         byte[] dateRegionKey = hmacSHA256(dateKey, aws4Header.group(3));
         byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, "s3");
         byte[] signingKey = hmacSHA256(dateRegionServiceKey, "aws4_request");
@@ -56,9 +59,13 @@ public class Aws4HashCalculator {
     private String buildStringToSign(final WebContext ctx) {
         final StringBuilder canonicalRequest = buildCanonicalRequest(ctx);
         final MatchResult aws4Header = initializedMatcher(ctx);
-        return "AWS4-HMAC-SHA256\n" + ctx.getHeader("x-amz-date") + "\n" + ctx
-            .getHeader("x-amz-date").substring(0, 8) + "/" + aws4Header.group(3)
+        return "AWS4-HMAC-SHA256\n" + getAmazonDateHeader(ctx) + "\n" 
+            + getAmazonDateHeader(ctx).substring(0, 8) + "/" + aws4Header.group(3)
             + "/s3/aws4_request\n" + hashedCanonicalRequest(canonicalRequest);
+    }
+
+    private String getAmazonDateHeader(final WebContext ctx) {
+        return ctx.getHeaderValue("x-amz-date").asString();
     }
 
     private StringBuilder buildCanonicalRequest(final WebContext ctx) {

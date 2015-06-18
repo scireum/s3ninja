@@ -8,9 +8,9 @@ import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
 
 /**
- * Class in charge of generating the appropriate hash for the given request and path prefix by 
+ * Class in charge of generating the appropriate hash for the given request and path prefix by
  * delegating the computation to either {@link Aws4HashCalculator} or {@link
- * AwsLegacyHashCalculator} depending of whether or not  Aws4HashCalculator supports the request 
+ * AwsLegacyHashCalculator} depending of whether or not  Aws4HashCalculator supports the request
  * or not
  */
 @Register(classes = AwsHashCalculator.class)
@@ -27,9 +27,9 @@ public class AwsHashCalculator {
     /**
      * Computes
      *
-     * @param ctx
-     * @param pathPrefix
-     * @return
+     * @param ctx        web context
+     * @param pathPrefix request path prefix
+     * @return computed hash
      */
     public String computeHash(WebContext ctx, String pathPrefix) {
         try {

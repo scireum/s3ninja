@@ -8,8 +8,6 @@
 
 package ninja;
 
-import com.google.common.base.Charsets;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -19,22 +17,6 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.commons.Value;
-import sirius.kernel.di.std.Part;
-import sirius.kernel.di.std.Register;
-import sirius.kernel.health.Exceptions;
-import sirius.kernel.health.HandledException;
-import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.controller.Controller;
-import sirius.web.controller.Routed;
-import sirius.web.http.Response;
-import sirius.web.http.WebContext;
-import sirius.web.security.UserContext;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,13 +24,26 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
+import sirius.kernel.async.CallContext;
+import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Value;
+import sirius.kernel.di.std.Part;
+import sirius.kernel.di.std.Register;
+import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.XMLStructuredOutput;
+import sirius.web.controller.Controller;
+import sirius.web.controller.Routed;
+import sirius.web.http.Response;
+import sirius.web.http.WebContext;
+
+import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
+import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
 /**
  * Handles calls to the S3 API.
@@ -70,126 +65,30 @@ public class S3Controller implements Controller {
     @Part
     private APILog log;
 
+    @Part
+    private AwsHashCalculator hashCalculator;
+
     private Map<String, ReentrantLock> locks = Maps.newConcurrentMap();
-
-    /*
-     * Computes the expected hash for the given request.
-     */
-    private String computeHash(WebContext ctx, String pathPrefix) {
-        try {
-            Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
-            if (aws4Header.matches()) {
-                return computeAWS4Hash(ctx, aws4Header);
-            } else {
-                return computeAWSLegacyHash(ctx, pathPrefix);
-            }
-        } catch (Throwable e) {
-            throw Exceptions.handle(UserContext.LOG, e);
-        }
-    }
-
-    /*
-     * Computes the "classic" authentication hash.
-     */
-    private String computeAWSLegacyHash(WebContext ctx, String pathPrefix) throws Exception {
-        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
-        stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
-        stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
-        stringToSign.append("\n");
-        stringToSign.append(ctx.get("Expires")
-                               .asString(ctx.getHeaderValue("x-amz-date")
-                                            .asString(ctx.getHeaderValue("Date").asString(""))));
-        stringToSign.append("\n");
-
-        List<String> headers = Lists.newArrayList();
-        for (String name : ctx.getRequest().headers().names()) {
-            if (name.toLowerCase().startsWith("x-amz-") && !"x-amz-date".equals(name.toLowerCase())) {
-                StringBuilder headerBuilder = new StringBuilder(name.toLowerCase().trim());
-                headerBuilder.append(":");
-                headerBuilder.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
-                headers.add(headerBuilder.toString());
-            }
-        }
-        Collections.sort(headers);
-        for (String header : headers) {
-            stringToSign.append(header);
-            stringToSign.append("\n");
-        }
-
-        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
-
-        SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
-        Mac mac = Mac.getInstance("HmacSHA1");
-        mac.init(keySpec);
-        byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
-        return BaseEncoding.base64().encode(result);
-    }
 
     /*
      * Computes the AWS Version 4 signing hash
      */
-    private String computeAWS4Hash(WebContext ctx, Matcher aws4Header) throws Exception {
-        StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().getMethod().name());
-        canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getRequestedURI());
-        canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getQueryString());
-        canonicalRequest.append("\n");
-        for (String name : aws4Header.group(4).split(";")) {
-            canonicalRequest.append(name.trim());
-            canonicalRequest.append(":");
-            canonicalRequest.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
-            canonicalRequest.append("\n");
-        }
-        canonicalRequest.append("\n");
-        canonicalRequest.append(aws4Header.group(4));
-        canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getHeader("x-amz-content-sha256"));
-
-        StringBuilder stringToSign = new StringBuilder("AWS4-HMAC-SHA256\n");
-        stringToSign.append(ctx.getHeader("x-amz-date"));
-        stringToSign.append("\n");
-        stringToSign.append(ctx.getHeader("x-amz-date").substring(0, 8));
-        stringToSign.append("/");
-        stringToSign.append(aws4Header.group(3));
-        stringToSign.append("/s3/aws4_request\n");
-        stringToSign.append(Hashing.sha256().hashString(canonicalRequest, Charsets.UTF_8).toString());
-
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), aws4Header.group(2));
-        byte[] dateRegionKey = hmacSHA256(dateKey, aws4Header.group(3));
-        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, "s3");
-        byte[] signingKey = hmacSHA256(dateRegionServiceKey, "aws4_request");
-
-        return BaseEncoding.base16().lowerCase().encode(hmacSHA256(signingKey, stringToSign.toString()));
-    }
-
-    private byte[] hmacSHA256(byte[] key, String value) throws Exception {
-        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(keySpec);
-        return mac.doFinal(value.getBytes(Charsets.UTF_8));
-    }
-
-    private static final Pattern AWS_AUTH_PATTERN = Pattern.compile("AWS ([^:]+):(.*)");
-    private static final Pattern AWS_AUTH4_PATTERN = Pattern.compile(
-            "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)");
 
     /*
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
     private String getAuthHash(WebContext ctx) {
-        Value auth = ctx.getHeaderValue(HttpHeaders.Names.AUTHORIZATION);
-        if (!auth.isFilled()) {
+        Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaders.Names.AUTHORIZATION);
+        if (!authorizationHeaderValue.isFilled()) {
             return ctx.get("Signature").getString();
         }
-        Matcher m = AWS_AUTH_PATTERN.matcher(auth.getString());
+        String authentication = StringUtils.defaultString(authorizationHeaderValue.getString());
+        Matcher m = AWS_AUTH_PATTERN.matcher(authentication);
         if (m.matches()) {
             return m.group(2);
         }
 
-        m = AWS_AUTH4_PATTERN.matcher(auth.getString());
+        m = AWS_AUTH4_PATTERN.matcher(authentication);
         if (m.matches()) {
             return m.group(5);
         }
@@ -203,9 +102,9 @@ public class S3Controller implements Controller {
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
         ctx.respondWith().error(status, message);
         log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                message + " - " + ctx.getRequestedURI(),
-                APILog.Result.ERROR,
-                CallContext.getCurrent().getWatch());
+            message + " - " + ctx.getRequestedURI(),
+            APILog.Result.ERROR,
+            CallContext.getCurrent().getWatch());
     }
 
     /*
@@ -213,9 +112,9 @@ public class S3Controller implements Controller {
      */
     private void signalObjectSuccess(WebContext ctx) {
         log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                ctx.getRequestedURI(),
-                APILog.Result.OK,
-                CallContext.getCurrent().getWatch());
+            ctx.getRequestedURI(),
+            APILog.Result.OK,
+            CallContext.getCurrent().getWatch());
     }
 
     /**
@@ -241,7 +140,8 @@ public class S3Controller implements Controller {
         if (Strings.isEmpty(id)) {
             // if it's a request to the bucket, it's usually a bucket create command.
             // As we allow bucket creation, thus send a positive response
-            if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
+            if (ctx.getRequest().getMethod() == HttpMethod.HEAD
+                || ctx.getRequest().getMethod() == HttpMethod.GET) {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
                 return;
@@ -255,21 +155,22 @@ public class S3Controller implements Controller {
             String alternativeHash = computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
-                   .error(HttpResponseStatus.UNAUTHORIZED,
-                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                    .error(HttpResponseStatus.UNAUTHORIZED,
+                        Strings
+                            .apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
                 log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                        ctx.getRequestedURI(),
-                        APILog.Result.REJECTED,
-                        CallContext.getCurrent().getWatch());
+                    ctx.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
                 return;
             }
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
             ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
             log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                    ctx.getRequestedURI(),
-                    APILog.Result.REJECTED,
-                    CallContext.getCurrent().getWatch());
+                ctx.getRequestedURI(),
+                APILog.Result.REJECTED,
+                CallContext.getCurrent().getWatch());
             return;
         }
         if (ctx.getRequest().getMethod() == HttpMethod.GET) {
@@ -282,12 +183,16 @@ public class S3Controller implements Controller {
                 putObject(ctx, bucket, id);
             }
         } else if (ctx.getRequest().getMethod() == HttpMethod.DELETE) {
-            deleteObject(ctx, bucket, id);
+            handleDeleteRequest(ctx, bucket, id);
         } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
             getObject(ctx, bucket, id, false);
         } else {
             throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
         }
+    }
+
+    private String computeHash(WebContext ctx, String pathPrefix) {
+        return hashCalculator.computeHash(ctx, pathPrefix);
     }
 
     /**
@@ -298,7 +203,15 @@ public class S3Controller implements Controller {
      * @param id     name of the object to delete
      */
 
-    private void deleteObject(WebContext ctx, Bucket bucket, String id) {
+    private void handleDeleteRequest(WebContext ctx, Bucket bucket, String id) {
+        if (StringUtils.isBlank(id)) {
+            bucket.delete();
+        } else {
+            deleteObject(ctx, bucket, id);
+        }
+    }
+
+    private void deleteObject(final WebContext ctx, final Bucket bucket, final String id) {
         StoredObject object = bucket.getObject(id);
         object.delete();
 
@@ -334,7 +247,8 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower.equals(
+            if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower
+                .equals(
                     "content-type") || nameLower.equals("x-amz-acl")) {
                 properties.put(name, ctx.getHeader(name));
             }
@@ -345,10 +259,10 @@ public class S3Controller implements Controller {
             if (!md5.equals(properties.get("Content-MD5"))) {
                 object.delete();
                 signalObjectError(ctx,
-                                  HttpResponseStatus.BAD_REQUEST,
-                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                                properties.get("Content-MD5"),
-                                                md5));
+                    HttpResponseStatus.BAD_REQUEST,
+                    Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                        properties.get("Content-MD5"),
+                        md5));
                 return;
             }
         }
@@ -373,7 +287,8 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to use as destination
      * @param id     name of the object to use as destination
      */
-    private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
+    private void copyObject(WebContext ctx, Bucket bucket, String id, String copy)
+        throws IOException {
         StoredObject object = bucket.getObject(id);
         /*
         if (!object.exists()) {
@@ -422,7 +337,8 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
-    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws Exception {
+    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile)
+        throws Exception {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");

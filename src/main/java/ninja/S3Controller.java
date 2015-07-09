@@ -17,6 +17,18 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import sirius.kernel.async.CallContext;
+import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Value;
+import sirius.kernel.di.std.Part;
+import sirius.kernel.di.std.Register;
+import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.XMLStructuredOutput;
+import sirius.web.controller.Controller;
+import sirius.web.controller.Routed;
+import sirius.web.http.Response;
+import sirius.web.http.WebContext;
+
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,18 +41,6 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
-import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.commons.Value;
-import sirius.kernel.di.std.Part;
-import sirius.kernel.di.std.Register;
-import sirius.kernel.health.HandledException;
-import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.controller.Controller;
-import sirius.web.controller.Routed;
-import sirius.web.http.Response;
-import sirius.web.http.WebContext;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
@@ -82,7 +82,8 @@ public class S3Controller implements Controller {
         if (!authorizationHeaderValue.isFilled()) {
             return ctx.get("Signature").getString();
         }
-        String authentication = StringUtils.defaultString(authorizationHeaderValue.getString());
+        String authentication =
+                Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
         Matcher m = AWS_AUTH_PATTERN.matcher(authentication);
         if (m.matches()) {
             return m.group(2);
@@ -102,9 +103,9 @@ public class S3Controller implements Controller {
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
         ctx.respondWith().error(status, message);
         log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-            message + " - " + ctx.getRequestedURI(),
-            APILog.Result.ERROR,
-            CallContext.getCurrent().getWatch());
+                message + " - " + ctx.getRequestedURI(),
+                APILog.Result.ERROR,
+                CallContext.getCurrent().getWatch());
     }
 
     /*
@@ -112,9 +113,9 @@ public class S3Controller implements Controller {
      */
     private void signalObjectSuccess(WebContext ctx) {
         log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-            ctx.getRequestedURI(),
-            APILog.Result.OK,
-            CallContext.getCurrent().getWatch());
+                ctx.getRequestedURI(),
+                APILog.Result.OK,
+                CallContext.getCurrent().getWatch());
     }
 
     /**
@@ -140,8 +141,7 @@ public class S3Controller implements Controller {
         if (Strings.isEmpty(id)) {
             // if it's a request to the bucket, it's usually a bucket create command.
             // As we allow bucket creation, thus send a positive response
-            if (ctx.getRequest().getMethod() == HttpMethod.HEAD
-                || ctx.getRequest().getMethod() == HttpMethod.GET) {
+            if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
                 return;
@@ -155,22 +155,21 @@ public class S3Controller implements Controller {
             String alternativeHash = computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
-                    .error(HttpResponseStatus.UNAUTHORIZED,
-                        Strings
-                            .apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                   .error(HttpResponseStatus.UNAUTHORIZED,
+                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
                 log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                    ctx.getRequestedURI(),
-                    APILog.Result.REJECTED,
-                    CallContext.getCurrent().getWatch());
+                        ctx.getRequestedURI(),
+                        APILog.Result.REJECTED,
+                        CallContext.getCurrent().getWatch());
                 return;
             }
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
             ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
             log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                ctx.getRequestedURI(),
-                APILog.Result.REJECTED,
-                CallContext.getCurrent().getWatch());
+                    ctx.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
             return;
         }
         if (ctx.getRequest().getMethod() == HttpMethod.GET) {
@@ -204,7 +203,7 @@ public class S3Controller implements Controller {
      */
 
     private void handleDeleteRequest(WebContext ctx, Bucket bucket, String id) {
-        if (StringUtils.isBlank(id)) {
+        if (Strings.isEmpty(id)) {
             bucket.delete();
         } else {
             deleteObject(ctx, bucket, id);
@@ -247,8 +246,7 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower
-                .equals(
+            if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower.equals(
                     "content-type") || nameLower.equals("x-amz-acl")) {
                 properties.put(name, ctx.getHeader(name));
             }
@@ -259,10 +257,10 @@ public class S3Controller implements Controller {
             if (!md5.equals(properties.get("Content-MD5"))) {
                 object.delete();
                 signalObjectError(ctx,
-                    HttpResponseStatus.BAD_REQUEST,
-                    Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                        properties.get("Content-MD5"),
-                        md5));
+                                  HttpResponseStatus.BAD_REQUEST,
+                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                                                properties.get("Content-MD5"),
+                                                md5));
                 return;
             }
         }
@@ -277,8 +275,10 @@ public class S3Controller implements Controller {
     }
 
     private DateTimeFormatter dateTimeFormatter =
-            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").toFormatter()
-                    .withChronology(IsoChronology.INSTANCE).withZone(ZoneOffset.UTC);
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                                          .toFormatter()
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.UTC);
 
     /**
      * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
@@ -287,8 +287,7 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to use as destination
      * @param id     name of the object to use as destination
      */
-    private void copyObject(WebContext ctx, Bucket bucket, String id, String copy)
-        throws IOException {
+    private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         /*
         if (!object.exists()) {
@@ -337,8 +336,7 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
-    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile)
-        throws Exception {
+    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws Exception {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");

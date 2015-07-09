@@ -47,9 +47,6 @@ import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
 /**
  * Handles calls to the S3 API.
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 @Register
 public class S3Controller implements Controller {
@@ -139,37 +136,10 @@ public class S3Controller implements Controller {
         }
         String id = idList.stream().collect(Collectors.joining("/")).replace('/', '_');
         if (Strings.isEmpty(id)) {
-            // if it's a request to the bucket, it's usually a bucket create command.
-            // As we allow bucket creation, thus send a positive response
-            if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
-                signalObjectSuccess(ctx);
-                ctx.respondWith().status(HttpResponseStatus.OK);
-                return;
-            }
-
-            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
+            objectWithEmptyIdList(ctx);
+            return;
         }
-        String hash = getAuthHash(ctx);
-        if (hash != null) {
-            String expectedHash = computeHash(ctx, "");
-            String alternativeHash = computeHash(ctx, "/s3");
-            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
-                ctx.respondWith()
-                   .error(HttpResponseStatus.UNAUTHORIZED,
-                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
-                log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                        ctx.getRequestedURI(),
-                        APILog.Result.REJECTED,
-                        CallContext.getCurrent().getWatch());
-                return;
-            }
-        }
-        if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
-            ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
-            log.log("OBJECT " + ctx.getRequest().getMethod().name(),
-                    ctx.getRequestedURI(),
-                    APILog.Result.REJECTED,
-                    CallContext.getCurrent().getWatch());
+        if (!objectCheckAuth(ctx, bucket)) {
             return;
         }
         if (ctx.getRequest().getMethod() == HttpMethod.GET) {
@@ -182,12 +152,51 @@ public class S3Controller implements Controller {
                 putObject(ctx, bucket, id);
             }
         } else if (ctx.getRequest().getMethod() == HttpMethod.DELETE) {
-            handleDeleteRequest(ctx, bucket, id);
+            deleteObject(ctx, bucket, id);
         } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
             getObject(ctx, bucket, id, false);
         } else {
             throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
         }
+    }
+
+    private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
+        String hash = getAuthHash(ctx);
+        if (hash != null) {
+            String expectedHash = computeHash(ctx, "");
+            String alternativeHash = computeHash(ctx, "/s3");
+            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+                ctx.respondWith()
+                   .error(HttpResponseStatus.UNAUTHORIZED,
+                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+                        ctx.getRequestedURI(),
+                        APILog.Result.REJECTED,
+                        CallContext.getCurrent().getWatch());
+                return false;
+            }
+        }
+        if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
+            ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
+            log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+                    ctx.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
+            return false;
+        }
+
+        return true;
+    }
+
+    private void objectWithEmptyIdList(WebContext ctx) {
+        // if it's a request to the bucket, it's usually a bucket create command.
+        // As we allow bucket creation, thus send a positive response
+        if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
+            signalObjectSuccess(ctx);
+            ctx.respondWith().status(HttpResponseStatus.OK);
+        }
+
+        signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
     }
 
     private String computeHash(WebContext ctx, String pathPrefix) {
@@ -233,11 +242,8 @@ public class S3Controller implements Controller {
             return;
         }
         try {
-            FileOutputStream out = new FileOutputStream(object.getFile());
-            try {
+            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
                 ByteStreams.copy(inputStream, out);
-            } finally {
-                out.close();
             }
         } finally {
             inputStream.close();
@@ -246,8 +252,8 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || nameLower.equals("content-md5") || nameLower.equals(
-                    "content-type") || nameLower.equals("x-amz-acl")) {
+            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
+                    nameLower) || "x-amz-acl".equals(nameLower)) {
                 properties.put(name, ctx.getHeader(name));
             }
         }

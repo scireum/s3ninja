@@ -17,9 +17,6 @@ import java.util.function.Consumer;
 
 /**
  * Provides additional variables to the Rythm-Context.
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 @Register
 public class NinjaExtension implements RythmExtension {

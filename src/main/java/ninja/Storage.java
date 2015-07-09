@@ -21,9 +21,6 @@ import java.util.List;
 
 /**
  * Storage service which takes care of organizing buckets on disk.
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 @Register(classes = Storage.class)
 public class Storage {

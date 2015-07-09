@@ -40,10 +40,6 @@ import java.util.Map;
  * Takes care of the "management ui".
  * <p>
  * Handles all requests required to render the web-pages.
- * </p>
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 @Register
 public class NinjaController implements Controller {
@@ -193,16 +189,10 @@ public class NinjaController implements Controller {
             String name = ctx.get("filename").asString(ctx.get("qqfile").asString());
             Bucket storageBucket = storage.getBucket(bucket);
             StoredObject object = storageBucket.getObject(name);
-            InputStream inputStream = ctx.getContent();
-            try {
-                FileOutputStream out = new FileOutputStream(object.getFile());
-                try {
+            try (InputStream inputStream = ctx.getContent()) {
+                try (FileOutputStream out = new FileOutputStream(object.getFile())) {
                     ByteStreams.copy(inputStream, out);
-                } finally {
-                    out.close();
                 }
-            } finally {
-                inputStream.close();
             }
 
             Map<String, String> properties = Maps.newTreeMap();
@@ -292,5 +282,4 @@ public class NinjaController implements Controller {
         UserContext.message(Message.info("ACLs successfully changed"));
         ctx.respondWith().template("view/bucket.html", storageBucket);
     }
-
 }

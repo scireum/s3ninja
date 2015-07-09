@@ -1,11 +1,20 @@
+/*
+ * Made with all the love in the world
+ * by scireum in Remshalden, Germany
+ *
+ * Copyright by scireum GmbH
+ * http://www.scireum.de - info@scireum.de
+ */
+
 package ninja;
 
-import java.util.regex.Pattern;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
+
+import java.util.regex.Pattern;
 
 /**
  * Class in charge of generating the appropriate hash for the given request and path prefix by
@@ -16,7 +25,7 @@ import sirius.web.security.UserContext;
 @Register(classes = AwsHashCalculator.class)
 public class AwsHashCalculator {
 
-    public static final Pattern AWS_AUTH_PATTERN = Pattern.compile("AWS ([^:]+):(.*)");
+    protected static final Pattern AWS_AUTH_PATTERN = Pattern.compile("AWS ([^:]+):(.*)");
 
     @Part
     private Aws4HashCalculator aws4HashCalculator;
@@ -25,11 +34,12 @@ public class AwsHashCalculator {
     private AwsLegacyHashCalculator legacyHashCalculator;
 
     /**
-     * Computes
+     * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx        web context
-     * @param pathPrefix request path prefix
-     * @return computed hash
+     * @param ctx        the current request to fetch parameters from
+     * @param pathPrefix the path prefix to append to the current uri
+     * @return the computes hash value
+     * @throws Exception in case of an unexpected error
      */
     public String computeHash(WebContext ctx, String pathPrefix) {
         try {

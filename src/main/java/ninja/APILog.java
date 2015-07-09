@@ -22,10 +22,6 @@ import java.util.List;
  * <p>
  * The entries are stored in memory and will be lost during server restarts. Also the site is limited to 250 entries.
  * The newest entry will be the first in the list.
- * </p>
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 @Register(classes = APILog.class)
 public class APILog {
@@ -33,7 +29,7 @@ public class APILog {
     /**
      * Used to describe if a call was successful or why if failed.
      */
-    public static enum Result {
+    public enum Result {
         OK, REJECTED, ERROR
     }
 
@@ -124,7 +120,7 @@ public class APILog {
         }
     }
 
-    private List<Entry> entries = Lists.newArrayList();
+    private final List<Entry> entries = Lists.newArrayList();
 
     /**
      * Returns a sublist of the stored entries, starting at <tt>start</tt> returning at most <tt>count</tt> items.
@@ -166,6 +162,4 @@ public class APILog {
             }
         }
     }
-
-
 }

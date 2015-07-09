@@ -26,15 +26,11 @@ import java.util.List;
  * <p>
  * Internally a bucket is just a directory within the base directory.
  * </p>
- *
- * @author Andreas Haufler (aha@scireum.de)
- * @since 2013/08
  */
 public class Bucket {
 
     private File file;
     private static Cache<String, Boolean> publicAccessCache = CacheManager.createCache("public-bucket-access");
-
 
     /**
      * Creates a new bucket based on the given directory.

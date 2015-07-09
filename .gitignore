@@ -1,12 +1,5 @@
 out
-IPL.xml
-workspace.xml
 .idea
 *.iml
-logs
-build/pom.xml
-build/lib
-build/dist
-build/site
 data
 target

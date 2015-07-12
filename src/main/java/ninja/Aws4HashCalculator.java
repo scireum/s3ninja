@@ -25,8 +25,8 @@ import static com.google.common.hash.Hashing.sha256;
 import static com.google.common.io.BaseEncoding.base16;
 
 /**
- * Hash calculator for <a href="http://docs.aws.amazon
- * .com/AmazonS3/latest/API/sig-v4-header-based-auth.html">AWS signature v4 calculation</a>
+ * Hash calculator for <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html">AWS
+ * signature v4 calculation</a>
  */
 @Register(classes = Aws4HashCalculator.class)
 public class Aws4HashCalculator {
@@ -123,6 +123,6 @@ public class Aws4HashCalculator {
         SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(keySpec);
-        return mac.doFinal(value.getBytes(Charsets.UTF_8));
+        return mac.doFinal(value.getBytes(UTF_8));
     }
 }

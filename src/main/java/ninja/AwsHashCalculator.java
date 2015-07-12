@@ -39,7 +39,6 @@ public class AwsHashCalculator {
      * @param ctx        the current request to fetch parameters from
      * @param pathPrefix the path prefix to append to the current uri
      * @return the computes hash value
-     * @throws Exception in case of an unexpected error
      */
     public String computeHash(WebContext ctx, String pathPrefix) {
         try {

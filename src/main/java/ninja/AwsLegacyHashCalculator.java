@@ -11,14 +11,14 @@ package ninja;
 import com.google.common.base.Charsets;
 import com.google.common.io.BaseEncoding;
 import io.netty.handler.codec.http.HttpHeaders;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static sirius.kernel.commons.Strings.join;
@@ -31,6 +31,26 @@ public class AwsLegacyHashCalculator {
 
     @Part
     private Storage storage;
+
+    private static final List<String> SIGNED_PARAMETERS = Arrays.asList("acl",
+                                                                        "torrent",
+                                                                        "logging",
+                                                                        "location",
+                                                                        "policy",
+                                                                        "requestPayment",
+                                                                        "versioning",
+                                                                        "versions",
+                                                                        "versionId",
+                                                                        "notification",
+                                                                        "uploadId",
+                                                                        "uploads",
+                                                                        "partNumber",
+                                                                        "website",
+                                                                        "delete",
+                                                                        "lifecycle",
+                                                                        "tagging",
+                                                                        "cors",
+                                                                        "restore");
 
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
@@ -57,15 +77,28 @@ public class AwsLegacyHashCalculator {
                                              .stream()
                                              .filter(this::relevantAmazonHeader)
                                              .map(name -> toHeaderStringRepresentation(name, requestHeaders))
+                                             .sorted()
                                              .collect(Collectors.toList());
 
-        Collections.sort(headers);
         for (String header : headers) {
             stringToSign.append(header);
             stringToSign.append("\n");
         }
 
         stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
+
+        char separator = '?';
+        for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {
+            // Skip parameters that aren't part of the canonical signed string
+            if (!SIGNED_PARAMETERS.contains(parameterName)) continue;
+
+            stringToSign.append(separator).append(parameterName);
+            String parameterValue = ctx.get(parameterName).asString();
+            if (Strings.isFilled(parameterValue)) {
+                stringToSign.append("=").append(parameterValue);
+            }
+            separator = '&';
+        }
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");

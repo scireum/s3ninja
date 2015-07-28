@@ -18,7 +18,8 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import static sirius.kernel.commons.Strings.join;

@@ -8,10 +8,12 @@
 
 package ninja;
 
+import sirius.kernel.health.Exceptions;
 import sirius.kernel.nls.NLS;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -104,8 +106,9 @@ public class StoredObject {
         Properties props = new Properties();
         try (FileInputStream in = new FileInputStream(getPropertiesFile())) {
             props.load(in);
+        } catch (FileNotFoundException e) {
+            Exceptions.ignore(e);
         }
-
         return props.entrySet();
     }
 

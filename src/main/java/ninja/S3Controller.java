@@ -20,28 +20,43 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Value;
+import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
+import sirius.kernel.health.Counter;
+import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
+import sirius.web.http.InputStreamHandler;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
+import static io.netty.handler.codec.http.HttpMethod.*;
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
@@ -65,11 +80,12 @@ public class S3Controller implements Controller {
     @Part
     private AwsHashCalculator hashCalculator;
 
-    private Map<String, ReentrantLock> locks = Maps.newConcurrentMap();
+    @ConfigValue("storage.multipartDir")
+    private String multipartDir;
 
-    /*
-     * Computes the AWS Version 4 signing hash
-     */
+    private Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
+
+    private Counter uploadIdCounter = new Counter();
 
     /*
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -116,48 +132,159 @@ public class S3Controller implements Controller {
     }
 
     /**
+     * Dispatching method handling bucket specific calls without content (HEAD & DELETE)
+     *
+     * @param ctx         the context describing the current request
+     * @param bucketName  name of the bucket of interest
+     */
+    @Routed(value = "/s3/:1", priority = 99)
+    public void bucket(WebContext ctx, String bucketName) {
+        Bucket bucket = storage.getBucket(bucketName);
+
+        HttpMethod method = ctx.getRequest().getMethod();
+        if (HEAD == method) {
+            if (bucket.exists()) {
+                signalObjectSuccess(ctx);
+                ctx.respondWith().status(HttpResponseStatus.OK);
+            } else {
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+            }
+        } else if (DELETE == method) {
+            bucket.delete();
+            signalObjectSuccess(ctx);
+            ctx.respondWith().status(HttpResponseStatus.OK);
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+        }
+    }
+
+    /**
+     * Dispatching method handling bucket specific calls with content (PUT)
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket of interest
+     * @param in         input stream with the requests content
+     */
+    @Routed(value = "/s3/:1", priority = 99, preDispatchable = true)
+    public void bucket(WebContext ctx, String bucketName, InputStreamHandler in) {
+        Bucket bucket = storage.getBucket(bucketName);
+
+        HttpMethod method = ctx.getRequest().getMethod();
+        if (PUT == method) {
+            bucket.create();
+            signalObjectSuccess(ctx);
+            ctx.respondWith().status(HttpResponseStatus.OK);
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+        }
+    }
+
+    /**
      * Dispatching method handling all object specific calls.
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket which contains the object (must exist)
-     * @param idList     name of the object ob interest
+     * @param objectId   name of the object of interest
+     * @param idList     list of object names if the reequest was for multiple objects
      * @throws Exception in case of IO errors and there like
      */
-    @Routed("/s3/:1/**")
-    public void object(WebContext ctx, String bucketName, List<String> idList) throws Exception {
+    @Routed("/s3/:1/:2/**")
+    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
+        String id = getIdsAsString(objectId, idList);
+        String uploadId = ctx.get("uploadId").asString();
+
+        if (!checkObjectRequest(ctx, bucket, id)) {
+            return;
+        }
+
+        HttpMethod method = ctx.getRequest().getMethod();
+        if (HEAD == method) {
+            getObject(ctx, bucket, id, false);
+        } else if (GET == method) {
+            if (Strings.isFilled(uploadId)) {
+                getPartList(ctx, bucket, id, uploadId);
+            } else {
+                getObject(ctx, bucket, id, true);
+            }
+        } else if (DELETE == method) {
+            if (Strings.isFilled(uploadId)) {
+                abortMultipartUpload(ctx, bucket, id, uploadId);
+            } else {
+                deleteObject(ctx, bucket, id);
+            }
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+        }
+    }
+
+    /**
+     * Dispatching method handling all object specific calls.
+     *
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket which contains the object (must exist)
+     * @param objectId   name of the object of interest
+     * @param idList     list of object names if the reequest was for multiple objects
+     * @param in         input stream with the requests content
+     * @throws Exception in case of IO errors and there like
+     */
+    @Routed(value = "/s3/:1/:2/**", preDispatchable = true)
+    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList, InputStreamHandler in)
+            throws Exception {
+        Bucket bucket = storage.getBucket(bucketName);
+        String id = getIdsAsString(objectId, idList);
+        String uploadId = ctx.get("uploadId").asString();
+
+        if (!checkObjectRequest(ctx, bucket, id)) {
+            return;
+        }
+
+        HttpMethod method = ctx.getRequest().getMethod();
+        if (PUT == method) {
+            Value copy = ctx.getHeaderValue("x-amz-copy-source");
+            if (copy.isFilled()) {
+                copyObject(ctx, bucket, id, copy.asString());
+            } else if (ctx.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
+                multiObject(ctx, bucket, id, uploadId, ctx.get("partNumber").asString(), in);
+            } else {
+                putObject(ctx, bucket, id, in);
+            }
+        } else if (POST == method) {
+            if (ctx.hasParameter("uploads")) {
+                startMultipartUpload(ctx, bucket, id);
+            } else if (Strings.isFilled(uploadId)) {
+                completeMultipartUpload(ctx, bucket, id, uploadId, in);
+            }
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+        }
+    }
+
+    private boolean checkObjectRequest(WebContext ctx, Bucket bucket, String id) {
+        if (Strings.isEmpty(id)) {
+            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
+            return false;
+        }
+        if (!objectCheckAuth(ctx, bucket)) {
+            return false;
+        }
+
         if (!bucket.exists()) {
             if (storage.isAutocreateBuckets()) {
                 bucket.create();
             } else {
                 signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                return;
+                return false;
             }
         }
-        String id = idList.stream().collect(Collectors.joining("/")).replace('/', '_');
-        if (Strings.isEmpty(id)) {
-            objectWithEmptyIdList(ctx);
-            return;
-        }
-        if (!objectCheckAuth(ctx, bucket)) {
-            return;
-        }
-        if (ctx.getRequest().getMethod() == HttpMethod.GET) {
-            getObject(ctx, bucket, id, true);
-        } else if (ctx.getRequest().getMethod() == HttpMethod.PUT) {
-            Value copy = ctx.getHeaderValue("x-amz-copy-source");
-            if (copy.isFilled()) {
-                copyObject(ctx, bucket, id, copy.asString());
-            } else {
-                putObject(ctx, bucket, id);
-            }
-        } else if (ctx.getRequest().getMethod() == HttpMethod.DELETE) {
-            deleteObject(ctx, bucket, id);
-        } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
-            getObject(ctx, bucket, id, false);
-        } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
-        }
+        return true;
+    }
+
+    private static String getIdsAsString(String objectId, List<String> idList) {
+        List<String> ids = new ArrayList<>();
+        ids.add(objectId);
+        ids.addAll(idList);
+        return ids.stream().filter(i -> Strings.isFilled(i)).collect(Collectors.joining("/")).replace('/', '_');
     }
 
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
@@ -188,17 +315,6 @@ public class S3Controller implements Controller {
         return true;
     }
 
-    private void objectWithEmptyIdList(WebContext ctx) {
-        // if it's a request to the bucket, it's usually a bucket create command.
-        // As we allow bucket creation, thus send a positive response
-        if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
-            signalObjectSuccess(ctx);
-            ctx.respondWith().status(HttpResponseStatus.OK);
-        }
-
-        signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
-    }
-
     private String computeHash(WebContext ctx, String pathPrefix) {
         return hashCalculator.computeHash(ctx, pathPrefix);
     }
@@ -210,15 +326,6 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to delete
      * @param id     name of the object to delete
      */
-
-    private void handleDeleteRequest(WebContext ctx, Bucket bucket, String id) {
-        if (Strings.isEmpty(id)) {
-            bucket.delete();
-        } else {
-            deleteObject(ctx, bucket, id);
-        }
-    }
-
     private void deleteObject(final WebContext ctx, final Bucket bucket, final String id) {
         StoredObject object = bucket.getObject(id);
         object.delete();
@@ -234,19 +341,14 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to upload
      * @param id     name of the object to upload
      */
-    private void putObject(WebContext ctx, Bucket bucket, String id) throws Exception {
+    private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream) throws Exception {
         StoredObject object = bucket.getObject(id);
-        InputStream inputStream = ctx.getContent();
         if (inputStream == null) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "No content posted");
             return;
         }
-        try {
-            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
-                ByteStreams.copy(inputStream, out);
-            }
-        } finally {
-            inputStream.close();
+        try (FileOutputStream out = new FileOutputStream(object.getFile())) {
+            ByteStreams.copy(inputStream, out);
         }
 
         Map<String, String> properties = Maps.newTreeMap();
@@ -295,12 +397,6 @@ public class S3Controller implements Controller {
      */
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
-        /*
-        if (!object.exists()) {
-            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
-            return;
-        }
-        */
         if (!copy.contains("/")) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source must contain '/'");
             return;
@@ -358,5 +454,268 @@ public class S3Controller implements Controller {
             response.status(HttpResponseStatus.OK);
         }
         signalObjectSuccess(ctx);
+    }
+
+    /**
+     * Handles POST /bucket/id?uploads
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to upload
+     * @param id     name of the object to upload
+     */
+    private void startMultipartUpload(WebContext ctx, Bucket bucket, String id) {
+        Response response = ctx.respondWith();
+
+        Map<String, String> properties = Maps.newTreeMap();
+        for (String name : ctx.getRequest().headers().names()) {
+            String nameLower = name.toLowerCase();
+            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
+                    nameLower) || "x-amz-acl".equals(nameLower)) {
+                properties.put(name, ctx.getHeader(name));
+                response.addHeader(name, ctx.getHeader(name));
+            }
+        }
+        response.setHeader("Content-Type", "application/xml");
+
+        String uploadId = String.valueOf(uploadIdCounter.inc());
+        multipartUploads.add(uploadId);
+
+        getUploadDir(uploadId).mkdirs();
+
+        XMLStructuredOutput out = response.xml();
+        out.beginOutput("InitiateMultipartUploadResult");
+        out.property("Bucket", bucket.getName());
+        out.property("Key", id);
+        out.property("UploadId", uploadId);
+        out.endOutput();
+    }
+
+    /**
+     * Handles PUT /bucket/id?uploadId=X&partNumber=Y
+     *
+     * @param ctx        the context describing the current request
+     * @param bucket     the bucket containing the object to upload
+     * @param id         name of the object to upload
+     * @param uploadId   the multipart upload this part belongs to
+     * @param partNumber the number of this part in the complete upload
+     * @param part       input stream with the content of this part
+     */
+    private void multiObject(WebContext ctx,
+                             Bucket bucket,
+                             String id,
+                             String uploadId,
+                             String partNumber,
+                             InputStreamHandler part) {
+        if (!multipartUploads.contains(uploadId)) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            return;
+        }
+
+        String etag = "";
+
+        try {
+            File partFile = new File(getUploadDir(uploadId), partNumber);
+            partFile.deleteOnExit();
+            Files.touch(partFile);
+
+            try (FileOutputStream out = new FileOutputStream(partFile)) {
+                ByteStreams.copy(part, out);
+            }
+            part.close();
+
+            etag = Files.hash(partFile, Hashing.md5()).toString();
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
+
+        Response response = ctx.respondWith();
+        response.setHeader("ETag", etag);
+        response.status(HttpResponseStatus.OK);
+    }
+
+    /**
+     * Handles POST /bucket/id?uploadId=X
+     *
+     * @param ctx      the context describing the current request
+     * @param bucket   the bucket containing the object to upload
+     * @param id       name of the object to upload
+     * @param uploadId the multipart upload that should be completed
+     * @param in       input stream with xml listing uploaded parts
+     */
+    private void completeMultipartUpload(WebContext ctx,
+                                         Bucket bucket,
+                                         String id,
+                                         final String uploadId,
+                                         InputStreamHandler in) {
+        if (!multipartUploads.remove(uploadId)) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            return;
+        }
+
+        final Map<Integer, File> parts = new HashMap<>();
+
+        XMLReader reader = new XMLReader();
+        reader.addHandler("Part", part -> {
+            int number = part.queryValue("PartNumber").asInt(0);
+            parts.put(number, new File(getUploadDir(uploadId), String.valueOf(number)));
+        });
+        try {
+            reader.parse(in);
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
+
+        File file = combineParts(id, uploadId, parts);
+        file.deleteOnExit();
+        if (!file.exists()) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart File does not exist");
+            return;
+        }
+        try {
+            StoredObject object = bucket.getObject(id);
+            Files.move(file, object.getFile());
+            delete(getUploadDir(uploadId));
+
+            String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+
+            XMLStructuredOutput out = ctx.respondWith().xml();
+            out.beginOutput("CompleteMultipartUploadResult");
+            out.property("Location", "");
+            out.property("Bucket", bucket.getName());
+            out.property("Key", id);
+            out.property("ETag", etag);
+            out.endOutput();
+        } catch (IOException e) {
+            Exceptions.ignore(e);
+            ctx.respondWith().error(HttpResponseStatus.INTERNAL_SERVER_ERROR, "Could not build response");
+        }
+    }
+
+    private File getUploadDir(String uploadId) {
+        return new File(multipartDir + "/" + uploadId);
+    }
+
+    private File combineParts(String id, String uploadId, Map<Integer, File> parts) {
+        File file = new File(getUploadDir(uploadId), id);
+        try {
+            file.createNewFile();
+            FileWriter writer = new FileWriter(file, true);
+            try (BufferedWriter out = new BufferedWriter(writer)) {
+                for (Map.Entry<Integer, File> entry : parts.entrySet()) {
+                    File part = entry.getValue();
+                    FileInputStream stream = new FileInputStream(part);
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(stream))) {
+                        int token;
+                        while ((token = in.read()) != -1) {
+                            out.write(token);
+                        }
+                    }
+                    part.delete();
+                }
+            }
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
+        return file;
+    }
+
+    /**
+     * Handles DELETE /bucket/id?uploadId=X
+     *
+     * @param ctx      the context describing the current request
+     * @param bucket   the bucket containing the object to upload
+     * @param id       name of the object to upload
+     * @param uploadId the multipart upload that should be cancelled
+     */
+    private void abortMultipartUpload(WebContext ctx, Bucket bucket, String id, String uploadId) {
+        System.out.println("aborting multiupload");
+        multipartUploads.remove(uploadId);
+        ctx.respondWith().status(HttpResponseStatus.OK);
+
+        File uploadDir = getUploadDir(uploadId);
+        delete(uploadDir);
+    }
+
+    private static void delete(File file) {
+        if (file.isDirectory()) {
+            if (file.list().length == 0) {
+                file.delete();
+            } else {
+                String[] files = file.list();
+
+                for (String temp : files) {
+                    delete(new File(file, temp));
+                }
+                delete(file);
+            }
+        } else {
+            file.delete();
+        }
+    }
+
+    /**
+     * Handles GET /bucket/id?uploadId=uploadId
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to download
+     * @param id     name of the object to use as download
+     */
+    private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
+        if (!multipartUploads.contains(uploadId)) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            return;
+        }
+
+        Response response = ctx.respondWith();
+
+        response.setHeader("Content-Type", "application/xml");
+
+        XMLStructuredOutput out = response.xml();
+        out.beginOutput("ListPartsResult");
+        out.property("Bucket", bucket.getName());
+        out.property("Key", id);
+        out.property("UploadId", uploadId);
+
+        out.beginObject("Initiator");
+        out.property("ID", "initiatorId");
+        out.property("DisplayName", "initiatorName");
+        out.endObject();
+
+        out.beginObject("Owner");
+        out.property("ID", "initiatorId");
+        out.property("DisplayName", "initiatorName");
+        out.endObject();
+
+        File uploadDir = getUploadDir(uploadId);
+        int marker = ctx.get("part-number-marker").asInt(0);
+        int maxParts = ctx.get("max-parts").asInt(0);
+
+        out.property("StorageClass", "STANDARD");
+        out.property("PartNumberMarker", marker);
+        if ((marker + maxParts) < uploadDir.list().length) {
+            out.property("NextPartNumberMarker", marker + maxParts + 1);
+        }
+
+        if (Strings.isFilled(maxParts)) {
+            out.property("MaxParts", maxParts);
+        }
+
+        boolean truncated = 0 < maxParts && maxParts < uploadDir.list().length;
+        out.property("IsTruncated", truncated);
+
+        for (File part : uploadDir.listFiles()) {
+            out.beginObject("Part");
+            out.property("PartNumber", part.getName());
+            out.property("LastModified", part.lastModified());
+            try {
+                out.property("ETag", Files.hash(part, Hashing.md5()).toString());
+            } catch (IOException e) {
+                Exceptions.ignore(e);
+            }
+            out.property("Size", part.length());
+            out.endObject();
+        }
+
+        out.endOutput();
     }
 }

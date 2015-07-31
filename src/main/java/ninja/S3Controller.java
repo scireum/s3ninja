@@ -47,9 +47,12 @@ import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -80,7 +83,7 @@ public class S3Controller implements Controller {
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
 
-    private List<String> multipartUploads = new ArrayList<>();
+    private Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
     private Counter uploadIdCounter = new Counter();
 

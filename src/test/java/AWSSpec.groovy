@@ -112,7 +112,7 @@ class AWSSpec extends BaseSpecification {
             def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta);
             upload.waitForUploadResult();
             client.deleteBucket("test");
-            client.getObject("test". "test");
+        client.getObject("test", "test");
         then:
             AmazonS3Exception e = thrown();
             e.message == "Not Found (Service: Amazon S3; Status Code: 404; Error Code: 404 Not Found; Request ID: null)"

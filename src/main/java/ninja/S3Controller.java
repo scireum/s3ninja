@@ -132,7 +132,7 @@ public class S3Controller implements Controller {
     }
 
     /**
-     * Dispatching method handling bucket specific calls without content (HEAD & DELETE)
+     * Dispatching method handling bucket specific calls without content (HEAD and DELETE)
      *
      * @param ctx         the context describing the current request
      * @param bucketName  name of the bucket of interest

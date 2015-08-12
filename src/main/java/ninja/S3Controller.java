@@ -34,14 +34,12 @@ import sirius.web.http.InputStreamHandler;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
@@ -597,25 +595,27 @@ public class S3Controller implements Controller {
 
     private File combineParts(String id, String uploadId, Map<Integer, File> parts) {
         File file = new File(getUploadDir(uploadId), id);
+        ByteBuffer[] buffers = new ByteBuffer[parts.size()];
+
         try {
-            file.createNewFile();
-            FileWriter writer = new FileWriter(file, true);
-            try (BufferedWriter out = new BufferedWriter(writer)) {
-                for (Map.Entry<Integer, File> entry : parts.entrySet()) {
-                    File part = entry.getValue();
-                    FileInputStream stream = new FileInputStream(part);
-                    try (BufferedReader in = new BufferedReader(new InputStreamReader(stream))) {
-                        int token;
-                        while ((token = in.read()) != -1) {
-                            out.write(token);
-                        }
-                    }
-                    part.delete();
-                }
+            for (Map.Entry<Integer, File> entry : parts.entrySet()) {
+                RandomAccessFile raf = null;
+
+                raf = new RandomAccessFile(entry.getValue(), "r");
+
+                FileChannel channel = raf.getChannel();
+                buffers[entry.getKey() - 1] = channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length());
+
             }
+            file.createNewFile();
+            FileOutputStream outFile = new FileOutputStream(file);
+            FileChannel out = outFile.getChannel();
+            out.write(buffers);
+            out.close();
         } catch (IOException e) {
             Exceptions.handle(e);
         }
+
         return file;
     }
 

@@ -609,9 +609,9 @@ public class S3Controller implements Controller {
             }
             file.createNewFile();
             FileOutputStream outFile = new FileOutputStream(file);
-            FileChannel out = outFile.getChannel();
-            out.write(buffers);
-            out.close();
+            try (FileChannel out = outFile.getChannel()) {
+                out.write(buffers);
+            }
         } catch (IOException e) {
             Exceptions.handle(e);
         }

@@ -599,13 +599,10 @@ public class S3Controller implements Controller {
 
         try {
             for (Map.Entry<Integer, File> entry : parts.entrySet()) {
-                RandomAccessFile raf = null;
-
-                raf = new RandomAccessFile(entry.getValue(), "r");
-
-                FileChannel channel = raf.getChannel();
-                buffers[entry.getKey() - 1] = channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length());
-
+                try (RandomAccessFile raf = new RandomAccessFile(entry.getValue(), "r")) {
+                    FileChannel channel = raf.getChannel();
+                    buffers[entry.getKey() - 1] = channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length());
+                }
             }
             file.createNewFile();
             FileOutputStream outFile = new FileOutputStream(file);

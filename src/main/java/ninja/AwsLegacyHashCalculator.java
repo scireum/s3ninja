@@ -91,14 +91,14 @@ public class AwsLegacyHashCalculator {
         char separator = '?';
         for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {
             // Skip parameters that aren't part of the canonical signed string
-            if (!SIGNED_PARAMETERS.contains(parameterName)) continue;
-
-            stringToSign.append(separator).append(parameterName);
-            String parameterValue = ctx.get(parameterName).asString();
-            if (Strings.isFilled(parameterValue)) {
-                stringToSign.append("=").append(parameterValue);
+            if (SIGNED_PARAMETERS.contains(parameterName)) {
+                stringToSign.append(separator).append(parameterName);
+                String parameterValue = ctx.get(parameterName).asString();
+                if (Strings.isFilled(parameterValue)) {
+                    stringToSign.append("=").append(parameterValue);
+                }
+                separator = '&';
             }
-            separator = '&';
         }
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");

@@ -8,7 +8,6 @@
 
 package ninja;
 
-import com.google.common.base.Charsets;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;

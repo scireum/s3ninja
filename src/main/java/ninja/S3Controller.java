@@ -132,8 +132,8 @@ public class S3Controller implements Controller {
     /**
      * Dispatching method handling bucket specific calls without content (HEAD and DELETE)
      *
-     * @param ctx         the context describing the current request
-     * @param bucketName  name of the bucket of interest
+     * @param ctx        the context describing the current request
+     * @param bucketName name of the bucket of interest
      */
     @Routed(value = "/s3/:1", priority = 99)
     public void bucket(WebContext ctx, String bucketName) {
@@ -446,6 +446,8 @@ public class S3Controller implements Controller {
         for (Map.Entry<Object, Object> entry : object.getProperties()) {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
+        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+        response.addHeader(HttpHeaders.Names.ETAG, BaseEncoding.base16().encode(hash.asBytes()));
         if (sendFile) {
             response.file(object.getFile());
         } else {

@@ -17,7 +17,6 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import org.bouncycastle.util.encoders.Hex;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Value;
@@ -448,7 +447,7 @@ public class S3Controller implements Controller {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        response.addHeader("ETag", new String(Hex.encode(hash.asBytes())));
+        response.addHeader(HttpHeaders.Names.ETAG, BaseEncoding.base16().encode(hash.asBytes()));
         if (sendFile) {
             response.file(object.getFile());
         } else {

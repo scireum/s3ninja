@@ -12,6 +12,7 @@ import com.google.common.collect.Lists;
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.cache.ValueComputer;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 
 import javax.annotation.Nonnull;
@@ -79,9 +80,43 @@ public class Bucket {
      */
     public List<StoredObject> getObjects() {
         List<StoredObject> result = Lists.newArrayList();
+
         for (File child : file.listFiles()) {
             if (child.isFile() && !child.getName().startsWith("__")) {
                 result.add(new StoredObject(child));
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Returns a list of at most the provided number of stored objects
+     *
+     * @param limit  controls the maximum number of objects returned
+     * @param marker the key to start with when listing objects in a bucket
+     * @param prefix limits the response to keys that begin with the specified prefix
+     * @return a list of all objects matching the given conditions in the bucket.
+     */
+    public List<StoredObject> getObjects(int limit, @Nullable String marker, @Nullable String prefix) {
+        List<StoredObject> result = Lists.newArrayList();
+        boolean markerReached = Strings.isEmpty(marker);
+
+        for (File object : file.listFiles()) {
+            String name = object.getName();
+            if (!markerReached) {
+                if (marker.equals(name)) {
+                    markerReached = true;
+                }
+            } else {
+                if (object.isFile() && !name.startsWith("__")) {
+                    if (Strings.isEmpty(prefix) || name.startsWith(prefix)) {
+                        result.add(new StoredObject(object));
+                        if (result.size() >= limit + 1) {
+                            break;
+                        }
+                    }
+                }
             }
         }
 

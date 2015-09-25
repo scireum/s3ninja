@@ -13,7 +13,6 @@ import sirius.kernel.nls.NLS;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -99,14 +98,14 @@ public class StoredObject {
      * This is the Content-MD5, Content-Type and any x-amz-meta- header.
      * </p>
      *
-     * @return a set of name value pairs representing all properties stored for this object
-     * @throws Exception in case of an IO error
+     * @return a set of name value pairs representing all properties stored for this object or an empty set if no
+     * properties could be read.
      */
-    public Set<Map.Entry<Object, Object>> getProperties() throws Exception {
+    public Set<Map.Entry<Object, Object>> getProperties() {
         Properties props = new Properties();
         try (FileInputStream in = new FileInputStream(getPropertiesFile())) {
             props.load(in);
-        } catch (FileNotFoundException e) {
+        } catch (IOException e) {
             Exceptions.ignore(e);
         }
         return props.entrySet();

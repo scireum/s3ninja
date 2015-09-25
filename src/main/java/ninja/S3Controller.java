@@ -85,7 +85,7 @@ public class S3Controller implements Controller {
 
     private Counter uploadIdCounter = new Counter();
 
-    /*
+    /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
     private String getAuthHash(WebContext ctx) {
@@ -108,7 +108,7 @@ public class S3Controller implements Controller {
         return null;
     }
 
-    /*
+    /**
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
@@ -119,7 +119,7 @@ public class S3Controller implements Controller {
                 CallContext.getCurrent().getWatch());
     }
 
-    /*
+    /**
      * Writes an API success entry to the log
      */
     private void signalObjectSuccess(WebContext ctx) {
@@ -140,10 +140,17 @@ public class S3Controller implements Controller {
         Bucket bucket = storage.getBucket(bucketName);
 
         HttpMethod method = ctx.getRequest().getMethod();
+
         if (HEAD == method) {
             if (bucket.exists()) {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
+            } else {
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+            }
+        } else if (GET == method) {
+            if (bucket.exists()) {
+                listObjects(ctx, bucket);
             } else {
                 signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
             }
@@ -315,6 +322,66 @@ public class S3Controller implements Controller {
 
     private String computeHash(WebContext ctx, String pathPrefix) {
         return hashCalculator.computeHash(ctx, pathPrefix);
+    }
+
+    /**
+     * Handles GET /bucket
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket of which the contents should be listed
+     */
+    private void listObjects(WebContext ctx, Bucket bucket) {
+        int maxKeys = ctx.get("max-keys").asInt(1000);
+        String marker = ctx.get("marker").asString();
+        String prefix = ctx.get("prefix").asString();
+
+        Response response = ctx.respondWith();
+        response.setHeader("Content-Type", "application/xml");
+
+        XMLStructuredOutput out = response.xml();
+        out.beginOutput("ListBucketResult");
+        out.property("Name", bucket.getName());
+        out.property("MaxKeys", maxKeys);
+        if (Strings.isFilled(marker)) {
+            out.property("Marker", marker);
+        }
+        if (Strings.isFilled(prefix)) {
+            out.property("Prefix", prefix);
+        }
+
+        List<StoredObject> objects = bucket.getObjects(maxKeys, marker, prefix);
+        boolean isTruncated = (objects.size() > maxKeys);
+        out.property("IsTruncated", isTruncated);
+        if (isTruncated) {
+            objects.remove(objects.size() - 1);
+        }
+
+        for (int i = 0; i < objects.size(); i++) {
+            StoredObject object = objects.get(i);
+            out.beginObject("Contents");
+            out.property("Key", object.getName());
+            out.property("LastModified", object.getFile().lastModified());
+            out.property("Size", object.getSize());
+            out.property("StorageClass", "STANDARD");
+
+            String etag = null;
+            for (Map.Entry<Object, Object> property : object.getProperties()) {
+                if ("Content-MD5".equals(property.getKey().toString())) {
+                    etag = property.getValue().toString();
+                    break;
+                }
+            }
+            if (Strings.isEmpty(etag)) {
+                try {
+                    etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+                } catch (IOException e) {
+                    Exceptions.ignore(e);
+                }
+            }
+            out.property("ETag", etag);
+            out.endObject();
+        }
+        out.endOutput();
     }
 
     /**

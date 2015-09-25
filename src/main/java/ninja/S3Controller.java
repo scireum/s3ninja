@@ -26,6 +26,7 @@ import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
@@ -40,6 +41,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
@@ -84,6 +86,13 @@ public class S3Controller implements Controller {
     private Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
     private Counter uploadIdCounter = new Counter();
+
+    private static final DateTimeFormatter ISO_INSTANT =
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                                          .toFormatter()
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.UTC);
+
 
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -339,15 +348,11 @@ public class S3Controller implements Controller {
         response.setHeader("Content-Type", "application/xml");
 
         XMLStructuredOutput out = response.xml();
-        out.beginOutput("ListBucketResult");
+        out.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
         out.property("Name", bucket.getName());
         out.property("MaxKeys", maxKeys);
-        if (Strings.isFilled(marker)) {
-            out.property("Marker", marker);
-        }
-        if (Strings.isFilled(prefix)) {
-            out.property("Prefix", prefix);
-        }
+        out.property("Marker", marker);
+        out.property("Prefix", prefix);
 
         List<StoredObject> objects = bucket.getObjects(maxKeys, marker, prefix);
         boolean isTruncated = objects.size() > maxKeys;
@@ -362,7 +367,7 @@ public class S3Controller implements Controller {
 
             out.beginObject("Contents");
             out.property("Key", object.getName());
-            out.property("LastModified", file.lastModified());
+            out.property("LastModified", ISO_INSTANT.format(object.getLastModifiedInstant()));
             out.property("Size", file.length());
             out.property("StorageClass", "STANDARD");
 
@@ -449,12 +454,6 @@ public class S3Controller implements Controller {
         return "\"" + hash + "\"";
     }
 
-    private DateTimeFormatter dateTimeFormatter =
-            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-                                          .toFormatter()
-                                          .withChronology(IsoChronology.INSTANCE)
-                                          .withZone(ZoneOffset.UTC);
-
     /**
      * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
      *
@@ -489,7 +488,7 @@ public class S3Controller implements Controller {
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
-        structuredOutput.text(dateTimeFormatter.format(object.getLastModifiedInstant()));
+        structuredOutput.text(ISO_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
         structuredOutput.beginObject("ETag");
         structuredOutput.text(etag);
@@ -774,7 +773,7 @@ public class S3Controller implements Controller {
         for (File part : uploadDir.listFiles()) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
-            out.property("LastModified", part.lastModified());
+            out.property("LastModified", ISO_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
                 out.property("ETag", Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {

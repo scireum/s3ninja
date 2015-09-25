@@ -358,10 +358,12 @@ public class S3Controller implements Controller {
 
         for (int i = 0; i < objects.size(); i++) {
             StoredObject object = objects.get(i);
+            File file = object.getFile();
+
             out.beginObject("Contents");
             out.property("Key", object.getName());
-            out.property("LastModified", object.getFile().lastModified());
-            out.property("Size", object.getSize());
+            out.property("LastModified", file.lastModified());
+            out.property("Size", file.length());
             out.property("StorageClass", "STANDARD");
 
             String etag = null;
@@ -373,7 +375,7 @@ public class S3Controller implements Controller {
             }
             if (Strings.isEmpty(etag)) {
                 try {
-                    etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+                    etag = Files.hash(file, Hashing.md5()).toString();
                 } catch (IOException e) {
                     Exceptions.ignore(e);
                 }

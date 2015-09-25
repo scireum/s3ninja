@@ -107,7 +107,6 @@ public class Bucket {
             if (!markerReached) {
                 if (marker.equals(name)) {
                     markerReached = true;
-                    continue;
                 }
             } else {
                 if (object.isFile() && !name.startsWith("__")) {

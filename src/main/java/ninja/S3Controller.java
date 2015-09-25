@@ -350,7 +350,7 @@ public class S3Controller implements Controller {
         }
 
         List<StoredObject> objects = bucket.getObjects(maxKeys, marker, prefix);
-        boolean isTruncated = (objects.size() > maxKeys);
+        boolean isTruncated = objects.size() > maxKeys;
         out.property("IsTruncated", isTruncated);
         if (isTruncated) {
             objects.remove(objects.size() - 1);

@@ -9,17 +9,26 @@
 package ninja;
 
 import com.google.common.collect.Lists;
+import com.google.common.hash.Hashing;
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.cache.ValueComputer;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
+import sirius.kernel.xml.Attribute;
+import sirius.kernel.xml.XMLStructuredOutput;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 
 /**
@@ -80,7 +89,6 @@ public class Bucket {
      */
     public List<StoredObject> getObjects() {
         List<StoredObject> result = Lists.newArrayList();
-
         for (File child : file.listFiles()) {
             if (child.isFile() && !child.getName().startsWith("__")) {
                 result.add(new StoredObject(child));
@@ -93,34 +101,101 @@ public class Bucket {
     /**
      * Returns a list of at most the provided number of stored objects
      *
+     * @param output the xml structured output the list of objects should be written to
      * @param limit  controls the maximum number of objects returned
      * @param marker the key to start with when listing objects in a bucket
      * @param prefix limits the response to keys that begin with the specified prefix
-     * @return a list of all objects matching the given conditions in the bucket.
      */
-    public List<StoredObject> getObjects(int limit, @Nullable String marker, @Nullable String prefix) {
-        List<StoredObject> result = Lists.newArrayList();
-        boolean markerReached = Strings.isEmpty(marker);
+    public void outputObjects(XMLStructuredOutput output, int limit, @Nullable String marker, @Nullable String prefix) {
+        ListFileTreeVisitor visitor = new ListFileTreeVisitor(output, limit, marker, prefix);
 
-        for (File object : file.listFiles()) {
-            String name = object.getName();
+        output.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+        output.property("Name", getName());
+        output.property("MaxKeys", limit);
+        output.property("Marker", marker);
+        output.property("Prefix", prefix);
+        try {
+            Files.walkFileTree(file.toPath(), visitor);
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
+        output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
+        output.endOutput();
+    }
+
+    /**
+     * Visits all files in the buckets directory and outputs their metadata to an {@link XMLStructuredOutput}.
+     */
+    private static class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
+
+        Counter objectCount;
+        XMLStructuredOutput output;
+        int limit;
+        String marker;
+        String prefix;
+        boolean useLimit;
+        boolean usePrefix;
+        boolean markerReached;
+
+        protected ListFileTreeVisitor(XMLStructuredOutput output,
+                                      int limit,
+                                      @Nullable String marker,
+                                      @Nullable String prefix) {
+            this.output = output;
+            this.limit = limit;
+            this.marker = marker;
+            this.prefix = prefix;
+            objectCount = new Counter();
+            useLimit = limit > 0;
+            usePrefix = Strings.isFilled(prefix);
+            markerReached = Strings.isEmpty(marker);
+        }
+
+        @Override
+        public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
+            File file = path.toFile();
+            String name = file.getName();
+
+            if (!file.isFile() || name.startsWith("__")) {
+                return FileVisitResult.CONTINUE;
+            }
             if (!markerReached) {
                 if (marker.equals(name)) {
                     markerReached = true;
                 }
             } else {
-                if (object.isFile() && !name.startsWith("__")) {
-                    if (Strings.isEmpty(prefix) || name.startsWith(prefix)) {
-                        result.add(new StoredObject(object));
-                        if (result.size() >= limit + 1) {
-                            break;
+                StoredObject object = new StoredObject(file);
+                if (!usePrefix || name.startsWith(prefix)) {
+                    if (useLimit) {
+                        long numObjects = objectCount.inc();
+                        if (numObjects <= limit) {
+                            output.beginObject("Contents");
+                            output.property("Key", file.getName());
+                            output.property("LastModified",
+                                            S3Controller.ISO_INSTANT.format(object.getLastModifiedInstant()));
+                            output.property("Size", file.length());
+                            output.property("StorageClass", "STANDARD");
+
+                            String etag = null;
+                            try {
+                                etag = com.google.common.io.Files.hash(file, Hashing.md5()).toString();
+                            } catch (IOException e) {
+                                Exceptions.ignore(e);
+                            }
+                            output.property("ETag", etag);
+                            output.endObject();
+                        } else {
+                            return FileVisitResult.TERMINATE;
                         }
                     }
                 }
             }
+            return FileVisitResult.CONTINUE;
         }
 
-        return result;
+        public long getCount() {
+            return objectCount.getCount();
+        }
     }
 
     /**

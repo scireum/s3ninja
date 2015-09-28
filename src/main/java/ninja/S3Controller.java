@@ -26,7 +26,6 @@ import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
-import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
@@ -87,12 +86,11 @@ public class S3Controller implements Controller {
 
     private Counter uploadIdCounter = new Counter();
 
-    private static final DateTimeFormatter ISO_INSTANT =
+    public static final DateTimeFormatter ISO_INSTANT =
             new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
                                           .toFormatter()
                                           .withChronology(IsoChronology.INSTANCE)
                                           .withZone(ZoneOffset.UTC);
-
 
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -347,48 +345,7 @@ public class S3Controller implements Controller {
         Response response = ctx.respondWith();
         response.setHeader("Content-Type", "application/xml");
 
-        XMLStructuredOutput out = response.xml();
-        out.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-        out.property("Name", bucket.getName());
-        out.property("MaxKeys", maxKeys);
-        out.property("Marker", marker);
-        out.property("Prefix", prefix);
-
-        List<StoredObject> objects = bucket.getObjects(maxKeys, marker, prefix);
-        boolean isTruncated = objects.size() > maxKeys;
-        out.property("IsTruncated", isTruncated);
-        if (isTruncated) {
-            objects.remove(objects.size() - 1);
-        }
-
-        for (int i = 0; i < objects.size(); i++) {
-            StoredObject object = objects.get(i);
-            File file = object.getFile();
-
-            out.beginObject("Contents");
-            out.property("Key", object.getName());
-            out.property("LastModified", ISO_INSTANT.format(object.getLastModifiedInstant()));
-            out.property("Size", file.length());
-            out.property("StorageClass", "STANDARD");
-
-            String etag = null;
-            for (Map.Entry<Object, Object> property : object.getProperties()) {
-                if ("Content-MD5".equals(property.getKey().toString())) {
-                    etag = property.getValue().toString();
-                    break;
-                }
-            }
-            if (Strings.isEmpty(etag)) {
-                try {
-                    etag = Files.hash(file, Hashing.md5()).toString();
-                } catch (IOException e) {
-                    Exceptions.ignore(e);
-                }
-            }
-            out.property("ETag", etag);
-            out.endObject();
-        }
-        out.endOutput();
+        bucket.outputObjects(response.xml(), maxKeys, marker, prefix);
     }
 
     /**

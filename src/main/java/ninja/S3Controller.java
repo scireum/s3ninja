@@ -404,6 +404,7 @@ public class S3Controller implements Controller {
 
         object.storeProperties(properties);
         ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK);
+        ctx.respondWith().addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
         signalObjectSuccess(ctx);
     }
 
@@ -473,6 +474,7 @@ public class S3Controller implements Controller {
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         response.addHeader(HttpHeaders.Names.ETAG, BaseEncoding.base16().encode(hash.asBytes()));
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
         if (sendFile) {
             response.file(object.getFile());
         } else {
@@ -555,6 +557,7 @@ public class S3Controller implements Controller {
 
         Response response = ctx.respondWith();
         response.setHeader("ETag", etag);
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
         response.status(HttpResponseStatus.OK);
     }
 

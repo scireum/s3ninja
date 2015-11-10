@@ -403,8 +403,9 @@ public class S3Controller implements Controller {
         }
 
         object.storeProperties(properties);
-        ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK);
-        ctx.respondWith().addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
+        Response response = ctx.respondWith();
+        response.addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK)
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
         signalObjectSuccess(ctx);
     }
 

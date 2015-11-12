@@ -119,7 +119,11 @@ public class S3Controller implements Controller {
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
-        ctx.respondWith().error(status, message);
+        if (ctx.getRequest().getMethod() == HEAD) {
+            ctx.respondWith().status(status);
+        } else {
+            ctx.respondWith().error(status, message);
+        }
         log.log("OBJECT " + ctx.getRequest().getMethod().name(),
                 message + " - " + ctx.getRequestedURI(),
                 APILog.Result.ERROR,

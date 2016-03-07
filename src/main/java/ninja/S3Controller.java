@@ -26,6 +26,7 @@ import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
@@ -139,6 +140,44 @@ public class S3Controller implements Controller {
                 APILog.Result.OK,
                 CallContext.getCurrent().getWatch());
     }
+    
+    /**
+	 * GET a list of all buckets
+	 *
+	 * @param ctx
+	 *            the context describing the current request
+	 */
+	@Routed(value = "/s3", priority = 99)
+	public void listBuckets(WebContext ctx) {
+		HttpMethod method = ctx.getRequest().getMethod();
+
+		if (GET == method) {
+			List<Bucket> buckets = storage.getBuckets();
+			Response response = ctx.respondWith();
+
+			response.setHeader("Content-Type", "application/xml");
+
+			XMLStructuredOutput out = response.xml();
+			out.beginOutput("ListAllMyBucketsResult",
+					Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+			out.beginObject("Owner");
+			out.property("ID", "initiatorId");
+			out.property("DisplayName", "initiatorName");
+			out.endObject();
+
+			out.beginObject("Buckets");
+			for (Bucket bucket : buckets) {
+				out.beginObject("Bucket");
+				out.property("Name", bucket.getName());
+				out.property("CreationDate", ISO_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+				out.endObject();
+			}
+			out.endObject();
+			out.endOutput();
+		} else {
+			throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+		}
+	}
 
     /**
      * Dispatching method handling bucket specific calls without content (HEAD and DELETE)

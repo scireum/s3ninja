@@ -8,14 +8,17 @@
 
 package ninja;
 
-import com.google.common.collect.Lists;
-import sirius.kernel.commons.Watch;
-import sirius.kernel.di.std.Register;
-import sirius.kernel.nls.NLS;
-
 import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.List;
+
+import com.google.common.collect.Lists;
+
+import sirius.kernel.commons.Watch;
+import sirius.kernel.di.std.ConfigValue;
+import sirius.kernel.di.std.Register;
+import sirius.kernel.health.Log;
+import sirius.kernel.nls.NLS;
 
 /**
  * Contains a log of the latest API calls
@@ -25,7 +28,11 @@ import java.util.List;
  */
 @Register(classes = APILog.class)
 public class APILog {
-
+    protected static final Log LOG = Log.get("api-log");
+    
+    @ConfigValue("api-log.debugMode")
+    private boolean debugMode;
+    
     /**
      * Used to describe if a call was successful or why if failed.
      */
@@ -118,6 +125,13 @@ public class APILog {
             this.result = result;
             this.duration = duration;
         }
+    
+        @Override
+        public String toString()
+        {
+            return "Function: " + function + ", Description: " + description +
+                   ", Result: " + result + ", Duration: " + duration;
+        }
     }
 
     private final List<Entry> entries = Lists.newArrayList();
@@ -156,9 +170,19 @@ public class APILog {
      */
     public void log(String function, String description, Result result, Watch watch) {
         synchronized (entries) {
-            entries.add(0, new Entry(function, description, result.name(), watch.duration()));
+            Entry newEntry = new Entry(function, description, result.name(), watch.duration());
+            entries.add(0, newEntry);
             if (entries.size() > 250) {
                 entries.remove(entries.size() - 1);
+            }
+            if (!debugMode) {
+                return;
+            }
+            if (result == Result.OK) {
+                LOG.INFO(newEntry);
+            }
+            else {
+                LOG.SEVERE(newEntry);
             }
         }
     }

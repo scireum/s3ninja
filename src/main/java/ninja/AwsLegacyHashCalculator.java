@@ -51,7 +51,13 @@ public class AwsLegacyHashCalculator {
                                                                         "lifecycle",
                                                                         "tagging",
                                                                         "cors",
-                                                                        "restore");
+                                                                        "restore",
+                                                                        "response-content-type",
+                                                                        "response-content-language",
+                                                                        "response-expires",
+                                                                        "response-cache-control",
+                                                                        "response-content-disposition",
+                                                                        "response-content-encoding");
 
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.

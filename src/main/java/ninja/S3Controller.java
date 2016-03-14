@@ -93,6 +93,17 @@ public class S3Controller implements Controller {
                                           .withChronology(IsoChronology.INSTANCE)
                                           .withZone(ZoneOffset.UTC);
 
+    private static final Map<String, String> headerOverrides;
+    static {
+        headerOverrides = Maps.newTreeMap();
+        headerOverrides.put("response-content-type", "Content-Type");
+        headerOverrides.put("response-content-language", "Content-Language");
+        headerOverrides.put("response-expires", "Expires");
+        headerOverrides.put("response-cache-control", "Cache-Control");
+        headerOverrides.put("response-content-disposition", "Content-Disposition");
+        headerOverrides.put("response-content-encoding", "Content-Encoding");
+    }
+
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
@@ -516,6 +527,9 @@ public class S3Controller implements Controller {
         for (Map.Entry<Object, Object> entry : object.getProperties()) {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
+        for (Map.Entry<String, String> entry : getOverridenHeaders(ctx).entrySet()) {
+            response.setHeader(entry.getKey(), entry.getValue());
+        }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         response.addHeader(HttpHeaders.Names.ETAG, BaseEncoding.base16().encode(hash.asBytes()));
         response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
@@ -788,5 +802,17 @@ public class S3Controller implements Controller {
         }
 
         out.endOutput();
+    }
+
+    private Map<String, String> getOverridenHeaders(WebContext ctx) {
+        Map<String, String> overrides = Maps.newTreeMap();
+        for (Map.Entry<String, String> entry : headerOverrides.entrySet()) {
+            String header = entry.getValue().toString();
+            String val = ctx.getParameter(entry.getKey().toString());
+            if (val != null) {
+                overrides.put(header, val);
+            }
+        }
+        return overrides;
     }
 }

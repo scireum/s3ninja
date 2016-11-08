@@ -66,7 +66,7 @@ import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 @Register
 public class S3Controller implements Controller {
 
-    public static final String E_TAG = "ETag";
+    public static final String HTTP_HEADER_NAME_ETAG = "ETag";
 
     @Override
     public void onError(WebContext ctx, HandledException error) {
@@ -460,8 +460,8 @@ public class S3Controller implements Controller {
 
         object.storeProperties(properties);
         Response response = ctx.respondWith();
-        response.addHeader(E_TAG, etag(hash)).status(HttpResponseStatus.OK);
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
+        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(hash)).status(HttpResponseStatus.OK);
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         signalObjectSuccess(ctx);
     }
 
@@ -500,12 +500,12 @@ public class S3Controller implements Controller {
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String etag = etag(hash);
-        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(E_TAG, etag).xml();
+        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
         structuredOutput.text(ISO_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
-        structuredOutput.beginObject(E_TAG);
+        structuredOutput.beginObject(HTTP_HEADER_NAME_ETAG);
         structuredOutput.text(etag);
         structuredOutput.endObject();
         structuredOutput.endOutput();
@@ -533,8 +533,8 @@ public class S3Controller implements Controller {
             response.setHeader(entry.getKey(), entry.getValue());
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        response.addHeader(E_TAG, BaseEncoding.base16().encode(hash.asBytes()));
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
+        response.addHeader(HTTP_HEADER_NAME_ETAG, BaseEncoding.base16().encode(hash.asBytes()));
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         if (sendFile) {
             response.file(object.getFile());
         } else {
@@ -616,8 +616,8 @@ public class S3Controller implements Controller {
         }
 
         Response response = ctx.respondWith();
-        response.setHeader(E_TAG, etag);
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
+        response.setHeader(HTTP_HEADER_NAME_ETAG, etag);
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         response.status(HttpResponseStatus.OK);
     }
 
@@ -671,7 +671,7 @@ public class S3Controller implements Controller {
             out.property("Location", "");
             out.property("Bucket", bucket.getName());
             out.property("Key", id);
-            out.property(E_TAG, etag);
+            out.property(HTTP_HEADER_NAME_ETAG, etag);
             out.endOutput();
         } catch (IOException e) {
             Exceptions.ignore(e);
@@ -795,7 +795,7 @@ public class S3Controller implements Controller {
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
-                out.property(E_TAG, Files.hash(part, Hashing.md5()).toString());
+                out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {
                 Exceptions.ignore(e);
             }

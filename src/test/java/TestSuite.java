@@ -19,12 +19,12 @@ public class TestSuite {
 
     @BeforeClass
     public static void setUp() {
-        TestHelper.setUp();
+        TestHelper.setUp(TestSuite.class);
     }
 
     @AfterClass
     public static void tearDown() {
-        TestHelper.tearDown();
+        TestHelper.tearDown(TestSuite.class);
     }
 
 }

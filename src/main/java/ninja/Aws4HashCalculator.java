@@ -94,7 +94,7 @@ public class Aws4HashCalculator {
 
     private StringBuilder buildCanonicalRequest(final WebContext ctx) {
         final MatchResult aws4Header = initializedMatcher(ctx);
-        StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().getMethod().name());
+        StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().method().name());
         canonicalRequest.append("\n");
         canonicalRequest.append(ctx.getRequestedURI());
         canonicalRequest.append("\n");

@@ -68,7 +68,7 @@ public class AwsLegacyHashCalculator {
      * @throws Exception in case of an unexpected error
      */
     public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
-        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
+        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
         stringToSign.append("\n");

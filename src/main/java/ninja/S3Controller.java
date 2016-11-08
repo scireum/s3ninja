@@ -14,7 +14,7 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
-import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.async.CallContext;
@@ -66,6 +66,8 @@ import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 @Register
 public class S3Controller implements Controller {
 
+    public static final String E_TAG = "ETag";
+
     @Override
     public void onError(WebContext ctx, HandledException error) {
         signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, error.getMessage());
@@ -94,6 +96,7 @@ public class S3Controller implements Controller {
                                           .withZone(ZoneOffset.UTC);
 
     private static final Map<String, String> headerOverrides;
+
     static {
         headerOverrides = Maps.newTreeMap();
         headerOverrides.put("response-content-type", "Content-Type");
@@ -108,7 +111,7 @@ public class S3Controller implements Controller {
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
     private String getAuthHash(WebContext ctx) {
-        Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaders.Names.AUTHORIZATION);
+        Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaderNames.AUTHORIZATION);
         if (!authorizationHeaderValue.isFilled()) {
             return ctx.get("Signature").getString();
         }
@@ -131,12 +134,12 @@ public class S3Controller implements Controller {
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
-        if (ctx.getRequest().getMethod() == HEAD) {
+        if (ctx.getRequest().method() == HEAD) {
             ctx.respondWith().status(status);
         } else {
             ctx.respondWith().error(status, message);
         }
-        log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+        log.log("OBJECT " + ctx.getRequest().method().name(),
                 message + " - " + ctx.getRequestedURI(),
                 APILog.Result.ERROR,
                 CallContext.getCurrent().getWatch());
@@ -146,49 +149,48 @@ public class S3Controller implements Controller {
      * Writes an API success entry to the log
      */
     private void signalObjectSuccess(WebContext ctx) {
-        log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+        log.log("OBJECT " + ctx.getRequest().method().name(),
                 ctx.getRequestedURI(),
                 APILog.Result.OK,
                 CallContext.getCurrent().getWatch());
     }
-    
+
     /**
-	 * GET a list of all buckets
-	 *
-	 * @param ctx
-	 *            the context describing the current request
-	 */
-	@Routed(value = "/s3", priority = 99)
-	public void listBuckets(WebContext ctx) {
-		HttpMethod method = ctx.getRequest().getMethod();
+     * GET a list of all buckets
+     *
+     * @param ctx the context describing the current request
+     */
+    @Routed(value = "/s3", priority = 99)
+    public void listBuckets(WebContext ctx) {
+        HttpMethod method = ctx.getRequest().method();
 
-		if (GET == method) {
-			List<Bucket> buckets = storage.getBuckets();
-			Response response = ctx.respondWith();
+        if (GET == method) {
+            List<Bucket> buckets = storage.getBuckets();
+            Response response = ctx.respondWith();
 
-			response.setHeader("Content-Type", "application/xml");
+            response.setHeader("Content-Type", "application/xml");
 
-			XMLStructuredOutput out = response.xml();
-			out.beginOutput("ListAllMyBucketsResult",
-					Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-			out.beginObject("Owner");
-			out.property("ID", "initiatorId");
-			out.property("DisplayName", "initiatorName");
-			out.endObject();
+            XMLStructuredOutput out = response.xml();
+            out.beginOutput("ListAllMyBucketsResult",
+                            Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+            out.beginObject("Owner");
+            out.property("ID", "initiatorId");
+            out.property("DisplayName", "initiatorName");
+            out.endObject();
 
-			out.beginObject("Buckets");
-			for (Bucket bucket : buckets) {
-				out.beginObject("Bucket");
-				out.property("Name", bucket.getName());
-				out.property("CreationDate", ISO_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
-				out.endObject();
-			}
-			out.endObject();
-			out.endOutput();
-		} else {
-			throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
-		}
-	}
+            out.beginObject("Buckets");
+            for (Bucket bucket : buckets) {
+                out.beginObject("Bucket");
+                out.property("Name", bucket.getName());
+                out.property("CreationDate", ISO_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                out.endObject();
+            }
+            out.endObject();
+            out.endOutput();
+        } else {
+            throw new IllegalArgumentException(ctx.getRequest().method().name());
+        }
+    }
 
     /**
      * Dispatching method handling bucket specific calls without content (HEAD and DELETE)
@@ -200,7 +202,7 @@ public class S3Controller implements Controller {
     public void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
 
-        HttpMethod method = ctx.getRequest().getMethod();
+        HttpMethod method = ctx.getRequest().method();
 
         if (HEAD == method) {
             if (bucket.exists()) {
@@ -220,7 +222,7 @@ public class S3Controller implements Controller {
             signalObjectSuccess(ctx);
             ctx.respondWith().status(HttpResponseStatus.OK);
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+            throw new IllegalArgumentException(ctx.getRequest().method().name());
         }
     }
 
@@ -235,13 +237,13 @@ public class S3Controller implements Controller {
     public void bucket(WebContext ctx, String bucketName, InputStreamHandler in) {
         Bucket bucket = storage.getBucket(bucketName);
 
-        HttpMethod method = ctx.getRequest().getMethod();
+        HttpMethod method = ctx.getRequest().method();
         if (PUT == method) {
             bucket.create();
             signalObjectSuccess(ctx);
             ctx.respondWith().status(HttpResponseStatus.OK);
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+            throw new IllegalArgumentException(ctx.getRequest().method().name());
         }
     }
 
@@ -264,7 +266,7 @@ public class S3Controller implements Controller {
             return;
         }
 
-        HttpMethod method = ctx.getRequest().getMethod();
+        HttpMethod method = ctx.getRequest().method();
         if (HEAD == method) {
             getObject(ctx, bucket, id, false);
         } else if (GET == method) {
@@ -280,7 +282,7 @@ public class S3Controller implements Controller {
                 deleteObject(ctx, bucket, id);
             }
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+            throw new IllegalArgumentException(ctx.getRequest().method().name());
         }
     }
 
@@ -305,7 +307,7 @@ public class S3Controller implements Controller {
             return;
         }
 
-        HttpMethod method = ctx.getRequest().getMethod();
+        HttpMethod method = ctx.getRequest().method();
         if (PUT == method) {
             Value copy = ctx.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
@@ -322,7 +324,7 @@ public class S3Controller implements Controller {
                 completeMultipartUpload(ctx, bucket, id, uploadId, in);
             }
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
+            throw new IllegalArgumentException(ctx.getRequest().method().name());
         }
     }
 
@@ -362,7 +364,7 @@ public class S3Controller implements Controller {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,
                           Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
-                log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+                log.log("OBJECT " + ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
                         CallContext.getCurrent().getWatch());
@@ -371,7 +373,7 @@ public class S3Controller implements Controller {
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
             ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
-            log.log("OBJECT " + ctx.getRequest().getMethod().name(),
+            log.log("OBJECT " + ctx.getRequest().method().name(),
                     ctx.getRequestedURI(),
                     APILog.Result.REJECTED,
                     CallContext.getCurrent().getWatch());
@@ -458,8 +460,8 @@ public class S3Controller implements Controller {
 
         object.storeProperties(properties);
         Response response = ctx.respondWith();
-        response.addHeader(HttpHeaders.Names.ETAG, etag(hash)).status(HttpResponseStatus.OK);
-        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
+        response.addHeader(E_TAG, etag(hash)).status(HttpResponseStatus.OK);
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
         signalObjectSuccess(ctx);
     }
 
@@ -498,12 +500,12 @@ public class S3Controller implements Controller {
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String etag = etag(hash);
-        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).xml();
+        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(E_TAG, etag).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
         structuredOutput.text(ISO_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
-        structuredOutput.beginObject("ETag");
+        structuredOutput.beginObject(E_TAG);
         structuredOutput.text(etag);
         structuredOutput.endObject();
         structuredOutput.endOutput();
@@ -531,8 +533,8 @@ public class S3Controller implements Controller {
             response.setHeader(entry.getKey(), entry.getValue());
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        response.addHeader(HttpHeaders.Names.ETAG, BaseEncoding.base16().encode(hash.asBytes()));
-        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
+        response.addHeader(E_TAG, BaseEncoding.base16().encode(hash.asBytes()));
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
         if (sendFile) {
             response.file(object.getFile());
         } else {
@@ -614,8 +616,8 @@ public class S3Controller implements Controller {
         }
 
         Response response = ctx.respondWith();
-        response.setHeader("ETag", etag);
-        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS, "ETag");
+        response.setHeader(E_TAG, etag);
+        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, E_TAG);
         response.status(HttpResponseStatus.OK);
     }
 
@@ -669,7 +671,7 @@ public class S3Controller implements Controller {
             out.property("Location", "");
             out.property("Bucket", bucket.getName());
             out.property("Key", id);
-            out.property("ETag", etag);
+            out.property(E_TAG, etag);
             out.endOutput();
         } catch (IOException e) {
             Exceptions.ignore(e);
@@ -793,7 +795,7 @@ public class S3Controller implements Controller {
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
-                out.property("ETag", Files.hash(part, Hashing.md5()).toString());
+                out.property(E_TAG, Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {
                 Exceptions.ignore(e);
             }

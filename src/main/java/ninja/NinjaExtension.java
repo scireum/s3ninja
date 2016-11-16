@@ -9,26 +9,26 @@
 package ninja;
 
 import sirius.kernel.Sirius;
-import sirius.kernel.commons.Tuple;
 import sirius.kernel.di.std.Register;
 import sirius.web.templates.rythm.RythmExtension;
 
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * Provides additional variables to the Rythm-Context.
  */
 @Register
 public class NinjaExtension implements RythmExtension {
+
     @Override
-    public void collectExtensionNames(Consumer<Tuple<String, Class<?>>> names) {
-        names.accept(Tuple.create("tagLine", String.class));
-        names.accept(Tuple.create("claim", String.class));
+    public void collectExtensionNames(BiConsumer<String, Class<?>> names) {
+        names.accept("tagLine", String.class);
+        names.accept("claim", String.class);
     }
 
     @Override
-    public void collectExtensionValues(Consumer<Tuple<String, Object>> values) {
-        values.accept(Tuple.create("tagLine", Sirius.getConfig().getString("product.tagLine")));
-        values.accept(Tuple.create("claim", Sirius.getConfig().getString("product.claim")));
+    public void collectExtensionValues(BiConsumer<String, Object> values) {
+        values.accept("tagLine", Sirius.getConfig().getString("product.tagLine"));
+        values.accept("claim", Sirius.getConfig().getString("product.claim"));
     }
 }

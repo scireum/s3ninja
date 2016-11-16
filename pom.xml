@@ -13,8 +13,8 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.scireum</groupId>
-        <artifactId>sirius-app-parent</artifactId>
-        <version>1.8</version>
+        <artifactId>sirius-parent</artifactId>
+        <version>3.1</version>
     </parent>
     <artifactId>s3ninja</artifactId>
     <version>2.7</version>
@@ -32,12 +32,12 @@
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-web</artifactId>
-            <version>4.11</version>
+            <version>5.0.2</version>
         </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
-            <version>3.1</version>
+            <version>3.2</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

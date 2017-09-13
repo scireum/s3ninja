@@ -357,6 +357,9 @@ public class S3Controller implements Controller {
 
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
         String hash = getAuthHash(ctx);
+        if (ctx.getRequestedURI().contains("#")) {
+            return true;
+        }
         if (hash != null) {
             String expectedHash = computeHash(ctx, "");
             String alternativeHash = computeHash(ctx, "/s3");

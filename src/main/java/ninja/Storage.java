@@ -62,7 +62,7 @@ public class Storage {
                 baseDir = new File(System.getProperty("java.io.tmpdir"), "s3ninja_test");
                 baseDir.mkdirs();
             } else {
-                baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
+                baseDir = new File(Sirius.getSettings().getString("storage.baseDir"));
             }
         }
 

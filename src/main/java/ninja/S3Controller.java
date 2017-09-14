@@ -40,7 +40,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -690,18 +689,16 @@ public class S3Controller implements Controller {
 
     private File combineParts(String id, String uploadId, Map<Integer, File> parts) {
         File file = new File(getUploadDir(uploadId), id);
-        ByteBuffer[] buffers = new ByteBuffer[parts.size()];
 
         try {
-            for (Map.Entry<Integer, File> entry : parts.entrySet()) {
-                try (RandomAccessFile raf = new RandomAccessFile(entry.getValue(), "r")) {
-                    FileChannel channel = raf.getChannel();
-                    buffers[entry.getKey() - 1] = channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length());
-                }
-            }
             file.createNewFile();
             try (FileOutputStream outFile = new FileOutputStream(file); FileChannel out = outFile.getChannel()) {
-                out.write(buffers);
+                for (Map.Entry<Integer, File> entry : parts.entrySet().stream().sorted(Comparator.comparing(Map.Entry::getKey)).collect(Collectors.toList())) {
+                    try (RandomAccessFile raf = new RandomAccessFile(entry.getValue(), "r")) {
+                        FileChannel channel = raf.getChannel();
+                        out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
+                    }
+                }
             }
         } catch (IOException e) {
             Exceptions.handle(e);

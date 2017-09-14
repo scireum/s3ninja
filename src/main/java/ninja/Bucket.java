@@ -9,26 +9,17 @@
 package ninja;
 
 import com.google.common.collect.Lists;
-import com.google.common.hash.Hashing;
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
-import sirius.kernel.cache.ValueComputer;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 
 /**
@@ -63,11 +54,13 @@ public class Bucket {
     /**
      * Deletes the bucket and all of its contents.
      */
-    public void delete() {
+    public boolean delete() {
+        boolean deleted = false;
         for (File child : file.listFiles()) {
-            child.delete();
+            deleted = child.delete() || deleted;
         }
-        file.delete();
+        deleted = file.delete() || deleted;
+        return deleted;
     }
 
     /**
@@ -76,10 +69,8 @@ public class Bucket {
      * If the underlying directory already exists, nothing happens.
      * </p>
      */
-    public void create() {
-        if (!file.exists()) {
-            file.mkdirs();
-        }
+    public boolean create() {
+        return !file.exists() && file.mkdirs();
     }
 
     /**
@@ -124,96 +115,12 @@ public class Bucket {
     }
 
     /**
-     * Visits all files in the buckets directory and outputs their metadata to an {@link XMLStructuredOutput}.
-     */
-    private static class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
-
-        Counter objectCount;
-        XMLStructuredOutput output;
-        int limit;
-        String marker;
-        String prefix;
-        boolean useLimit;
-        boolean usePrefix;
-        boolean markerReached;
-
-        protected ListFileTreeVisitor(XMLStructuredOutput output,
-                                      int limit,
-                                      @Nullable String marker,
-                                      @Nullable String prefix) {
-            this.output = output;
-            this.limit = limit;
-            this.marker = marker;
-            this.prefix = prefix;
-            objectCount = new Counter();
-            useLimit = limit > 0;
-            usePrefix = Strings.isFilled(prefix);
-            if (usePrefix) {
-                this.prefix = prefix.replace('/','_');
-            }
-            markerReached = Strings.isEmpty(marker);
-        }
-
-        @Override
-        public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
-            File file = path.toFile();
-            String name = file.getName();
-
-            if (!file.isFile() || name.startsWith("__")) {
-                return FileVisitResult.CONTINUE;
-            }
-            if (!markerReached) {
-                if (marker.equals(name)) {
-                    markerReached = true;
-                }
-            } else {
-                StoredObject object = new StoredObject(file);
-                if (!usePrefix || name.startsWith(prefix)) {
-                    if (useLimit) {
-                        long numObjects = objectCount.inc();
-                        if (numObjects <= limit) {
-                            output.beginObject("Contents");
-                            output.property("Key", file.getName());
-                            output.property("LastModified",
-                                            S3Controller.ISO_INSTANT.format(object.getLastModifiedInstant()));
-                            output.property("Size", file.length());
-                            output.property("StorageClass", "STANDARD");
-
-                            String etag = null;
-                            try {
-                                etag = com.google.common.io.Files.hash(file, Hashing.md5()).toString();
-                            } catch (IOException e) {
-                                Exceptions.ignore(e);
-                            }
-                            output.property("ETag", etag);
-                            output.endObject();
-                        } else {
-                            return FileVisitResult.TERMINATE;
-                        }
-                    }
-                }
-            }
-            return FileVisitResult.CONTINUE;
-        }
-
-        public long getCount() {
-            return objectCount.getCount();
-        }
-    }
-
-    /**
      * Determines if the bucket is private or public accessible
      *
      * @return <tt>true</tt> if the bucket is public accessible, <tt>false</tt> otherwise
      */
     public boolean isPrivate() {
-        return !publicAccessCache.get(getName(), new ValueComputer<String, Boolean>() {
-            @Nullable
-            @Override
-            public Boolean compute(@Nonnull String key) {
-                return getPublicMarkerFile().exists();
-            }
-        });
+        return !publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists());
     }
 
     private File getPublicMarkerFile() {

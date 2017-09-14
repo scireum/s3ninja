@@ -37,7 +37,7 @@ public class Storage {
     @ConfigValue("storage.autocreateBuckets")
     private boolean autocreateBuckets;
 
-    protected File getBaseDir() {
+    private File getBaseDir() {
         baseDir = getBaseDirUnchecked();
 
         if (!baseDir.exists()) {
@@ -62,7 +62,7 @@ public class Storage {
                 baseDir = new File(System.getProperty("java.io.tmpdir"), "s3ninja_test");
                 baseDir.mkdirs();
             } else {
-                baseDir = new File(Sirius.getConfig().getString("storage.baseDir"));
+                baseDir = new File(Sirius.getSettings().getString("storage.baseDir"));
             }
         }
 
@@ -82,7 +82,7 @@ public class Storage {
         } else if (!getBaseDirUnchecked().isDirectory()) {
             sb.append(" (no directory!)");
         } else {
-            sb.append(" (Free: " + NLS.formatSize(getBaseDir().getFreeSpace()) + ")");
+            sb.append(" (Free: ").append(NLS.formatSize(getBaseDir().getFreeSpace())).append(")");
         }
 
         return sb.toString();

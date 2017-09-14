@@ -260,10 +260,9 @@ public class NinjaController implements Controller {
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePublic")
     public void makePublic(WebContext ctx, String bucket) {
-        Bucket storageBucket = storage.getBucket(bucket);
-        storageBucket.makePublic();
+        storage.getBucket(bucket).makePublic();
         UserContext.message(Message.info("ACLs successfully changed"));
-        ctx.respondWith().template("view/bucket.html", storageBucket);
+        bucket(ctx, bucket);
     }
 
     /**
@@ -277,9 +276,8 @@ public class NinjaController implements Controller {
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePrivate")
     public void makePrivate(WebContext ctx, String bucket) {
-        Bucket storageBucket = storage.getBucket(bucket);
-        storageBucket.makePrivate();
+        storage.getBucket(bucket).makePrivate();
         UserContext.message(Message.info("ACLs successfully changed"));
-        ctx.respondWith().template("view/bucket.html", storageBucket);
+        bucket(ctx, bucket);
     }
 }

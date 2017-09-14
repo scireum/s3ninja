@@ -128,7 +128,7 @@ public class StoredObject {
      */
     public void storeProperties(Map<String, String> properties) throws IOException {
         Properties props = new Properties();
-        properties.entrySet().stream().forEach(e -> props.setProperty(e.getKey(), e.getValue()));
+        properties.forEach(props::setProperty);
         try (FileOutputStream out = new FileOutputStream(getPropertiesFile())) {
             props.store(out, "");
         }

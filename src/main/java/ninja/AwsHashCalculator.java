@@ -43,7 +43,7 @@ public class AwsHashCalculator {
     public String computeHash(WebContext ctx, String pathPrefix) {
         try {
             return doComputeHash(ctx, pathPrefix);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw Exceptions.handle(UserContext.LOG, e);
         }
     }

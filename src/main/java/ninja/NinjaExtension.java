@@ -28,7 +28,7 @@ public class NinjaExtension implements RythmExtension {
 
     @Override
     public void collectExtensionValues(BiConsumer<String, Object> values) {
-        values.accept("tagLine", Sirius.getConfig().getString("product.tagLine"));
-        values.accept("claim", Sirius.getConfig().getString("product.claim"));
+        values.accept("tagLine", Sirius.getSettings().getString("product.tagLine"));
+        values.accept("claim", Sirius.getSettings().getString("product.claim"));
     }
 }

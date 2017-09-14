@@ -46,13 +46,7 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -66,7 +60,8 @@ import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 @Register
 public class S3Controller implements Controller {
 
-    public static final String HTTP_HEADER_NAME_ETAG = "ETag";
+    private static final String HTTP_HEADER_NAME_ETAG = "ETag";
+    private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
 
     @Override
     public void onError(WebContext ctx, HandledException error) {
@@ -89,11 +84,11 @@ public class S3Controller implements Controller {
 
     private Counter uploadIdCounter = new Counter();
 
-    public static final DateTimeFormatter ISO_INSTANT =
-            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-                                          .toFormatter()
-                                          .withChronology(IsoChronology.INSTANCE)
-                                          .withZone(ZoneOffset.UTC);
+    public static final DateTimeFormatter ISO_INSTANT = new DateTimeFormatterBuilder().appendPattern(
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                                                                                      .toFormatter()
+                                                                                      .withChronology(IsoChronology.INSTANCE)
+                                                                                      .withZone(ZoneOffset.UTC);
 
     private static final Map<String, String> headerOverrides;
 
@@ -115,8 +110,7 @@ public class S3Controller implements Controller {
         if (!authorizationHeaderValue.isFilled()) {
             return ctx.get("Signature").getString();
         }
-        String authentication =
-                Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
+        String authentication = Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
         Matcher m = AWS_AUTH_PATTERN.matcher(authentication);
         if (m.matches()) {
             return m.group(2);
@@ -168,7 +162,7 @@ public class S3Controller implements Controller {
             List<Bucket> buckets = storage.getBuckets();
             Response response = ctx.respondWith();
 
-            response.setHeader("Content-Type", "application/xml");
+            response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
 
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
@@ -297,8 +291,11 @@ public class S3Controller implements Controller {
      * @throws Exception in case of IO errors and there like
      */
     @Routed(value = "/s3/:1/:2/**", preDispatchable = true)
-    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList, InputStreamHandler in)
-            throws Exception {
+    public void object(WebContext ctx,
+                       String bucketName,
+                       String objectId,
+                       List<String> idList,
+                       InputStreamHandler in) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
         String id = getIdsAsString(objectId, idList);
         String uploadId = ctx.get("uploadId").asString();
@@ -352,7 +349,7 @@ public class S3Controller implements Controller {
         List<String> ids = new ArrayList<>();
         ids.add(objectId);
         ids.addAll(idList);
-        return ids.stream().filter(i -> Strings.isFilled(i)).collect(Collectors.joining("/")).replace('/', '_');
+        return ids.stream().filter(Strings::isFilled).collect(Collectors.joining("/")).replace('/', '_');
     }
 
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
@@ -399,7 +396,7 @@ public class S3Controller implements Controller {
         String prefix = ctx.get("prefix").asString();
 
         Response response = ctx.respondWith();
-        response.setHeader("Content-Type", "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
 
         bucket.outputObjects(response.xml(), maxKeys, marker, prefix);
     }
@@ -439,23 +436,23 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || "x-amz-acl".equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-meta-") ||
+                    "content-md5".equals(nameLower) ||
+                    "content-type".equals(nameLower) ||
+                    "x-amz-acl".equals(nameLower)) {
                 properties.put(name, ctx.getHeader(name));
             }
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
-        if (properties.containsKey("Content-MD5")) {
-            if (!md5.equals(properties.get("Content-MD5"))) {
-                object.delete();
-                signalObjectError(ctx,
-                                  HttpResponseStatus.BAD_REQUEST,
-                                  Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                                properties.get("Content-MD5"),
-                                                md5));
-                return;
-            }
+        if (properties.containsKey("Content-MD5") && !md5.equals(properties.get("Content-MD5"))) {
+            object.delete();
+            signalObjectError(ctx,
+                              HttpResponseStatus.BAD_REQUEST,
+                              Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
+                                            properties.get("Content-MD5"),
+                                            md5));
+            return;
         }
 
         object.storeProperties(properties);
@@ -519,7 +516,7 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
-    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws Exception {
+    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
             signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
@@ -556,13 +553,15 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || "x-amz-acl".equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-meta-") ||
+                    "content-md5".equals(nameLower) ||
+                    "content-type".equals(nameLower) ||
+                    "x-amz-acl".equals(nameLower)) {
                 properties.put(name, ctx.getHeader(name));
                 response.addHeader(name, ctx.getHeader(name));
             }
         }
-        response.setHeader("Content-Type", "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
 
         String uploadId = String.valueOf(uploadIdCounter.inc());
         multipartUploads.add(uploadId);
@@ -695,8 +694,7 @@ public class S3Controller implements Controller {
                 }
             }
             file.createNewFile();
-            FileOutputStream outFile = new FileOutputStream(file);
-            try (FileChannel out = outFile.getChannel()) {
+            try (FileOutputStream outFile = new FileOutputStream(file); FileChannel out = outFile.getChannel()) {
                 out.write(buffers);
             }
         } catch (IOException e) {
@@ -725,11 +723,10 @@ public class S3Controller implements Controller {
 
     private static void delete(File file) {
         if (file.isDirectory()) {
-            if (file.list().length == 0) {
+            String[] files = file.list();
+            if (files.length == 0) {
                 file.delete();
             } else {
-                String[] files = file.list();
-
                 for (String temp : files) {
                     delete(new File(file, temp));
                 }
@@ -755,7 +752,7 @@ public class S3Controller implements Controller {
 
         Response response = ctx.respondWith();
 
-        response.setHeader("Content-Type", "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
 
         XMLStructuredOutput out = response.xml();
         out.beginOutput("ListPartsResult");
@@ -809,10 +806,10 @@ public class S3Controller implements Controller {
     private Map<String, String> getOverridenHeaders(WebContext ctx) {
         Map<String, String> overrides = Maps.newTreeMap();
         for (Map.Entry<String, String> entry : headerOverrides.entrySet()) {
-            String header = entry.getValue().toString();
-            String val = ctx.getParameter(entry.getKey().toString());
-            if (val != null) {
-                overrides.put(header, val);
+            String header = entry.getValue();
+            String value = ctx.getParameter(entry.getKey());
+            if (value != null) {
+                overrides.put(header, value);
             }
         }
         return overrides;

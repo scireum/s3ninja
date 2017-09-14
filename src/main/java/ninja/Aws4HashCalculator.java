@@ -15,6 +15,8 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,9 +31,10 @@ import static com.google.common.io.BaseEncoding.base16;
  */
 @Register(classes = Aws4HashCalculator.class)
 public class Aws4HashCalculator {
-    protected static final Pattern AWS_AUTH4_PATTERN =
-            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,"
-                            + "]+), Signature=(.+)");
+    
+    protected static final Pattern AWS_AUTH4_PATTERN = Pattern.compile(
+            "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^," +
+                    "]+), Signature=(.+)");
 
     @Part
     private Storage storage;
@@ -61,9 +64,8 @@ public class Aws4HashCalculator {
      *
      * @param ctx the current request to fetch parameters from
      * @return the computes hash value
-     * @throws Exception in case of an unexpected error
      */
-    public String computeHash(WebContext ctx) throws Exception {
+    public String computeHash(WebContext ctx) throws InvalidKeyException, NoSuchAlgorithmException {
         final MatchResult aws4Header = initializedMatcher(ctx);
 
         byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), aws4Header.group(2));
@@ -78,14 +80,14 @@ public class Aws4HashCalculator {
     private String buildStringToSign(final WebContext ctx) {
         final StringBuilder canonicalRequest = buildCanonicalRequest(ctx);
         final MatchResult aws4Header = initializedMatcher(ctx);
-        return "AWS4-HMAC-SHA256\n"
-               + getAmazonDateHeader(ctx)
-               + "\n"
-               + getAmazonDateHeader(ctx).substring(0, 8)
-               + "/"
-               + aws4Header.group(3)
-               + "/s3/aws4_request\n"
-               + hashedCanonicalRequest(canonicalRequest);
+        return "AWS4-HMAC-SHA256\n" +
+                getAmazonDateHeader(ctx) +
+                "\n" +
+                getAmazonDateHeader(ctx).substring(0, 8) +
+                "/" +
+                aws4Header.group(3) +
+                "/s3/aws4_request\n" +
+                hashedCanonicalRequest(canonicalRequest);
     }
 
     private String getAmazonDateHeader(final WebContext ctx) {
@@ -118,7 +120,7 @@ public class Aws4HashCalculator {
         return sha256().hashString(canonicalRequest, UTF_8).toString();
     }
 
-    private byte[] hmacSHA256(byte[] key, String value) throws Exception {
+    private byte[] hmacSHA256(byte[] key, String value) throws NoSuchAlgorithmException, InvalidKeyException {
         SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(keySpec);

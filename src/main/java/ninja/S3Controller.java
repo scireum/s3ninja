@@ -32,6 +32,7 @@ import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
 import sirius.web.http.InputStreamHandler;
+import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 
@@ -535,6 +536,11 @@ public class S3Controller implements Controller {
         if (sendFile) {
             response.file(object.getFile());
         } else {
+            String contentType = MimeHelper.guessMimeType(object.getFile().getName());
+            response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
+            response.addHeader(HttpHeaderNames.LAST_MODIFIED,
+                    ISO_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+            response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
         signalObjectSuccess(ctx);

@@ -46,7 +46,14 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -84,11 +91,11 @@ public class S3Controller implements Controller {
 
     private Counter uploadIdCounter = new Counter();
 
-    public static final DateTimeFormatter ISO_INSTANT = new DateTimeFormatterBuilder().appendPattern(
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-                                                                                      .toFormatter()
-                                                                                      .withChronology(IsoChronology.INSTANCE)
-                                                                                      .withZone(ZoneOffset.UTC);
+    public static final DateTimeFormatter ISO_INSTANT =
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                                          .toFormatter()
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.UTC);
 
     private static final Map<String, String> headerOverrides;
 
@@ -110,7 +117,8 @@ public class S3Controller implements Controller {
         if (!authorizationHeaderValue.isFilled()) {
             return ctx.get("Signature").getString();
         }
-        String authentication = Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
+        String authentication =
+                Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
         Matcher m = AWS_AUTH_PATTERN.matcher(authentication);
         if (m.matches()) {
             return m.group(2);
@@ -291,11 +299,8 @@ public class S3Controller implements Controller {
      * @throws Exception in case of IO errors and there like
      */
     @Routed(value = "/s3/:1/:2/**", preDispatchable = true)
-    public void object(WebContext ctx,
-                       String bucketName,
-                       String objectId,
-                       List<String> idList,
-                       InputStreamHandler in) throws Exception {
+    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList, InputStreamHandler in)
+            throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
         String id = getIdsAsString(objectId, idList);
         String uploadId = ctx.get("uploadId").asString();
@@ -436,10 +441,8 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") ||
-                    "content-md5".equals(nameLower) ||
-                    "content-type".equals(nameLower) ||
-                    "x-amz-acl".equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
+                    nameLower) || "x-amz-acl".equals(nameLower)) {
                 properties.put(name, ctx.getHeader(name));
             }
         }
@@ -538,7 +541,7 @@ public class S3Controller implements Controller {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                    ISO_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               ISO_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -558,10 +561,8 @@ public class S3Controller implements Controller {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") ||
-                    "content-md5".equals(nameLower) ||
-                    "content-type".equals(nameLower) ||
-                    "x-amz-acl".equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
+                    nameLower) || "x-amz-acl".equals(nameLower)) {
                 properties.put(name, ctx.getHeader(name));
                 response.addHeader(name, ctx.getHeader(name));
             }
@@ -657,7 +658,14 @@ public class S3Controller implements Controller {
             Exceptions.handle(e);
         }
 
-        File file = combineParts(id, uploadId, parts);
+        File file = combineParts(id,
+                                 uploadId,
+                                 parts.entrySet()
+                                      .stream()
+                                      .sorted(Comparator.comparing(Map.Entry::getKey))
+                                      .map(Map.Entry::getValue)
+                                      .collect(Collectors.toList()));
+
         file.deleteOnExit();
         if (!file.exists()) {
             ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart File does not exist");
@@ -687,14 +695,14 @@ public class S3Controller implements Controller {
         return new File(multipartDir + "/" + uploadId);
     }
 
-    private File combineParts(String id, String uploadId, Map<Integer, File> parts) {
+    private File combineParts(String id, String uploadId, List<File> parts) {
         File file = new File(getUploadDir(uploadId), id);
 
         try {
             file.createNewFile();
             try (FileOutputStream outFile = new FileOutputStream(file); FileChannel out = outFile.getChannel()) {
-                for (Map.Entry<Integer, File> entry : parts.entrySet().stream().sorted(Comparator.comparing(Map.Entry::getKey)).collect(Collectors.toList())) {
-                    try (RandomAccessFile raf = new RandomAccessFile(entry.getValue(), "r")) {
+                for (File part : parts) {
+                    try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
                         FileChannel channel = raf.getChannel();
                         out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
                     }

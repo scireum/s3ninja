@@ -53,6 +53,8 @@ public class Bucket {
 
     /**
      * Deletes the bucket and all of its contents.
+     *
+     * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
      */
     public boolean delete() {
         boolean deleted = false;
@@ -67,7 +69,8 @@ public class Bucket {
      * Creates the bucket.
      * <p>
      * If the underlying directory already exists, nothing happens.
-     * </p>
+     *
+     * @return true if the folder for the bucket was created successfully if it was missing before.
      */
     public boolean create() {
         return !file.exists() && file.mkdirs();
@@ -132,8 +135,11 @@ public class Bucket {
      */
     public void makePrivate() {
         if (getPublicMarkerFile().exists()) {
-            getPublicMarkerFile().delete();
-            publicAccessCache.put(getName(), false);
+            if (getPublicMarkerFile().delete()) {
+                publicAccessCache.put(getName(), false);
+            } else {
+                Storage.LOG.WARN("Failed to delete public marker for bucket %s - it remains public!", getName());
+            }
         }
     }
 

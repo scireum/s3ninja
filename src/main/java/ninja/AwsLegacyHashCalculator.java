@@ -18,6 +18,9 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.UnsupportedEncodingException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -65,9 +68,12 @@ public class AwsLegacyHashCalculator {
      * @param ctx        the current request to fetch parameters from
      * @param pathPrefix the path prefix to append to the current uri
      * @return the computes hash value
-     * @throws Exception in case of an unexpected error
+     * @throws InvalidKeyException          when hashing fails
+     * @throws NoSuchAlgorithmException     when hashing fails
+     * @throws UnsupportedEncodingException when hashing fails
      */
-    public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
+    public String computeHash(WebContext ctx, String pathPrefix)
+            throws NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));

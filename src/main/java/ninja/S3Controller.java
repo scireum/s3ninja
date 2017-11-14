@@ -69,6 +69,12 @@ public class S3Controller implements Controller {
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
+    private static final String CONTENT_TYPE_XML = "application/xml";
+    private static final String RESPONSE_DISPLAY_NAME = "DisplayName";
+    private static final String RESPONSE_BUCKET = "Bucket";
+    private static final String ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST = "Multipart Upload does not exist";
+    private static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
+    private static final String PATH_DELIMITER = "/";
 
     @Override
     public void onError(WebContext ctx, HandledException error) {
@@ -91,6 +97,9 @@ public class S3Controller implements Controller {
 
     private Counter uploadIdCounter = new Counter();
 
+    /**
+     * Formatter for creating iso instant representations
+     */
     public static final DateTimeFormatter ISO_INSTANT =
             new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
                                           .toFormatter()
@@ -141,7 +150,7 @@ public class S3Controller implements Controller {
         } else {
             ctx.respondWith().error(status, message);
         }
-        log.log("OBJECT " + ctx.getRequest().method().name(),
+        log.log(ctx.getRequest().method().name(),
                 message + " - " + ctx.getRequestedURI(),
                 APILog.Result.ERROR,
                 CallContext.getCurrent().getWatch());
@@ -151,7 +160,7 @@ public class S3Controller implements Controller {
      * Writes an API success entry to the log
      */
     private void signalObjectSuccess(WebContext ctx) {
-        log.log("OBJECT " + ctx.getRequest().method().name(),
+        log.log(ctx.getRequest().method().name(),
                 ctx.getRequestedURI(),
                 APILog.Result.OK,
                 CallContext.getCurrent().getWatch());
@@ -170,19 +179,16 @@ public class S3Controller implements Controller {
             List<Bucket> buckets = storage.getBuckets();
             Response response = ctx.respondWith();
 
-            response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
+            response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
                             Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-            out.beginObject("Owner");
-            out.property("ID", "initiatorId");
-            out.property("DisplayName", "initiatorName");
-            out.endObject();
+            outputOwnerInfo(out, "Owner");
 
             out.beginObject("Buckets");
             for (Bucket bucket : buckets) {
-                out.beginObject("Bucket");
+                out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate", ISO_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
                 out.endObject();
@@ -192,6 +198,13 @@ public class S3Controller implements Controller {
         } else {
             throw new IllegalArgumentException(ctx.getRequest().method().name());
         }
+    }
+
+    private void outputOwnerInfo(XMLStructuredOutput out, String name) {
+        out.beginObject(name);
+        out.property("ID", "initiatorId");
+        out.property(RESPONSE_DISPLAY_NAME, "initiatorName");
+        out.endObject();
     }
 
     /**
@@ -211,13 +224,13 @@ public class S3Controller implements Controller {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
             }
         } else if (GET == method) {
             if (bucket.exists()) {
                 listObjects(ctx, bucket);
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
             }
         } else if (DELETE == method) {
             bucket.delete();
@@ -256,10 +269,10 @@ public class S3Controller implements Controller {
      * @param bucketName name of the bucket which contains the object (must exist)
      * @param objectId   name of the object of interest
      * @param idList     list of object names if the reequest was for multiple objects
-     * @throws Exception in case of IO errors and there like
+     * @throws IOException in case of IO errors and there like
      */
     @Routed("/s3/:1/:2/**")
-    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList) throws Exception {
+    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
         String id = getIdsAsString(objectId, idList);
         String uploadId = ctx.get("uploadId").asString();
@@ -279,7 +292,7 @@ public class S3Controller implements Controller {
             }
         } else if (DELETE == method) {
             if (Strings.isFilled(uploadId)) {
-                abortMultipartUpload(ctx, bucket, id, uploadId);
+                abortMultipartUpload(ctx, uploadId);
             } else {
                 deleteObject(ctx, bucket, id);
             }
@@ -296,11 +309,11 @@ public class S3Controller implements Controller {
      * @param objectId   name of the object of interest
      * @param idList     list of object names if the reequest was for multiple objects
      * @param in         input stream with the requests content
-     * @throws Exception in case of IO errors and there like
+     * @throws IOException in case of IO errors and there like
      */
     @Routed(value = "/s3/:1/:2/**", preDispatchable = true)
     public void object(WebContext ctx, String bucketName, String objectId, List<String> idList, InputStreamHandler in)
-            throws Exception {
+            throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
         String id = getIdsAsString(objectId, idList);
         String uploadId = ctx.get("uploadId").asString();
@@ -315,7 +328,7 @@ public class S3Controller implements Controller {
             if (copy.isFilled()) {
                 copyObject(ctx, bucket, id, copy.asString());
             } else if (ctx.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
-                multiObject(ctx, bucket, id, uploadId, ctx.get("partNumber").asString(), in);
+                multiObject(ctx, uploadId, ctx.get("partNumber").asString(), in);
             } else {
                 putObject(ctx, bucket, id, in);
             }
@@ -343,7 +356,7 @@ public class S3Controller implements Controller {
             if (storage.isAutocreateBuckets()) {
                 bucket.create();
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
                 return false;
             }
         }
@@ -354,7 +367,7 @@ public class S3Controller implements Controller {
         List<String> ids = new ArrayList<>();
         ids.add(objectId);
         ids.addAll(idList);
-        return ids.stream().filter(Strings::isFilled).collect(Collectors.joining("/")).replace('/', '_');
+        return ids.stream().filter(Strings::isFilled).collect(Collectors.joining(PATH_DELIMITER)).replace('/', '_');
     }
 
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
@@ -366,7 +379,7 @@ public class S3Controller implements Controller {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,
                           Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
-                log.log("OBJECT " + ctx.getRequest().method().name(),
+                log.log(ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
                         CallContext.getCurrent().getWatch());
@@ -375,7 +388,7 @@ public class S3Controller implements Controller {
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
             ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
-            log.log("OBJECT " + ctx.getRequest().method().name(),
+            log.log(ctx.getRequest().method().name(),
                     ctx.getRequestedURI(),
                     APILog.Result.REJECTED,
                     CallContext.getCurrent().getWatch());
@@ -401,7 +414,7 @@ public class S3Controller implements Controller {
         String prefix = ctx.get("prefix").asString();
 
         Response response = ctx.respondWith();
-        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
         bucket.outputObjects(response.xml(), maxKeys, marker, prefix);
     }
@@ -428,7 +441,8 @@ public class S3Controller implements Controller {
      * @param bucket the bucket containing the object to upload
      * @param id     name of the object to upload
      */
-    private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream) throws Exception {
+    private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream)
+            throws IOException {
         StoredObject object = bucket.getObject(id);
         if (inputStream == null) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "No content posted");
@@ -448,13 +462,12 @@ public class S3Controller implements Controller {
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
-        if (properties.containsKey("Content-MD5") && !md5.equals(properties.get("Content-MD5"))) {
+        String contentMd5 = properties.get("Content-MD5");
+        if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
             signalObjectError(ctx,
                               HttpResponseStatus.BAD_REQUEST,
-                              Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                            properties.get("Content-MD5"),
-                                            md5));
+                              Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
 
@@ -478,12 +491,12 @@ public class S3Controller implements Controller {
      */
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
-        if (!copy.contains("/")) {
+        if (!copy.contains(PATH_DELIMITER)) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source must contain '/'");
             return;
         }
-        String srcBucketName = copy.substring(1, copy.lastIndexOf("/"));
-        String srcId = copy.substring(copy.lastIndexOf("/") + 1);
+        String srcBucketName = copy.substring(1, copy.lastIndexOf(PATH_DELIMITER));
+        String srcId = copy.substring(copy.lastIndexOf(PATH_DELIMITER) + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {
             signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source bucket does not exist");
@@ -567,7 +580,7 @@ public class S3Controller implements Controller {
                 response.addHeader(name, ctx.getHeader(name));
             }
         }
-        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
         String uploadId = String.valueOf(uploadIdCounter.inc());
         multipartUploads.add(uploadId);
@@ -576,7 +589,7 @@ public class S3Controller implements Controller {
 
         XMLStructuredOutput out = response.xml();
         out.beginOutput("InitiateMultipartUploadResult");
-        out.property("Bucket", bucket.getName());
+        out.property(RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
         out.property("UploadId", uploadId);
         out.endOutput();
@@ -586,20 +599,13 @@ public class S3Controller implements Controller {
      * Handles PUT /bucket/id?uploadId=X&partNumber=Y
      *
      * @param ctx        the context describing the current request
-     * @param bucket     the bucket containing the object to upload
-     * @param id         name of the object to upload
      * @param uploadId   the multipart upload this part belongs to
      * @param partNumber the number of this part in the complete upload
      * @param part       input stream with the content of this part
      */
-    private void multiObject(WebContext ctx,
-                             Bucket bucket,
-                             String id,
-                             String uploadId,
-                             String partNumber,
-                             InputStreamHandler part) {
+    private void multiObject(WebContext ctx, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -641,7 +647,7 @@ public class S3Controller implements Controller {
                                          final String uploadId,
                                          InputStreamHandler in) {
         if (!multipartUploads.remove(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -681,7 +687,7 @@ public class S3Controller implements Controller {
             XMLStructuredOutput out = ctx.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");
             out.property("Location", "");
-            out.property("Bucket", bucket.getName());
+            out.property(RESPONSE_BUCKET, bucket.getName());
             out.property("Key", id);
             out.property(HTTP_HEADER_NAME_ETAG, etag);
             out.endOutput();
@@ -692,15 +698,19 @@ public class S3Controller implements Controller {
     }
 
     private File getUploadDir(String uploadId) {
-        return new File(multipartDir + "/" + uploadId);
+        return new File(multipartDir + PATH_DELIMITER + uploadId);
     }
 
     private File combineParts(String id, String uploadId, List<File> parts) {
         File file = new File(getUploadDir(uploadId), id);
 
         try {
-            file.createNewFile();
-            try (FileOutputStream outFile = new FileOutputStream(file); FileChannel out = outFile.getChannel()) {
+            if (!file.createNewFile()) {
+                Storage.LOG.WARN("Failed to create multipart result file %s (%s).",
+                                 file.getName(),
+                                 file.getAbsolutePath());
+            }
+            try (FileChannel out = new FileOutputStream(file).getChannel()) {
                 for (File part : parts) {
                     try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
                         FileChannel channel = raf.getChannel();
@@ -719,24 +729,23 @@ public class S3Controller implements Controller {
      * Handles DELETE /bucket/id?uploadId=X
      *
      * @param ctx      the context describing the current request
-     * @param bucket   the bucket containing the object to upload
-     * @param id       name of the object to upload
      * @param uploadId the multipart upload that should be cancelled
      */
-    private void abortMultipartUpload(WebContext ctx, Bucket bucket, String id, String uploadId) {
-        System.out.println("aborting multiupload");
+    private void abortMultipartUpload(WebContext ctx, String uploadId) {
         multipartUploads.remove(uploadId);
         ctx.respondWith().status(HttpResponseStatus.OK);
-
-        File uploadDir = getUploadDir(uploadId);
-        delete(uploadDir);
+        delete(getUploadDir(uploadId));
     }
 
     private static void delete(File file) {
         if (file.isDirectory()) {
             String[] files = file.list();
             if (files.length == 0) {
-                file.delete();
+                if (!file.delete()) {
+                    Storage.LOG.WARN("Failed to delete empty directory %s (%s).",
+                                     file.getName(),
+                                     file.getAbsolutePath());
+                }
             } else {
                 for (String temp : files) {
                     delete(new File(file, temp));
@@ -744,7 +753,9 @@ public class S3Controller implements Controller {
                 delete(file);
             }
         } else {
-            file.delete();
+            if (!file.delete()) {
+                Storage.LOG.WARN("Failed to delete file %s (%s).", file.getName(), file.getAbsolutePath());
+            }
         }
     }
 
@@ -757,29 +768,22 @@ public class S3Controller implements Controller {
      */
     private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart Upload does not exist");
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
         Response response = ctx.respondWith();
 
-        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, "application/xml");
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
         XMLStructuredOutput out = response.xml();
         out.beginOutput("ListPartsResult");
-        out.property("Bucket", bucket.getName());
+        out.property(RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
         out.property("UploadId", uploadId);
 
-        out.beginObject("Initiator");
-        out.property("ID", "initiatorId");
-        out.property("DisplayName", "initiatorName");
-        out.endObject();
-
-        out.beginObject("Owner");
-        out.property("ID", "initiatorId");
-        out.property("DisplayName", "initiatorName");
-        out.endObject();
+        outputOwnerInfo(out, "Initiator");
+        outputOwnerInfo(out, "Owner");
 
         File uploadDir = getUploadDir(uploadId);
         int marker = ctx.get("part-number-marker").asInt(0);

@@ -70,8 +70,14 @@ public class StoredObject {
      * Deletes the object
      */
     public void delete() {
-        file.delete();
-        getPropertiesFile().delete();
+        if (!file.delete()) {
+            Storage.LOG.WARN("Failed to delete data file for object %s (%s).", getName(), file.getAbsolutePath());
+        }
+        if (!getPropertiesFile().delete()) {
+            Storage.LOG.WARN("Failed to delete properties file for object %s (%s).",
+                             getName(),
+                             getPropertiesFile().getAbsolutePath());
+        }
     }
 
     /**

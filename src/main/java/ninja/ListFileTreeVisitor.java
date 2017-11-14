@@ -36,6 +36,9 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
     private boolean usePrefix;
     private boolean markerReached;
 
+    // Supressed warning "Null pointers should not be dereferenced"
+    // as prefix can't be null when replacing as the usePrefix acts as a guard.
+    @SuppressWarnings("squid:S2259")
     protected ListFileTreeVisitor(XMLStructuredOutput output,
                                   int limit,
                                   @Nullable String marker,

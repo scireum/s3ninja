@@ -131,15 +131,17 @@ public class APILog {
      */
     public List<Entry> getEntries(int start, int count) {
         List<Entry> result = Lists.newArrayList();
+        int index = start;
+        int itemsToReturn = count;
         synchronized (entries) {
             Iterator<Entry> iter = entries.iterator();
-            while (iter.hasNext() && start > 0) {
+            while (iter.hasNext() && index > 0) {
                 iter.next();
-                start--;
+                index--;
             }
-            while (iter.hasNext() && count > 0) {
+            while (iter.hasNext() && itemsToReturn > 0) {
                 result.add(iter.next());
-                count--;
+                itemsToReturn--;
             }
         }
 
@@ -156,7 +158,7 @@ public class APILog {
      */
     public void log(String function, String description, Result result, Watch watch) {
         synchronized (entries) {
-            entries.add(0, new Entry(function, description, result.name(), watch.duration()));
+            entries.add(0, new Entry("OBJECT " + function, description, result.name(), watch.duration()));
             if (entries.size() > 250) {
                 entries.remove(entries.size() - 1);
             }

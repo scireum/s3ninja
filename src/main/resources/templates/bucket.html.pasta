@@ -1,0 +1,59 @@
+<i:arg name="bucket" type="ninja.Bucket"/>
+
+<w:page title="bucket.getName()">
+    <i:block name="breadcrumbBar"/>
+
+    <i:invoke template="/templates/header.html.pasta" inline="true"
+              title="@bucket.getName()"
+              subtitle="Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone."/>
+
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="well">
+                <w:fileUpload uploadUrl="@apply('/ui/%s/upload', bucket.getName())"/>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="well">
+                <div class="pull-left">
+                    <i:if test="bucket.isPrivate()">
+                        <a class="btn btn-success" href="/ui/@bucket.getName()/makePublic">Make Public</a>
+                        <i:else>
+                            <a class="btn btn-danger" href="/ui/@bucket.getName()/makePrivate">Make Private</a>
+                        </i:else>
+                    </i:if>
+                </div>
+                <div class="pull-right">
+                    <a class="btn btn-default" href="/ui/@bucket.getName()">
+                        <i class="fa fa-refresh"></i>
+                    </a>
+                </div>
+                <span class="clearfix"></span>
+            </div>
+
+            <w:table data="bucket.getObjects()">
+                <thead>
+                <tr>
+                    <th>Object</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <i:for type="ninja.StoredObject" var="obj" items="bucket.getObjects()">
+                    <tr>
+                        <td>
+                            <a class="link" href="/s3/@bucket.getName()/@obj.getName()?noAuth=true">@obj.getName()</a><br/>
+                            <span class="muted">@obj.getSize()</span>
+                            <span class="muted pull-right">@obj.getLastModified()</span>
+                        </td>
+                        <td class="align-center col-md-2">
+                            <w:deleteLink url="@apply('/ui/%s/%s/delete', bucket.getName(), obj.getName())"/>
+                        </td>
+                    </tr>
+                </i:for>
+                </tbody>
+            </w:table>
+        </div>
+    </div>
+</w:page>

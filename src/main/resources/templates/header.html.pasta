@@ -1,0 +1,22 @@
+<i:arg name="title" type="String" default=""/>
+<i:arg name="subtitle" type="String" default=""/>
+<i:arg name="notice" type="String" default=""/>
+<div class="row">
+    <div class="col-md-8">
+        <div class="header">
+            <h1>@title</h1>
+            <p class="lead">
+                @subtitle<br/>
+                <small style="font-size: 18px">@notice</small>
+            </p>
+            
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="text-center">
+            <a href="/" style="margin-top: 20px">
+                <img id="ninja" src="/assets/images/logo.png" border="0"/>
+            </a>
+        </div>
+    </div>
+</div>

@@ -6,70 +6,77 @@
  * http://www.scireum.de - info@scireum.de
  */
 
-/*
- * Overrides a bootstrap-style to place help texts closer to an input field
- */
-.help-block {
-    margin-top: -10px;
-    font-size: 9pt
-}
+$primary-color:                 #9d2011;
+$linkColor:                     $primary-color;
 
 /*
  * Fixes the margin set by .help-block for checkboxes
  */
 .checkbox-help {
-    margin-top: 0px;
+  margin-top: 0px;
 }
 
 /*
  * Sets the background color for required fields
  */
 input.required {
-    background-color: #ffffef;
+  background-color: #ffffef;
 }
 
 /*
  * Table columns with right alignment
  */
 table td.align-right, table th.align-right, .align-right {
-    text-align: right;
+  text-align: right;
 }
 
 /*
  * Table columns with centered alignment
  */
 table td.align-center, table th.align-center, .align-center {
-    text-align: center;
+  text-align: center;
 }
 
 /*
  * Removes the bottom margin of inline forms within wells
  */
 .well .form-inline {
-    margin: 0px;
+  margin: 0px;
 }
 
 /*
  * Used for thumbnails in tables or lists
  */
 .list-thumbnail {
-    display: inline-block;
-    max-width: 140px;
-    max-height: 80px;
+  display: inline-block;
+  max-width: 140px;
+  max-height: 80px;
 }
 
-.jumbotron {
-    margin: 80px 0;
-    text-align: left;
-    font-family: "Helvetica Neue","Helvetica", sans-serif;
-}
-.jumbotron h1 {
-    font-size: 100px;
+.header {
+  min-height: 218px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  font-family: "Helvetica Neue", "Helvetica", sans-serif;
+
+  h1 {
+    font-size: 60px;
     line-height: 1;
-}
-.jumbotron .lead {
+    text-align: left;
+  }
+  .lead {
     color: #7D7E80;
     font-size: 24px;
     line-height: 1.25;
     text-align: left;
+  }
+}
+
+img#ninja {
+  max-height: 178px;
+}
+
+#create-bucket .input-group .input-group-addon:hover {
+  cursor: pointer;
+  background-color: #858689;
 }

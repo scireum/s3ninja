@@ -1,20 +1,11 @@
-@*
- *  Made with all the love in the world
- *  by scireum in Remshalden, Germany
- *
- *  Copyright by scireum GmbH
- *  http://www.scireum.de - info@scireum.de
- *@
-@args ninja.Bucket bucket
-@extends(view.main.html, title: "License")
+<w:page title="License">
+    <i:block name="breadcrumbBar"/>
 
-@section(header) {
-    <div class="jumbotron">
-        <h1>License</h1>
-    </div>
-}
+    <i:invoke template="/templates/header.html.pasta" inline="true" title="License"/>
 
-<pre>
+    <div class="row">
+        <div class="col-md-12">
+        <pre class="well">
 The MIT License (MIT)
 
 Copyright (c) 2013 scireum GmbH
@@ -36,5 +27,6 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 </pre>
-
-
+        </div>
+    </div>
+</w:page>

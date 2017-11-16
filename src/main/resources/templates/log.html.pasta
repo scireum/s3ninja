@@ -1,0 +1,60 @@
+<i:arg name="entries" type="List"/>
+<i:arg name="canPagePrev" type="boolean"/>
+<i:arg name="canPageNext" type="boolean"/>
+<i:arg name="range" type="String"/>
+<i:arg name="prevStart" type="int"/>
+<i:arg name="nextStart" type="int"/>
+
+<w:page title="Access Logs">
+    <i:block name="breadcrumbBar"/>
+
+    <i:invoke template="/templates/header.html.pasta" inline="true" title="Access Logs"
+              subtitle="All API calls are listed here."
+              notice="Note that this log is stored in memory and will be cleared once the server restarts."/>
+
+    <div class="row">
+        <div class="col-md-12">
+            <w:table data="entries">
+                <thead>
+                <tr>
+                    <th>Function</th>
+                    <th>Description</th>
+                    <th>Result</th>
+                </tr>
+                </thead>
+                <tbody>
+                <i:for type="ninja.APILog$Entry" var="entry" items="entries">
+                    <tr class="@entry.getCSS()">
+                        <td class="col-md-2">@entry.getFunction()<br/><span class="muted">@entry.getTod()</span></td>
+                        <td>@entry.getDescription()</td>
+                        <td class="col-md-2">@entry.getResult()<br/><span class="muted">@entry.getDuration()</span></td>
+                    </tr>
+                </i:for>
+                </tbody>
+            </w:table>
+        </div>
+        <i:if test="!entries.isEmpty()">
+            <nav class="text-center">
+                <ul class="pagination">
+                    <i:if test="canPagePrev">
+                        <li><a href="/ui/log?&start=prevStart">&#8592;</a></li>
+                        <i:else>
+                            <li class="disabled"><span>&#8592;</span></li>
+                        </i:else>
+                    </i:if>
+                    <li><span>@range</span></li>
+                    <i:if test="canPageNext">
+                        <li><a href="/ui/log?start=@nextStart">&#8594;</a></li>
+                        <i:else>
+                            <li class="disabled"><span>&#8594;</span></li>
+                        </i:else>
+                    </i:if>
+                </ul>
+            </nav>
+        </i:if>
+    </div>
+</w:page>
+
+
+
+

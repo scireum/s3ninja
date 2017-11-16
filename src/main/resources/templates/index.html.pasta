@@ -1,0 +1,84 @@
+<i:arg name="buckets" type="List"/>
+<i:arg name="baseUrl" type="String"/>
+<i:arg name="accessKey" type="String"/>
+<i:arg name="secretKey" type="String"/>
+
+<w:page title="Start">
+    <i:block name="breadcrumbBar"/>
+
+    <i:invoke template="/templates/header.html.pasta" inline="true" title="S3 ninja" subtitle="@tagLine"/>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="well">
+                <dl>
+                    <dt>Storage Path</dt>
+                    <dd>
+                        <small>@baseUrl</small>
+                    </dd>
+                </dl>
+                <dl>
+                    <dt>Access Key</dt>
+                    <dd>
+                        <small>@accessKey</small>
+                    </dd>
+                </dl>
+                <dl>
+                    <dt>Secret Key</dt>
+                    <dd>
+                        <small>@secretKey</small>
+                    </dd>
+                </dl>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="well">
+                <div class="pull-left">
+                    <form id="create-bucket" class="form-inline" action="/" method="post">
+                        <div class="input-group">
+                            <input type="text" name="bucketName" class="form-control" placeholder="New Bucket..."
+                                   autofocus/>
+                            <span class="input-group-addon" onclick="$('#create-bucket').submit()">
+                                    <i class="fa fa-plus"></i>
+                                </span>
+                        </div>
+                    </form>
+                </div>
+                <div class="pull-right">
+                    <a class="btn btn-default" href="/">
+                        <i class="fa fa-refresh"></i>
+                    </a>
+                </div>
+                <span class="clearfix"></span>
+            </div>
+
+            <w:table data="buckets">
+                <thead>
+                <tr>
+                    <th>Bucket</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <i:for type="ninja.Bucket" var="bucket" items="buckets">
+                    <tr @if(bucket.isPrivate()) { class="error" }>
+                        <td>
+                            <a class="link" href="/ui/@bucket.getName()">@bucket.getName()</a><br>
+                            <i:if test="bucket.isPrivate()">
+                                <small class="muted">private</small>
+                            </i:if>
+                        </td>
+                        <td class="align-right col-md-2">
+                            <w:deleteLink url="@apply('/ui/%s/delete', bucket.getName())"/>
+                        </td>
+                    </tr>
+                </i:for>
+                </tbody>
+            </w:table>
+        </div>
+    </div>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta" inline="true"/>
+    </i:block>
+</w:page>

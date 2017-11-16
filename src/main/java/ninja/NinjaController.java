@@ -21,6 +21,7 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.nls.NLS;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Message;
 import sirius.web.controller.Routed;
@@ -28,6 +29,7 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
+import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -56,7 +58,7 @@ public class NinjaController implements Controller {
             UserContext.message(Message.error(e.getMessage()));
         }
         ctx.respondWith()
-           .template("view/index.html",
+           .template("templates/index.html.pasta",
                      buckets,
                      storage.getBasePath(),
                      storage.getAwsAccessKey(),
@@ -90,7 +92,7 @@ public class NinjaController implements Controller {
      */
     @Routed(value = "/ui/license", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void license(WebContext ctx) {
-        ctx.respondWith().template("view/license.html");
+        ctx.respondWith().template("templates/license.html.pasta");
     }
 
     /**
@@ -100,7 +102,7 @@ public class NinjaController implements Controller {
      */
     @Routed(value = "/ui/api", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void api(WebContext ctx) {
-        ctx.respondWith().template("view/api.html");
+        ctx.respondWith().template("templates/api.html.pasta");
     }
 
     /**
@@ -120,7 +122,7 @@ public class NinjaController implements Controller {
             entries.remove(entries.size() - 1);
         }
         ctx.respondWith()
-           .template("view/log.html",
+           .template("templates/log.html.pasta",
                      entries,
                      canPagePrev,
                      canPageNext,
@@ -141,7 +143,7 @@ public class NinjaController implements Controller {
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
-        ctx.respondWith().template("view/bucket.html", bucket);
+        ctx.respondWith().template("templates/bucket.html.pasta", bucket);
     }
 
     /**
@@ -183,15 +185,15 @@ public class NinjaController implements Controller {
      * @param ctx    the context describing the current request
      * @param bucket the name of the target bucket
      */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload")
-    public void uploadFile(WebContext ctx, String bucket) {
+    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true)
+    public void uploadFile(WebContext ctx, JSONStructuredOutput out, String bucket) {
         try {
             String name = ctx.get("filename").asString(ctx.get("qqfile").asString());
             Bucket storageBucket = storage.getBucket(bucket);
             StoredObject object = storageBucket.getObject(name);
             try (InputStream inputStream = ctx.getContent()) {
-                try (FileOutputStream out = new FileOutputStream(object.getFile())) {
-                    ByteStreams.copy(inputStream, out);
+                try (FileOutputStream fos = new FileOutputStream(object.getFile())) {
+                    ByteStreams.copy(inputStream, fos);
                 }
             }
 
@@ -203,7 +205,9 @@ public class NinjaController implements Controller {
             properties.put("Content-MD5", md5);
             object.storeProperties(properties);
 
-            ctx.respondWith().direct(HttpResponseStatus.OK, "{ success: true }");
+            out.property("message", "File successfully uploaded.");
+            out.property("action", "/ui/" + bucket);
+            out.property("actionLabel", NLS.get("NLS.refresh"));
         } catch (IOException e) {
             UserContext.handle(e);
             ctx.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");

@@ -17,7 +17,7 @@
         <version>3.11.2</version>
     </parent>
     <artifactId>s3ninja</artifactId>
-    <version>2.9.2</version>
+    <version>3.0</version>
     <packaging>jar</packaging>
     <name>s3-ninja</name>
     <description>S3 ninja emulates the S3 API for development and testing purposes.</description>
@@ -32,17 +32,17 @@
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-web</artifactId>
-            <version>8.10.1</version>
+            <version>11.3</version>
         </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
-            <version>6.13.3</version>
+            <version>7.0.1</version>
         </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
-            <version>6.13.3</version>
+            <version>7.0.1</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

@@ -31,10 +31,10 @@ import static com.google.common.io.BaseEncoding.base16;
  */
 @Register(classes = Aws4HashCalculator.class)
 public class Aws4HashCalculator {
-    
-    protected static final Pattern AWS_AUTH4_PATTERN = Pattern.compile(
-            "AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^," +
-                    "]+), Signature=(.+)");
+
+    protected static final Pattern AWS_AUTH4_PATTERN =
+            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,"
+                            + "]+), Signature=(.+)");
 
     @Part
     private Storage storage;
@@ -64,38 +64,29 @@ public class Aws4HashCalculator {
      *
      * @param ctx the current request to fetch parameters from
      * @return the computes hash value
+     * @throws InvalidKeyException when hashing fails
+     * @throws NoSuchAlgorithmException when hashing fails
      */
     public String computeHash(WebContext ctx) throws InvalidKeyException, NoSuchAlgorithmException {
         final MatchResult aws4Header = initializedMatcher(ctx);
 
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), aws4Header.group(2));
-        byte[] dateRegionKey = hmacSHA256(dateKey, aws4Header.group(3));
+        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), getAWS4Date(aws4Header));
+        byte[] dateRegionKey = hmacSHA256(dateKey, getAWS4Region(aws4Header));
         byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, "s3");
         byte[] signingKey = hmacSHA256(dateRegionServiceKey, "aws4_request");
 
-        byte[] signedData = hmacSHA256(signingKey, buildStringToSign(ctx));
+        byte[] signedData = hmacSHA256(signingKey, buildStringToSign(ctx, aws4Header));
         return base16().lowerCase().encode(signedData);
     }
 
-    private String buildStringToSign(final WebContext ctx) {
-        final StringBuilder canonicalRequest = buildCanonicalRequest(ctx);
-        final MatchResult aws4Header = initializedMatcher(ctx);
-        return "AWS4-HMAC-SHA256\n" +
-                getAmazonDateHeader(ctx) +
-                "\n" +
-                getAmazonDateHeader(ctx).substring(0, 8) +
-                "/" +
-                aws4Header.group(3) +
-                "/s3/aws4_request\n" +
-                hashedCanonicalRequest(canonicalRequest);
+    private String buildStringToSign(final WebContext ctx, final MatchResult aws4Header) {
+        final StringBuilder canonicalRequest = buildCanonicalRequest(ctx, getAWS4SignedHeaders(aws4Header));
+        final String amazonDateHeader = ctx.getHeaderValue("x-amz-date").asString();
+        return "AWS4-HMAC-SHA256\n" + amazonDateHeader + "\n" + amazonDateHeader.substring(0, 8) + "/" + getAWS4Region(
+                aws4Header) + "/s3/aws4_request\n" + hashedCanonicalRequest(canonicalRequest);
     }
 
-    private String getAmazonDateHeader(final WebContext ctx) {
-        return ctx.getHeaderValue("x-amz-date").asString();
-    }
-
-    private StringBuilder buildCanonicalRequest(final WebContext ctx) {
-        final MatchResult aws4Header = initializedMatcher(ctx);
+    private StringBuilder buildCanonicalRequest(final WebContext ctx, final String signedHeaders) {
         StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().method().name());
         canonicalRequest.append("\n");
         canonicalRequest.append(ctx.getRequestedURI());
@@ -103,17 +94,29 @@ public class Aws4HashCalculator {
         canonicalRequest.append(ctx.getQueryString());
         canonicalRequest.append("\n");
 
-        for (String name : aws4Header.group(4).split(";")) {
+        for (String name : signedHeaders.split(";")) {
             canonicalRequest.append(name.trim());
             canonicalRequest.append(":");
             canonicalRequest.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
             canonicalRequest.append("\n");
         }
         canonicalRequest.append("\n");
-        canonicalRequest.append(aws4Header.group(4));
+        canonicalRequest.append(signedHeaders);
         canonicalRequest.append("\n");
         canonicalRequest.append(ctx.getHeader("x-amz-content-sha256"));
         return canonicalRequest;
+    }
+
+    private String getAWS4Date(MatchResult aws4Header) {
+        return aws4Header.group(2);
+    }
+
+    private String getAWS4Region(MatchResult aws4Header) {
+        return aws4Header.group(3);
+    }
+
+    private String getAWS4SignedHeaders(MatchResult aws4Header) {
+        return aws4Header.group(4);
     }
 
     private String hashedCanonicalRequest(final StringBuilder canonicalRequest) {

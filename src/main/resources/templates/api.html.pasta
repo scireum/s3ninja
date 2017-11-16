@@ -1,0 +1,37 @@
+<w:page title="Supported API">
+    <i:block name="breadcrumbBar"/>
+
+    <i:invoke template="/templates/header.html.pasta" inline="true" title="Supported API"/>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="well">
+                <p>Basically all object methods are supported. However no ACLs are checked. If the bucket is public,
+                    everyone can
+                    access its contents.
+                    Otherwise a valid hash has to be provided as Authorization header. The hash will be checked as
+                    expected by amazon, but no multiline-headers are supported yet. (Multi-value headers are supported).
+                </p>
+                <legend>Supported Methods</legend>
+                <ul>
+                    <li>GET /bucket</li>
+                    <li>GET /bucket/object</li>
+                    <li>PUT /bucket</li>
+                    <li>PUT /bucket/object</li>
+                    <li>DELETE /bucket/object</li>
+                    <li>DELETE /bucket</li>
+                    <li>HEAD /bucket</li>
+                    <li>HEAD /bucket/object</li>
+                </ul>
+                <legend>Supported Multipart Methods</legend>
+                <ul>
+                    <li>POST /bucket/object?uploads</li>
+                    <li>GET /bucket/object?uploadId=X</li>
+                    <li>PUT /bucket/object?uploadId=X&partNumber=Y</li>
+                    <li>POST /bucket/object?uploadId=X</li>
+                    <li>DELETE /bucket/object?uploadId=X</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</w:page>

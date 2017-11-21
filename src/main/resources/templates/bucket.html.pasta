@@ -1,6 +1,6 @@
 <i:arg name="bucket" type="ninja.Bucket"/>
 
-<w:page title="bucket.getName()">
+<w:page title="@bucket.getName()">
     <i:block name="breadcrumbBar"/>
 
     <i:invoke template="/templates/header.html.pasta" inline="true"

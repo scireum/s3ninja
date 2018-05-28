@@ -84,22 +84,6 @@ public class Bucket {
     }
 
     /**
-     * Returns a list of all stored objects
-     *
-     * @return a list of all objects in the bucket.
-     */
-    public List<StoredObject> getObjects() {
-        List<StoredObject> result = Lists.newArrayList();
-        for (File child : file.listFiles()) {
-            if (child.isFile() && !child.getName().startsWith("__")) {
-                result.add(new StoredObject(child));
-            }
-        }
-
-        return result;
-    }
-
-    /**
      * Returns a list of at most the provided number of stored objects
      *
      * @param output the xml structured output the list of objects should be written to

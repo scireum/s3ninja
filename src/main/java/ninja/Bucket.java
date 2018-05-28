@@ -8,7 +8,6 @@
 
 package ninja;
 
-import com.google.common.collect.Lists;
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.health.Exceptions;

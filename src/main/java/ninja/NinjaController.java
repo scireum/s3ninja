@@ -24,6 +24,7 @@ import sirius.kernel.health.HandledException;
 import sirius.kernel.nls.NLS;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Message;
+import sirius.web.controller.Page;
 import sirius.web.controller.Routed;
 import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
@@ -143,7 +144,10 @@ public class NinjaController implements Controller {
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
-        ctx.respondWith().template("templates/bucket.html.pasta", bucket);
+        ctx.respondWith()
+           .template("templates/bucket.html.pasta",
+                     bucket,
+                     bucket.getPage(ctx.get(Page.PARAM_START).asInt(1), ctx.get(Page.PARAM_QUERY).asString()));
     }
 
     /**

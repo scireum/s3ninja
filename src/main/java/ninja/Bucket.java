@@ -8,19 +8,23 @@
 
 package ninja;
 
-import com.google.common.collect.Lists;
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
+import sirius.web.controller.Page;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Represents a bucket.
@@ -29,6 +33,8 @@ import java.util.List;
  * </p>
  */
 public class Bucket {
+
+    private static final int PAGE_SIZE = 25;
 
     private File file;
     private static Cache<String, Boolean> publicAccessCache = CacheManager.createCache("public-bucket-access");
@@ -74,22 +80,6 @@ public class Bucket {
      */
     public boolean create() {
         return !file.exists() && file.mkdirs();
-    }
-
-    /**
-     * Returns a list of all stored objects
-     *
-     * @return a list of all objects in the bucket.
-     */
-    public List<StoredObject> getObjects() {
-        List<StoredObject> result = Lists.newArrayList();
-        for (File child : file.listFiles()) {
-            if (child.isFile() && !child.getName().startsWith("__")) {
-                result.add(new StoredObject(child));
-            }
-        }
-
-        return result;
     }
 
     /**
@@ -190,5 +180,45 @@ public class Bucket {
                             .handle();
         }
         return new StoredObject(new File(file, id));
+    }
+
+    /**
+     * Get a {@link Page} of {@link StoredObject}s, starting at <tt>start</tt> with a page size of {@value PAGE_SIZE}
+     * items. With the <tt>query</tt> parameter you can filter for files containing the query in the file name.
+     *
+     * @param start where to start the page
+     * @param query a search query
+     * @return the {@link Page} for the given parameters
+     */
+    public Page<StoredObject> getPage(int start, String query) {
+        List<StoredObject> files = getObjects(query);
+
+        // because lists start at 0 and pages start at 1, the startIndex is start - 1.
+        int startingIndex = start - 1;
+
+        return new Page<StoredObject>().withStart(start)
+                                       .withTotalItems(files.size())
+                                       .withQuery(query)
+                                       .withHasMore(startingIndex + PAGE_SIZE < files.size())
+                                       .withItems(files.subList(startingIndex,
+                                                                Math.min(startingIndex + PAGE_SIZE, files.size())));
+    }
+
+    /**
+     * Get all files which file names contain the query. Leave the query empty to get all files.
+     *
+     * @param query The query to filter for
+     * @return All files which contain the query
+     */
+    public List<StoredObject> getObjects(@Nonnull String query) {
+        if (file.listFiles() == null) {
+            return new ArrayList<>();
+        }
+        return Arrays.stream(file.listFiles())
+                     .filter(currentFile -> currentFile.getName().contains(query)
+                                            && currentFile.isFile()
+                                            && !currentFile.getName().startsWith("__"))
+                     .map(StoredObject::new)
+                     .collect(Collectors.toList());
     }
 }

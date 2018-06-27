@@ -21,10 +21,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Represents a bucket.
@@ -191,34 +191,59 @@ public class Bucket {
      * @return the {@link Page} for the given parameters
      */
     public Page<StoredObject> getPage(int start, String query) {
-        List<StoredObject> files = getObjects(query);
-
         // because lists start at 0 and pages start at 1, the startIndex is start - 1.
         int startingIndex = start - 1;
 
+        List<StoredObject> files = getObjects(query, startingIndex, PAGE_SIZE);
+
+        int size = countObjects(query);
+
         return new Page<StoredObject>().withStart(start)
-                                       .withTotalItems(files.size())
+                                       .withTotalItems(size)
                                        .withQuery(query)
-                                       .withHasMore(startingIndex + PAGE_SIZE < files.size())
-                                       .withItems(files.subList(startingIndex,
-                                                                Math.min(startingIndex + PAGE_SIZE, files.size())));
+                                       .withHasMore(startingIndex + PAGE_SIZE < size)
+                                       .withItems(files);
     }
 
     /**
-     * Get all files which file names contain the query. Leave the query empty to get all files.
+     * Get <tt>size</tt> number of files, starting at <tt>start</tt>. Only get files containing the query. Leave the
+     * query empty to get all files.
      *
      * @param query The query to filter for
+     * @param start The start index
+     * @param size  The number of files
      * @return All files which contain the query
      */
-    public List<StoredObject> getObjects(@Nonnull String query) {
-        if (file.listFiles() == null) {
-            return new ArrayList<>();
+    public List<StoredObject> getObjects(@Nonnull String query, int start, int size) {
+        try (Stream<Path> stream = Files.list(file.toPath())) {
+            return stream.skip(start)
+                         .map(Path::toFile)
+                         .filter(currentFile -> currentFile.getName().contains(query)
+                                                && currentFile.isFile()
+                                                && !currentFile.getName().startsWith("__"))
+                         .limit(size)
+                         .map(StoredObject::new)
+                         .collect(Collectors.toList());
+        } catch (IOException e) {
+            throw Exceptions.createHandled().error(e).handle();
         }
-        return Arrays.stream(file.listFiles())
-                     .filter(currentFile -> currentFile.getName().contains(query)
-                                            && currentFile.isFile()
-                                            && !currentFile.getName().startsWith("__"))
-                     .map(StoredObject::new)
-                     .collect(Collectors.toList());
+    }
+
+    /**
+     * Count the files containing the query. Leave the query empty to count all files.
+     *
+     * @param query The query to filter for
+     * @return The number of files in the bucket matching the query
+     */
+    public int countObjects(@Nonnull String query) {
+        try (Stream<Path> stream = Files.list(file.toPath())) {
+            return Math.toIntExact(stream.map(Path::toFile)
+                                         .filter(currentFile -> currentFile.getName().contains(query)
+                                                                && currentFile.isFile()
+                                                                && !currentFile.getName().startsWith("__"))
+                                         .count());
+        } catch (IOException e) {
+            throw Exceptions.createHandled().error(e).handle();
+        }
     }
 }

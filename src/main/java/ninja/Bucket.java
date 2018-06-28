@@ -225,7 +225,7 @@ public class Bucket {
                          .map(StoredObject::new)
                          .collect(Collectors.toList());
         } catch (IOException e) {
-            throw Exceptions.createHandled().error(e).handle();
+            throw Exceptions.handle(e);
         }
     }
 
@@ -243,7 +243,7 @@ public class Bucket {
                                                                 && !currentFile.getName().startsWith("__"))
                                          .count());
         } catch (IOException e) {
-            throw Exceptions.createHandled().error(e).handle();
+            throw Exceptions.handle(e);
         }
     }
 }

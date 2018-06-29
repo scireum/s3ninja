@@ -216,11 +216,11 @@ public class Bucket {
      */
     public List<StoredObject> getObjects(@Nonnull String query, int start, int size) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
-            return stream.skip(start)
-                         .map(Path::toFile)
+            return stream.map(Path::toFile)
                          .filter(currentFile -> currentFile.getName().contains(query)
                                                 && currentFile.isFile()
                                                 && !currentFile.getName().startsWith("__"))
+                         .skip(start)
                          .limit(size)
                          .map(StoredObject::new)
                          .collect(Collectors.toList());

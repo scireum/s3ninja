@@ -46,6 +46,7 @@ pipeline:
   publish:
     image: plugins/docker
     repo: scireum/s3-ninja
+    dockerfile: Dockerfile
     secrets: [ docker_username, docker_password ]
     tags:
       - ${DRONE_TAG}

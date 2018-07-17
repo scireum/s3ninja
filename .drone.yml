@@ -1,0 +1,54 @@
+clone:
+  git:
+    image: plugins/git
+    volumes:
+    - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+pipeline:
+  compile:
+    image: scireum/sirius-build
+    commands:
+      - mvn clean compile
+    volumes:
+      - /root/.m2:/root/.m2
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    when:
+      event: push
+  test:
+    image: scireum/sirius-build
+    commands:
+      - mvn clean test
+    volumes:
+      - /root/.m2:/root/.m2
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    when:
+      event: pull_request
+  sonar:
+    image: scireum/sirius-build
+    commands:
+      - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
+      - mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test sonar:sonar -Dsonar.projectKey=${DRONE_REPO_NAME}
+    volumes:
+      - /root/.m2:/root/.m2
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    when:
+      event: tag
+  deploy:
+    image: scireum/sirius-build
+    commands:
+      - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
+      - mvn clean package -DskipTests
+    volumes:
+      - /root/.m2:/root/.m2
+      - /root/.gnupg:/root/.gnupg
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    when:
+      event: tag
+  publish:
+    image: plugins/docker
+    repo: scireum/s3-ninja
+    secrets: [ docker_username, docker_password ]
+    tags:
+      - ${DRONE_TAG}
+      - latest
+    when:
+      event: tag

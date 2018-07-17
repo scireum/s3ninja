@@ -10,10 +10,11 @@ package ninja;
 
 import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
+import sirius.kernel.commons.Limit;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.controller.Page;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -183,45 +184,18 @@ public class Bucket {
     }
 
     /**
-     * Get a {@link Page} of {@link StoredObject}s, starting at <tt>start</tt> with a page size of {@value PAGE_SIZE}
-     * items. With the <tt>query</tt> parameter you can filter for files containing the query in the file name.
-     *
-     * @param start where to start the page
-     * @param query a search query
-     * @return the {@link Page} for the given parameters
-     */
-    public Page<StoredObject> getPage(int start, String query) {
-        // because lists start at 0 and pages start at 1, the startIndex is start - 1.
-        int startingIndex = start - 1;
-
-        List<StoredObject> files = getObjects(query, startingIndex, PAGE_SIZE);
-
-        int size = countObjects(query);
-
-        return new Page<StoredObject>().withStart(start)
-                                       .withTotalItems(size)
-                                       .withQuery(query)
-                                       .withHasMore(startingIndex + PAGE_SIZE < size)
-                                       .withItems(files);
-    }
-
-    /**
      * Get <tt>size</tt> number of files, starting at <tt>start</tt>. Only get files containing the query. Leave the
      * query empty to get all files.
      *
-     * @param query The query to filter for
-     * @param start The start index
-     * @param size  The number of files
-     * @return All files which contain the query
+     * @param query the query to filter for
+     * @param limit the limit to apply
+     * @return all files which contain the query
      */
-    public List<StoredObject> getObjects(@Nonnull String query, int start, int size) {
+    public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
             return stream.map(Path::toFile)
-                         .filter(currentFile -> currentFile.getName().contains(query)
-                                                && currentFile.isFile()
-                                                && !currentFile.getName().startsWith("__"))
-                         .skip(start)
-                         .limit(size)
+                         .filter(currentFile -> isMatchingObject(query, currentFile))
+                         .filter(limit.asPredicate())
                          .map(StoredObject::new)
                          .collect(Collectors.toList());
         } catch (IOException e) {
@@ -229,18 +203,22 @@ public class Bucket {
         }
     }
 
+    private boolean isMatchingObject(@Nonnull String query, File currentFile) {
+        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
+                .getName()
+                .startsWith("__");
+    }
+
     /**
      * Count the files containing the query. Leave the query empty to count all files.
      *
-     * @param query The query to filter for
-     * @return The number of files in the bucket matching the query
+     * @param query the query to filter for
+     * @return the number of files in the bucket matching the query
      */
     public int countObjects(@Nonnull String query) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
             return Math.toIntExact(stream.map(Path::toFile)
-                                         .filter(currentFile -> currentFile.getName().contains(query)
-                                                                && currentFile.isFile()
-                                                                && !currentFile.getName().startsWith("__"))
+                                         .filter(currentFile -> isMatchingObject(query, currentFile))
                                          .count());
         } catch (IOException e) {
             throw Exceptions.handle(e);

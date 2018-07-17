@@ -14,35 +14,35 @@
     <parent>
         <groupId>com.scireum</groupId>
         <artifactId>sirius-parent</artifactId>
-        <version>3.11.2</version>
+        <version>5.4</version>
     </parent>
     <artifactId>s3ninja</artifactId>
-    <version>3.1.1</version>
+    <version>DEVELOPMENT-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>s3-ninja</name>
     <description>S3 ninja emulates the S3 API for development and testing purposes.</description>
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sds.releaseArtifact>s3ninja</sds.releaseArtifact>
-        <skipNexusStagingDeployMojo>false</skipNexusStagingDeployMojo>
+        <sirius.kernel>12.0-rc6</sirius.kernel>
+        <sirius.web>19.0-rc4</sirius.web>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-web</artifactId>
-            <version>11.3</version>
+            <version>${sirius.web}</version>
         </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
-            <version>7.0.1</version>
+            <version>${sirius.kernel}</version>
         </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
-            <version>7.0.1</version>
+            <version>${sirius.kernel}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

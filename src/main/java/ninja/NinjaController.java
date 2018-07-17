@@ -79,7 +79,7 @@ public class NinjaController implements Controller {
      */
     @Routed("/")
     public void index(WebContext ctx) {
-        if (ctx.isPOST() && ctx.get("bucketName").isFilled()) {
+        if (ctx.isUnsafePOST() && ctx.get("bucketName").isFilled()) {
             storage.getBucket(ctx.get("bucketName").asString()).create();
             UserContext.message(Message.info("Bucket successfully created."));
         }
@@ -144,10 +144,13 @@ public class NinjaController implements Controller {
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
-        ctx.respondWith()
-           .template("templates/bucket.html.pasta",
-                     bucket,
-                     bucket.getPage(ctx.get(Page.PARAM_START).asInt(1), ctx.get(Page.PARAM_QUERY).asString()));
+
+        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
+
+        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
+        page.withTotalItems(bucket.countObjects(page.getQuery()));
+
+        ctx.respondWith().template("templates/bucket.html.pasta", bucket, page);
     }
 
     /**

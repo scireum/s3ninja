@@ -47,8 +47,22 @@ pipeline:
     image: plugins/docker
     repo: scireum/s3-ninja
     secrets: [ docker_username, docker_password ]
-    auto_tag: true
+    tags:
+      - ${DRONE_TAG}
+      - latest
     volumes:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
+      branch: master
+  publish:
+    image: plugins/docker
+    repo: scireum/s3-ninja
+    secrets: [ docker_username, docker_password ]
+    tags:
+      - ${DRONE_TAG}
+    volumes:
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    when:
+      event: tag
+      branch: !master

@@ -32,7 +32,7 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
-  deploy:
+  package:
     image: scireum/sirius-build
     commands:
       - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
@@ -43,19 +43,7 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
-  publish-latest:
-    image: plugins/docker
-    repo: scireum/s3-ninja
-    secrets: [ docker_username, docker_password ]
-    tags:
-      - ${DRONE_TAG}
-      - latest
-    volumes:
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
-    when:
-      event: tag
-      branch: master
-  publish-tag:
+  publish:
     image: plugins/docker
     repo: scireum/s3-ninja
     secrets: [ docker_username, docker_password ]
@@ -65,5 +53,3 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
-      branch:
-        excludes: [ master ]

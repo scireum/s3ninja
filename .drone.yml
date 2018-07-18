@@ -43,7 +43,7 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
-  publish:
+  publish-latest:
     image: plugins/docker
     repo: scireum/s3-ninja
     secrets: [ docker_username, docker_password ]
@@ -55,7 +55,7 @@ pipeline:
     when:
       event: tag
       branch: master
-  publish:
+  publish-tag:
     image: plugins/docker
     repo: scireum/s3-ninja
     secrets: [ docker_username, docker_password ]
@@ -65,4 +65,5 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
-      branch: !master
+      branch:
+        excludes: [ master ]

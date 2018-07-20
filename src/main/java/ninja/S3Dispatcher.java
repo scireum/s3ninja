@@ -8,6 +8,7 @@
 
 package ninja;
 
+import com.google.common.base.Charsets;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -18,23 +19,23 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.async.CallContext;
+import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
-import sirius.kernel.health.HandledException;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.controller.Controller;
-import sirius.web.controller.Routed;
 import sirius.web.http.InputStreamHandler;
 import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
+import sirius.web.http.WebDispatcher;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -46,11 +47,11 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -62,10 +63,10 @@ import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
 /**
- * Handles calls to the S3 API.
+ * Handles S3 API Calls.
  */
 @Register
-public class S3Controller implements Controller {
+public class S3Dispatcher implements WebDispatcher {
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
@@ -75,14 +76,6 @@ public class S3Controller implements Controller {
     private static final String ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST = "Multipart Upload does not exist";
     private static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
     private static final String PATH_DELIMITER = "/";
-
-    @Override
-    public void onError(WebContext ctx, HandledException error) {
-        signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, error.getMessage());
-    }
-
-    @Part
-    private Storage storage;
 
     @Part
     private APILog log;
@@ -98,24 +91,95 @@ public class S3Controller implements Controller {
     private Counter uploadIdCounter = new Counter();
 
     /**
-     * Formatter for creating iso instant representations
+     * Formatter to create appropriate timestamps as expected by AWS...
      */
-    public static final DateTimeFormatter ISO_INSTANT =
-            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+    public static final DateTimeFormatter RFC822_INSTANT =
+            new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
                                           .toFormatter()
+                                          .withLocale(Locale.ENGLISH)
                                           .withChronology(IsoChronology.INSTANCE)
-                                          .withZone(ZoneOffset.UTC);
+                                          .withZone(ZoneOffset.ofHours(0));
 
     private static final Map<String, String> headerOverrides;
 
     static {
         headerOverrides = Maps.newTreeMap();
-        headerOverrides.put("response-content-type", "Content-Type");
+        headerOverrides.put("response-content-type", HTTP_HEADER_NAME_CONTENT_TYPE);
         headerOverrides.put("response-content-language", "Content-Language");
         headerOverrides.put("response-expires", "Expires");
         headerOverrides.put("response-cache-control", "Cache-Control");
         headerOverrides.put("response-content-disposition", "Content-Disposition");
         headerOverrides.put("response-content-encoding", "Content-Encoding");
+    }
+
+    @Part
+    private Storage storage;
+
+    @Part
+    private Aws4HashCalculator aws4HashCalculator;
+
+    @Override
+    public int getPriority() {
+        return 800;
+    }
+
+    @Override
+    public Callback<WebContext> preparePreDispatch(WebContext ctx) {
+        String uri = getEffectiveURI(ctx);
+        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
+        if (Strings.isEmpty(bucketAndObject.getSecond())) {
+            return null;
+        }
+
+        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
+        if (!bucket.exists()) {
+            return null;
+        }
+
+        InputStreamHandler handler = createInputStreamHandler(ctx);
+        ctx.setContentHandler(handler);
+        return req -> writeObject(req, bucketAndObject.getFirst(), bucketAndObject.getSecond(), handler);
+    }
+
+    private InputStreamHandler createInputStreamHandler(WebContext ctx) {
+        if (aws4HashCalculator.supports(ctx)) {
+            return new SignedChunkHandler();
+        } else {
+            return new InputStreamHandler();
+        }
+    }
+
+    private String getEffectiveURI(WebContext ctx) {
+        String uri = ctx.getRequestedURI();
+        if (uri.startsWith("/s3")) {
+            uri = uri.substring(3);
+        }
+
+        uri = uri.substring(1);
+        return uri;
+    }
+
+    @Override
+    public boolean dispatch(WebContext ctx) throws Exception {
+        String uri = getEffectiveURI(ctx);
+        if (Strings.isEmpty(uri)) {
+            listBuckets(ctx);
+            return true;
+        }
+
+        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
+        if (Strings.isEmpty(bucketAndObject.getSecond())) {
+            bucket(ctx, bucketAndObject.getFirst());
+            return true;
+        }
+
+        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
+        if (!bucket.exists()) {
+            return false;
+        }
+
+        readObject(ctx, bucketAndObject.getFirst(), bucketAndObject.getSecond());
+        return true;
     }
 
     /**
@@ -171,8 +235,7 @@ public class S3Controller implements Controller {
      *
      * @param ctx the context describing the current request
      */
-    @Routed(value = "/s3", priority = 99)
-    public void listBuckets(WebContext ctx) {
+    private void listBuckets(WebContext ctx) {
         HttpMethod method = ctx.getRequest().method();
 
         if (GET == method) {
@@ -190,7 +253,8 @@ public class S3Controller implements Controller {
             for (Bucket bucket : buckets) {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
-                out.property("CreationDate", ISO_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                out.property("CreationDate",
+                             RFC822_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
                 out.endObject();
             }
             out.endObject();
@@ -213,8 +277,7 @@ public class S3Controller implements Controller {
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket of interest
      */
-    @Routed(value = "/s3/:1", priority = 99)
-    public void bucket(WebContext ctx, String bucketName) {
+    private void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
 
         HttpMethod method = ctx.getRequest().method();
@@ -236,24 +299,7 @@ public class S3Controller implements Controller {
             bucket.delete();
             signalObjectSuccess(ctx);
             ctx.respondWith().status(HttpResponseStatus.OK);
-        } else {
-            throw new IllegalArgumentException(ctx.getRequest().method().name());
-        }
-    }
-
-    /**
-     * Dispatching method handling bucket specific calls with content (PUT)
-     *
-     * @param ctx        the context describing the current request
-     * @param bucketName name of the bucket of interest
-     * @param in         input stream with the requests content
-     */
-    @Routed(value = "/s3/:1", priority = 99, preDispatchable = true)
-    public void bucket(WebContext ctx, String bucketName, InputStreamHandler in) {
-        Bucket bucket = storage.getBucket(bucketName);
-
-        HttpMethod method = ctx.getRequest().method();
-        if (PUT == method) {
+        } else if (PUT == method) {
             bucket.create();
             signalObjectSuccess(ctx);
             ctx.respondWith().status(HttpResponseStatus.OK);
@@ -263,18 +309,17 @@ public class S3Controller implements Controller {
     }
 
     /**
-     * Dispatching method handling all object specific calls.
+     * Dispatching method handling all object specific calls which either read or delete the object but do not provide
+     * any data.
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket which contains the object (must exist)
      * @param objectId   name of the object of interest
-     * @param idList     list of object names if the reequest was for multiple objects
      * @throws IOException in case of IO errors and there like
      */
-    @Routed("/s3/:1/:2/**")
-    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList) throws IOException {
+    private void readObject(WebContext ctx, String bucketName, String objectId) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = getIdsAsString(objectId, idList);
+        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
         if (!checkObjectRequest(ctx, bucket, id)) {
@@ -302,20 +347,18 @@ public class S3Controller implements Controller {
     }
 
     /**
-     * Dispatching method handling all object specific calls.
+     * Dispatching method handling all object specific calls which write / provide data.
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket which contains the object (must exist)
      * @param objectId   name of the object of interest
-     * @param idList     list of object names if the reequest was for multiple objects
-     * @param in         input stream with the requests content
+     * @param in         the data to process
      * @throws IOException in case of IO errors and there like
      */
-    @Routed(value = "/s3/:1/:2/**", preDispatchable = true)
-    public void object(WebContext ctx, String bucketName, String objectId, List<String> idList, InputStreamHandler in)
+    private void writeObject(WebContext ctx, String bucketName, String objectId, InputStreamHandler in)
             throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = getIdsAsString(objectId, idList);
+        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
         if (!checkObjectRequest(ctx, bucket, id)) {
@@ -363,18 +406,11 @@ public class S3Controller implements Controller {
         return true;
     }
 
-    private static String getIdsAsString(String objectId, List<String> idList) {
-        List<String> ids = new ArrayList<>();
-        ids.add(objectId);
-        ids.addAll(idList);
-        return ids.stream().filter(Strings::isFilled).collect(Collectors.joining(PATH_DELIMITER)).replace('/', '_');
-    }
-
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            String expectedHash = computeHash(ctx, "");
-            String alternativeHash = computeHash(ctx, "/s3");
+            String expectedHash = hashCalculator.computeHash(ctx, "");
+            String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,
@@ -396,10 +432,6 @@ public class S3Controller implements Controller {
         }
 
         return true;
-    }
-
-    private String computeHash(WebContext ctx, String pathPrefix) {
-        return hashCalculator.computeHash(ctx, pathPrefix);
     }
 
     /**
@@ -451,6 +483,8 @@ public class S3Controller implements Controller {
         try (FileOutputStream out = new FileOutputStream(object.getFile())) {
             ByteStreams.copy(inputStream, out);
         }
+
+        System.out.println(Files.toString(object.getFile(), Charsets.UTF_8));
 
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
@@ -516,7 +550,7 @@ public class S3Controller implements Controller {
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
-        structuredOutput.text(ISO_INSTANT.format(object.getLastModifiedInstant()));
+        structuredOutput.text(RFC822_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
         structuredOutput.beginObject(HTTP_HEADER_NAME_ETAG);
         structuredOutput.text(etag);
@@ -554,7 +588,7 @@ public class S3Controller implements Controller {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               ISO_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -738,24 +772,10 @@ public class S3Controller implements Controller {
     }
 
     private static void delete(File file) {
-        if (file.isDirectory()) {
-            String[] files = file.list();
-            if (files.length == 0) {
-                if (!file.delete()) {
-                    Storage.LOG.WARN("Failed to delete empty directory %s (%s).",
-                                     file.getName(),
-                                     file.getAbsolutePath());
-                }
-            } else {
-                for (String temp : files) {
-                    delete(new File(file, temp));
-                }
-                delete(file);
-            }
-        } else {
-            if (!file.delete()) {
-                Storage.LOG.WARN("Failed to delete file %s (%s).", file.getName(), file.getAbsolutePath());
-            }
+        try {
+            sirius.kernel.commons.Files.delete(file.toPath());
+        } catch (IOException e) {
+            Exceptions.handle(Storage.LOG, e);
         }
     }
 
@@ -805,7 +825,7 @@ public class S3Controller implements Controller {
         for (File part : uploadDir.listFiles()) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
-            out.property("LastModified", ISO_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
+            out.property("LastModified", RFC822_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
                 out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {

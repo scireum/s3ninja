@@ -14,107 +14,155 @@ import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.S3ClientOptions
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.ObjectMetadata
-import com.amazonaws.services.s3.transfer.TransferManager
-import com.amazonaws.services.s3.transfer.TransferManagerConfiguration
+import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
+import com.google.common.io.Files
 import sirius.kernel.BaseSpecification
 
 class AWSSpec extends BaseSpecification {
 
-    public AmazonS3Client getClient() {
-        AWSCredentials credentials = new BasicAWSCredentials("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    AmazonS3Client getClient() {
+        AWSCredentials credentials = new BasicAWSCredentials(
+                "AKIAIOSFODNN7EXAMPLE",
+                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
         AmazonS3Client newClient = new AmazonS3Client(credentials,
-                new ClientConfiguration());
-        newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true));
-        newClient.setEndpoint("http://localhost:9999/s3");
+                                                      new ClientConfiguration())
+        newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true))
+        newClient.setEndpoint("http://localhost:9999/s3")
 
-        return newClient;
+        return newClient
     }
 
-    def "PUT and then HEAD bucket as expected with AWS4 signer"() {
+    def "PUT and then HEAD bucket as expected"() {
         given:
-            def client = getClient();
+        def client = getClient()
         when:
-            if (client.doesBucketExist("test")) {
-                client.deleteBucket("test");
-            }
-            client.createBucket("test");
+        if (client.doesBucketExist("test")) {
+            client.deleteBucket("test")
+        }
+        client.createBucket("test")
         then:
-            client.doesBucketExist("test")
+        client.doesBucketExist("test")
     }
 
-    def "PUT and then DELETE bucket as expected with AWS4 signer"() {
+    def "PUT and then DELETE bucket as expected"() {
         given:
-            def client = getClient();
+        def client = getClient()
         when:
-            if (!client.doesBucketExist("test")) {
-                client.createBucket("test");
-            }
-            client.deleteBucket("test");
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        client.deleteBucket("test")
         then:
-            !client.doesBucketExist("test")
+        !client.doesBucketExist("test")
     }
 
-    def "PUT and then GET work as expected with AWS4 signer"() {
-        given:
-            def client = getClient();
+    def "PUT and then GET file work using TransferManager"() {
         when:
-            client.putObject("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), new ObjectMetadata());
-            def content = new String(ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()), Charsets.UTF_8);
+        def client = getClient()
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        and:
+        File file = File.createTempFile("test", "")
+        file.delete()
+        Files.write("This is a test.", file, Charsets.UTF_8)
+        and:
+        def tm = TransferManagerBuilder.standard().withS3Client(client).build()
+        tm.upload("test", "test", file).waitForUploadResult()
+        and:
+        File download = File.createTempFile("s3-test", "")
+        download.deleteOnExit()
+        tm.download("test", "test", download).waitForCompletion()
         then:
-            content == "Test"
+        Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
     }
 
-    def "PUT and then DELETE work as expected with AWS4 signer"() {
+    def "PUT and then GET work as expected"() {
         given:
-            def client = getClient();
+        def client = getClient()
         when:
-            client.putObject("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), new ObjectMetadata());
-            client.deleteBucket("test");
-            client.getObject("test", "test");
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        and:
+        client.putObject(
+                "test",
+                "test",
+                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        def content = new String(
+                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                Charsets.UTF_8)
         then:
-            AmazonS3Exception e = thrown();
-            e.message == "Not Found (Service: Amazon S3; Status Code: 404; Error Code: 404 Not Found; Request ID: null)"
+        content == "Test"
     }
 
-    def "MultipartUpload and then GET work as expected with AWS4 signer"() {
+    def "PUT and then DELETE work as expected"() {
         given:
-            def client = getClient();
-            def transfer = new TransferManager(client);
-            def config = new TransferManagerConfiguration();
-            def meta = new ObjectMetadata();
-            def message = "Test".getBytes(Charsets.UTF_8);
+        def client = getClient()
         when:
-            config.setMultipartUploadThreshold(1);
-            config.setMinimumUploadPartSize(1);
-            transfer.setConfiguration(config);
-            meta.setContentLength(message.length);
-            def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta);
-            upload.waitForUploadResult();
-            def content = new String(ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()), Charsets.UTF_8);
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        and:
+        client.putObject(
+                "test",
+                "test",
+                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.deleteBucket("test")
+        client.getObject("test", "test")
         then:
-            content == "Test"
+        AmazonS3Exception e = thrown()
+        e.statusCode == 404
     }
 
-    def "MultipartUpload and then DELETE work as expected with AWS4 signer"() {
-        given:
-            def client = getClient();
-            def transfer = new TransferManager(client);
-            def config = new TransferManagerConfiguration();
-            def meta = new ObjectMetadata();
-            def message = "Test".getBytes(Charsets.UTF_8);
+    def "MultipartUpload and then GET work as expected"() {
         when:
-            config.setMultipartUploadThreshold(1);
-            config.setMinimumUploadPartSize(1);
-            transfer.setConfiguration(config);
-            meta.setContentLength(message.length);
-            def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta);
-            upload.waitForUploadResult();
-            client.deleteBucket("test");
-        client.getObject("test", "test");
+        def transfer = TransferManagerBuilder.standard().
+                withS3Client(getClient()).
+                withMultipartUploadThreshold(1).
+                withMinimumUploadPartSize(1).build()
+        def meta = new ObjectMetadata()
+        def message = "Test".getBytes(Charsets.UTF_8)
+        and:
+        if (!getClient().doesBucketExist("test")) {
+            getClient().createBucket("test")
+        }
+        and:
+        meta.setContentLength(message.length)
+        def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta)
+        upload.waitForUploadResult()
+        def content = new String(
+                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                Charsets.UTF_8)
         then:
-            AmazonS3Exception e = thrown();
-            e.message == "Not Found (Service: Amazon S3; Status Code: 404; Error Code: 404 Not Found; Request ID: null)"
+        content == "Test"
+    }
+
+    def "MultipartUpload and then DELETE work as expected"() {
+        when:
+        def client = getClient()
+        def transfer = TransferManagerBuilder.standard().
+                withS3Client(client).
+                withMultipartUploadThreshold(1).
+                withMinimumUploadPartSize(1).build()
+        def meta = new ObjectMetadata()
+        def message = "Test".getBytes(Charsets.UTF_8)
+        and:
+        if (!getClient().doesBucketExist("test")) {
+            getClient().createBucket("test")
+        }
+        and:
+        meta.setContentLength(message.length)
+        def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta)
+        upload.waitForUploadResult()
+        client.deleteBucket("test")
+        client.getObject("test", "test")
+        then:
+        AmazonS3Exception e = thrown()
+        e.statusCode == 404
     }
 }

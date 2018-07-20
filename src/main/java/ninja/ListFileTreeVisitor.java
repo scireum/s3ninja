@@ -75,7 +75,8 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
                 if (numObjects <= limit) {
                     output.beginObject("Contents");
                     output.property("Key", file.getName());
-                    output.property("LastModified", S3Controller.ISO_INSTANT.format(object.getLastModifiedInstant()));
+                    output.property("LastModified",
+                                    S3Dispatcher.RFC822_INSTANT.format(object.getLastModifiedInstant()));
                     output.property("Size", file.length());
                     output.property("StorageClass", "STANDARD");
                     output.property("ETag", getETag(file));

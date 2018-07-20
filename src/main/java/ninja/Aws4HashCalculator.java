@@ -8,7 +8,13 @@
 
 package ninja;
 
+import com.google.common.base.Charsets;
+import com.google.common.hash.Hashing;
+import com.google.common.io.BaseEncoding;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import sirius.kernel.commons.Monoflop;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
@@ -17,13 +23,10 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.regex.MatchResult;
+import java.util.Comparator;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static com.google.common.base.Charsets.UTF_8;
-import static com.google.common.hash.Hashing.sha256;
-import static com.google.common.io.BaseEncoding.base16;
 
 /**
  * Hash calculator for <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html">AWS
@@ -33,7 +36,7 @@ import static com.google.common.io.BaseEncoding.base16;
 public class Aws4HashCalculator {
 
     protected static final Pattern AWS_AUTH4_PATTERN =
-            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,"
+            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+), SignedHeaders=([^,"
                             + "]+), Signature=(.+)");
 
     @Part
@@ -46,17 +49,7 @@ public class Aws4HashCalculator {
      * @return <tt>true</tt> if the request contains an AWS4 auth token, <tt>false</tt>  otherwise.
      */
     public boolean supports(final WebContext ctx) {
-        final Matcher aws4Header = buildMatcher(ctx);
-        return aws4Header.matches();
-    }
-
-    private Matcher initializedMatcher(final WebContext ctx) {
-        Matcher matcher = buildMatcher(ctx);
-        return matcher.matches() ? matcher : null;
-    }
-
-    private Matcher buildMatcher(final WebContext ctx) {
-        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
+        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString("")).matches();
     }
 
     /**
@@ -64,26 +57,37 @@ public class Aws4HashCalculator {
      *
      * @param ctx the current request to fetch parameters from
      * @return the computes hash value
-     * @throws InvalidKeyException when hashing fails
-     * @throws NoSuchAlgorithmException when hashing fails
+     * @throws Exception when hashing fails
      */
-    public String computeHash(WebContext ctx) throws InvalidKeyException, NoSuchAlgorithmException {
-        final MatchResult aws4Header = initializedMatcher(ctx);
+    public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
+        Matcher matcher = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
 
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(UTF_8), getAWS4Date(aws4Header));
-        byte[] dateRegionKey = hmacSHA256(dateKey, getAWS4Region(aws4Header));
-        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, "s3");
-        byte[] signingKey = hmacSHA256(dateRegionServiceKey, "aws4_request");
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Unknown AWS4 auth pattern");
+        }
 
-        byte[] signedData = hmacSHA256(signingKey, buildStringToSign(ctx, aws4Header));
-        return base16().lowerCase().encode(signedData);
+        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), matcher.group(2));
+        byte[] dateRegionKey = hmacSHA256(dateKey, matcher.group(3));
+        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, matcher.group(4));
+        byte[] signingKey = hmacSHA256(dateRegionServiceKey, matcher.group(5));
+
+        byte[] signedData =
+                hmacSHA256(signingKey, buildStringToSign(ctx, matcher.group(6), matcher.group(3), pathPrefix));
+        return BaseEncoding.base16().lowerCase().encode(signedData);
     }
 
-    private String buildStringToSign(final WebContext ctx, final MatchResult aws4Header) {
-        final StringBuilder canonicalRequest = buildCanonicalRequest(ctx, getAWS4SignedHeaders(aws4Header));
+    private String buildStringToSign(final WebContext ctx, String signedHeaders, String region, String pathPrefix) {
+        final StringBuilder canonicalRequest = buildCanonicalRequest(ctx, signedHeaders);
         final String amazonDateHeader = ctx.getHeaderValue("x-amz-date").asString();
-        return "AWS4-HMAC-SHA256\n" + amazonDateHeader + "\n" + amazonDateHeader.substring(0, 8) + "/" + getAWS4Region(
-                aws4Header) + "/s3/aws4_request\n" + hashedCanonicalRequest(canonicalRequest);
+        return "AWS4-HMAC-SHA256\n"
+               + amazonDateHeader
+               + "\n"
+               + amazonDateHeader.substring(0, 8)
+               + "/"
+               + region
+               + pathPrefix
+               + "/aws4_request\n"
+               + hashedCanonicalRequest(canonicalRequest);
     }
 
     private StringBuilder buildCanonicalRequest(final WebContext ctx, final String signedHeaders) {
@@ -91,8 +95,8 @@ public class Aws4HashCalculator {
         canonicalRequest.append("\n");
         canonicalRequest.append(ctx.getRequestedURI());
         canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getQueryString());
-        canonicalRequest.append("\n");
+
+        appendCanonicalQueryString(ctx, canonicalRequest);
 
         for (String name : signedHeaders.split(";")) {
             canonicalRequest.append(name.trim());
@@ -107,26 +111,46 @@ public class Aws4HashCalculator {
         return canonicalRequest;
     }
 
-    private String getAWS4Date(MatchResult aws4Header) {
-        return aws4Header.group(2);
+    private void appendCanonicalQueryString(WebContext ctx, StringBuilder canonicalRequest) {
+        QueryStringDecoder qsd = new QueryStringDecoder(ctx.getRequest().uri(), Charsets.UTF_8);
+
+        List<Tuple<String, List<String>>> queryString = Tuple.fromMap(qsd.parameters());
+        queryString.sort(Comparator.comparing(Tuple::getFirst));
+
+        Monoflop mf = Monoflop.create();
+        for (Tuple<String, List<String>> param : queryString) {
+            if (param.getSecond().isEmpty()) {
+                appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
+            } else {
+                for (String value : param.getSecond()) {
+                    appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
+                }
+            }
+        }
+
+        canonicalRequest.append("\n");
     }
 
-    private String getAWS4Region(MatchResult aws4Header) {
-        return aws4Header.group(3);
-    }
-
-    private String getAWS4SignedHeaders(MatchResult aws4Header) {
-        return aws4Header.group(4);
+    private void appendQueryStringValue(String name,
+                                        String value,
+                                        StringBuilder canonicalRequest,
+                                        boolean successiveCall) {
+        if (successiveCall) {
+            canonicalRequest.append("&");
+        }
+        canonicalRequest.append(Strings.urlEncode(name));
+        canonicalRequest.append("=");
+        canonicalRequest.append(Strings.urlEncode(value));
     }
 
     private String hashedCanonicalRequest(final StringBuilder canonicalRequest) {
-        return sha256().hashString(canonicalRequest, UTF_8).toString();
+        return Hashing.sha256().hashString(canonicalRequest, Charsets.UTF_8).toString();
     }
 
     private byte[] hmacSHA256(byte[] key, String value) throws NoSuchAlgorithmException, InvalidKeyException {
         SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(keySpec);
-        return mac.doFinal(value.getBytes(UTF_8));
+        return mac.doFinal(value.getBytes(Charsets.UTF_8));
     }
 }

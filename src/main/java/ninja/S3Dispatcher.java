@@ -142,7 +142,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext ctx) {
-        if (aws4HashCalculator.supports(ctx)) {
+        if (aws4HashCalculator.supports(ctx) && ctx.getRequest().method() == PUT) {
             return new SignedChunkHandler();
         } else {
             return new InputStreamHandler();
@@ -199,7 +199,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         m = AWS_AUTH4_PATTERN.matcher(authentication);
         if (m.matches()) {
-            return m.group(5);
+            return m.group(7);
         }
 
         return null;
@@ -247,6 +247,7 @@ public class S3Dispatcher implements WebDispatcher {
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
                             Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+            out.property("hint", "Goto: " + ctx.getRequestedURL() + "/ui to visit the admin UI");
             outputOwnerInfo(out, "Owner");
 
             out.beginObject("Buckets");
@@ -279,6 +280,10 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
+
+        if (!objectCheckAuth(ctx, bucket)) {
+            return;
+        }
 
         HttpMethod method = ctx.getRequest().method();
 

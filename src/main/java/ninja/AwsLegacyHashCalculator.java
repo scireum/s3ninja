@@ -18,9 +18,6 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.UnsupportedEncodingException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -66,14 +63,10 @@ public class AwsLegacyHashCalculator {
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
      * @param ctx        the current request to fetch parameters from
-     * @param pathPrefix the path prefix to append to the current uri
      * @return the computes hash value
-     * @throws InvalidKeyException          when hashing fails
-     * @throws NoSuchAlgorithmException     when hashing fails
-     * @throws UnsupportedEncodingException when hashing fails
+     * @throws Exception when hashing fails
      */
-    public String computeHash(WebContext ctx, String pathPrefix)
-            throws NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException {
+    public String computeHash(WebContext ctx) throws Exception {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
@@ -100,7 +93,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append(ctx.getRequestedURI().substring(3));
+        stringToSign.append(ctx.getRequestedURI());
 
         char separator = '?';
         for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {

@@ -52,11 +52,11 @@ public class AwsHashCalculator {
     }
 
     private String doComputeHash(final WebContext ctx, final String pathPrefix)
-            throws NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException {
+            throws Exception {
         if (aws4HashCalculator.supports(ctx)) {
-            return aws4HashCalculator.computeHash(ctx);
+            return aws4HashCalculator.computeHash(ctx, pathPrefix);
         } else {
-            return legacyHashCalculator.computeHash(ctx, pathPrefix);
+            return legacyHashCalculator.computeHash(ctx);
         }
     }
 }

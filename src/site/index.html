@@ -48,30 +48,21 @@
             <div class="jumbotron">
                 <h1>S3 ninja</h1>
                 <p class="lead">S3 ninja emulates the S3 API for development and testing purposes.</p>
-                <a href="https://oss.sonatype.org/content/groups/public/com/scireum/s3ninja/" class="btn btn-large btn-success">Download</a>
+                <a href="https://hub.docker.com/r/scireum/s3-ninja/" class="btn btn-large btn-success">Download</a>
                 <a href="https://github.com/scireum/s3ninja" target="_blank" class="btn btn-large">Contribute</a>
             </div>
             <legend>Screenshot</legend>
             <ul class="thumbnails">
                 <li><a href="assets/images/screenie.png" target="_blank" class="thumbnail"><img src="assets/images/screenie_min.jpg" /></a></li>
             </ul>
-            <legend>Install</legend>
+            <legend>Use</legend>
             <div class="well">
                 <ol>
-                    <li><a href="https://oss.sonatype.org/content/groups/public/com/scireum/s3ninja/">Download</a> the release as ZIP file.</li>
-                    <li>Unzip into your favorite directory.</li>
-                    <li>To change the configuration create a file instance.conf in the root directory and adapt the
-                        settings. Most
-                        of the configuration can be found in app/application.conf - Do not modify this file, as it will
-                        be
-                        overridden with the next patch.
-                    </li>
-                    <li>Start the ninja using <b>sirius.sh start</b> (on any UNIX platform with java in the PATH) or
-                        <b>java IPL</b> to start it manually
-                    </li>
-                    <li>Navigate to <a href="http://localhost:9444" target="_blank">http://localhost:9444</a> - or the port you set with http.port in the config.</li>
-                    <li>Run S3 API-Calls against <b>http://localhost:9444/s3</b> (e.g. http://localhost:9444/s3/test-bucket/test-object)</li>
-                    <li>Use <b>sirius.sh stop</b> or <b>java -Dkill=true -Dport=9191 IPL</b> to terminate the server</li>
+                    <li>A readily packaged docker image is available at <a href="https://hub.docker.com/r/scireum/s3-ninja/">scireum/s3-ninja</a></li>
+                    <li>Run like <b>docker run scireum/s3-ninja -p 9444:80</b></li>
+                    <li>Navigate to <a href="http://localhost:9444/ui" target="_blank">http://localhost:9444/ui</a></li>
+                    <li>Run S3 API-Calls against <b>http://localhost:9444/</b> (e.g. http://localhost:9444/test-bucket/test-object)</li>
+                    <li>Provide an volume for <b>/var/s3/data</b> to persist data accross restarts.</li>
                 </ol>
             </div>
             <legend>API</legend>
@@ -89,7 +80,7 @@
             <pre>
 The MIT License (MIT)
 
-Copyright (c) 2015 scireum GmbH
+Copyright (c) 2018 scireum GmbH
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -123,15 +114,5 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         <small class="muted">F**k me on <a href="https://github.com/scireum/s3ninja">GitHub</a></small>
     </div>
 </div>
-<script>
-    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-        (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-            m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
-
-    ga('create', 'UA-257988-24', 's3ninja.net');
-    ga('send', 'pageview');
-
-</script>
 </body>
 </html>

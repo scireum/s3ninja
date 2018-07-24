@@ -1,4 +1,4 @@
-<w:menuItem title="Home" url="/" />
+<w:menuItem title="Home" url="/ui" />
 <w:menuItem title="Access Logs" url="/ui/log" />
 <w:menuItem title="License" url="/ui/license" />
 <w:menuItem title="Supported API" url="/ui/api"/>

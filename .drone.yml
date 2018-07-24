@@ -53,3 +53,12 @@ pipeline:
       - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
     when:
       event: tag
+  site:
+    image: scireum/sirius-build
+    commands:
+      - rsync -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/
+    volumes:
+      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+      - /root/.ssh:/root/.ssh
+    when:
+      event: tag

@@ -93,7 +93,7 @@ public class Aws4HashCalculator {
     private StringBuilder buildCanonicalRequest(final WebContext ctx, final String signedHeaders) {
         StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().method().name());
         canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getRequestedURI());
+        canonicalRequest.append(ctx.getRawRequestedURI());
         canonicalRequest.append("\n");
 
         appendCanonicalQueryString(ctx, canonicalRequest);

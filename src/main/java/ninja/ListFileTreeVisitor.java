@@ -76,7 +76,9 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
                     output.beginObject("Contents");
                     output.property("Key", file.getName());
                     output.property("LastModified",
-                                    S3Dispatcher.RFC822_INSTANT.format(object.getLastModifiedInstant()));
+                            S3Dispatcher.iso8601DateFormat.print(object.getFile().lastModified()));
+                    output.property("Last-Modified",
+                            S3Dispatcher.iso8601DateFormat.print(object.getFile().lastModified()));
                     output.property("Size", file.length());
                     output.property("StorageClass", "STANDARD");
                     output.property("ETag", getETag(file));

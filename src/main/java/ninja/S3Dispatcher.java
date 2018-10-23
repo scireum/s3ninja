@@ -18,6 +18,10 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import org.joda.time.DateTimeZone;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.ISODateTimeFormat;
+import org.joda.time.tz.FixedDateTimeZone;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Strings;
@@ -42,11 +46,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.chrono.IsoChronology;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -90,16 +89,28 @@ public class S3Dispatcher implements WebDispatcher {
 
     private Counter uploadIdCounter = new Counter();
 
-    /**
-     * Formatter to create appropriate timestamps as expected by AWS...
-     */
-    public static final DateTimeFormatter RFC822_INSTANT =
-            new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
-                                          .toFormatter()
-                                          .withLocale(Locale.ENGLISH)
-                                          .withChronology(IsoChronology.INSTANCE)
-                                          .withZone(ZoneOffset.ofHours(0));
+    private static final DateTimeZone GMT = new FixedDateTimeZone("GMT", "GMT", 0, 0);
 
+    /** ISO 8601 format */
+    static final org.joda.time.format.DateTimeFormatter iso8601DateFormat =
+            ISODateTimeFormat.dateTime().withZone(GMT);
+
+    /** Alternate ISO 8601 format without fractional seconds */
+    static final org.joda.time.format.DateTimeFormatter alternateIso8601DateFormat =
+            DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(GMT);
+
+    /** RFC 822 format */
+    static final org.joda.time.format.DateTimeFormatter rfc822DateFormat =
+            DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
+                    .withLocale(Locale.US)
+                    .withZone(GMT);
+
+    /**
+     * This is another ISO 8601 format that's used in clock skew error response
+     */
+    protected static final org.joda.time.format.DateTimeFormatter compressedIso8601DateFormat =
+            DateTimeFormat.forPattern("yyyyMMdd'T'HHmmss'Z'")
+                    .withZone(GMT);
     private static final Map<String, String> headerOverrides;
 
     static {
@@ -125,6 +136,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     @Override
     public Callback<WebContext> preparePreDispatch(WebContext ctx) {
+
         String uri = getEffectiveURI(ctx);
         Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
         if (Strings.isEmpty(bucketAndObject.getSecond())) {
@@ -254,8 +266,7 @@ public class S3Dispatcher implements WebDispatcher {
             for (Bucket bucket : buckets) {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
-                out.property("CreationDate",
-                             RFC822_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                out.property("CreationDate", iso8601DateFormat.print(bucket.getFile().lastModified()));
                 out.endObject();
             }
             out.endObject();
@@ -499,9 +510,12 @@ public class S3Dispatcher implements WebDispatcher {
                 properties.put(name, ctx.getHeader(name));
             }
         }
+        properties.put("Last-Modified", rfc822DateFormat.print(object.getLastModifiedInstant().getEpochSecond()));
+
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
         String contentMd5 = properties.get("Content-MD5");
+
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
             signalObjectError(ctx,
@@ -555,7 +569,7 @@ public class S3Dispatcher implements WebDispatcher {
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
-        structuredOutput.text(RFC822_INSTANT.format(object.getLastModifiedInstant()));
+        structuredOutput.text(iso8601DateFormat.print(object.getLastModifiedInstant().getEpochSecond()));
         structuredOutput.endObject();
         structuredOutput.beginObject(HTTP_HEADER_NAME_ETAG);
         structuredOutput.text(etag);
@@ -590,10 +604,11 @@ public class S3Dispatcher implements WebDispatcher {
         if (sendFile) {
             response.file(object.getFile());
         } else {
+
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               rfc822DateFormat.print(object.getFile().lastModified()));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -830,7 +845,7 @@ public class S3Dispatcher implements WebDispatcher {
         for (File part : uploadDir.listFiles()) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
-            out.property("LastModified", RFC822_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
+            out.property("LastModified", rfc822DateFormat.print(part.lastModified()));
             try {
                 out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {

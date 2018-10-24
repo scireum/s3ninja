@@ -73,11 +73,11 @@ abstract class BaseAWSSpec extends BaseSpecification {
         and:
         client.putObject(
                 "test",
-                "test",
+                "path/to/file",
                 new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
         def content = new String(
-                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                ByteStreams.toByteArray(client.getObject("test", "path/to/file").getObjectContent()),
                 Charsets.UTF_8)
         then:
         content == "Test"

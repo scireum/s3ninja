@@ -51,7 +51,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         useLimit = limit > 0;
         usePrefix = Strings.isFilled(prefix);
         if (usePrefix) {
-            this.prefix = prefix.replace('/', '_');
+            this.prefix = prefix.replace('/', S3Dispatcher.SLASH_ENCODING);
         }
         markerReached = Strings.isEmpty(marker);
     }
@@ -74,7 +74,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
                 long numObjects = objectCount.inc();
                 if (numObjects <= limit) {
                     output.beginObject("Contents");
-                    output.property("Key", file.getName());
+                    output.property("Key", file.getName().replace(S3Dispatcher.SLASH_ENCODING, '/'));
                     output.property("LastModified",
                                     S3Dispatcher.RFC822_INSTANT.format(object.getLastModifiedInstant()));
                     output.property("Size", file.length());

@@ -20,21 +20,51 @@ import java.io.IOException;
  * This seems to do the job for a test / mock sever for now.
  */
 class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
+
+    private int remainingData = -1;
+
     @Override
     public void handle(ByteBuf content, boolean last) throws IOException {
         if (!content.isReadable()) {
             super.handle(content, last);
             return;
         }
-        String lengthString = readChunkLengthHex(content);
-        int lengthOfData = Integer.parseInt(lengthString, 16);
 
-        skipSignature(content);
+        if (remainingData >= content.capacity()) {
+            // the whole content buffer contains payload data => process immediately
+            handlePartially(content, content.capacity(), last);
+            return;
+        }
 
-        super.handle(content.slice(content.readerIndex(), lengthOfData), last);
+        if (remainingData > 0) {
+            // a part of the content buffer contains payload data => process the rest immediately
+            handlePartially(content, remainingData, false);
+            content.readerIndex(content.readerIndex() + remainingData);
+        }
+
+        // remainingData must be <= 0 at this place
+
+        if (content.readableBytes() > 0) {
+            // the content buffer contains a new chunk header line
+
+            if (remainingData != -1) {
+                // this is not the first content buffer so we need to go to the next line
+                gotoNextLine(content);
+            }
+            remainingData = Integer.parseInt(readChunkLengthHex(content), 16);
+            gotoNextLine(content);
+        }
+
+        // the content buffer still contains payload data
+        handlePartially(content, Math.min(remainingData, content.capacity() - content.readerIndex()), last);
     }
 
-    private void skipSignature(ByteBuf content) {
+    private void handlePartially(ByteBuf content, int length, boolean last) throws IOException {
+        super.handle(content.slice(content.readerIndex(), length), last);
+        remainingData -= length;
+    }
+
+    private void gotoNextLine(ByteBuf content) {
         while (content.isReadable()) {
             if (content.readByte() == '\r' && content.readByte() == '\n') {
                 return;

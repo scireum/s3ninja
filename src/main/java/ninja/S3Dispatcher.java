@@ -47,6 +47,7 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -188,7 +189,7 @@ public class S3Dispatcher implements WebDispatcher {
     private String getAuthHash(WebContext ctx) {
         Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaderNames.AUTHORIZATION);
         if (!authorizationHeaderValue.isFilled()) {
-            return ctx.get("Signature").getString();
+            return ctx.get("Signature").asString(ctx.get("X-Amz-Signature").getString());
         }
         String authentication =
                 Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
@@ -199,7 +200,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         m = AWS_AUTH4_PATTERN.matcher(authentication);
         if (m.matches()) {
-            return m.group(7);
+            return m.group(6);
         }
 
         return null;
@@ -414,12 +415,13 @@ public class S3Dispatcher implements WebDispatcher {
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            String expectedHash = hashCalculator.computeHash(ctx, "");
-            String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
-            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+            Collection<String> expectedHashes = hashCalculator.computeHash(ctx);
+            if (!expectedHashes.contains(hash)) {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,
-                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                          Strings.apply("Invalid Hash (Expected one of: %s, Found: %s)",
+                                        Strings.join(expectedHashes, ","),
+                                        hash));
                 log.log(ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,

@@ -9,6 +9,7 @@
 package ninja;
 
 import com.google.common.base.Charsets;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.io.BaseEncoding;
 import io.netty.handler.codec.http.HttpHeaders;
 import sirius.kernel.commons.Strings;
@@ -18,7 +19,11 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.UnsupportedEncodingException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -60,13 +65,22 @@ public class AwsLegacyHashCalculator {
                                                                         "response-content-encoding");
 
     /**
-     * Computes the authentication hash as specified by the AWS SDK for verification purposes.
+     * Computes the authentication hash as specified by the AWS SDK for verification purposes, one with the "/s3" path
+     * prefix and one without it.
      *
-     * @param ctx        the current request to fetch parameters from
-     * @return the computes hash value
-     * @throws Exception when hashing fails
+     * @param ctx the current request to fetch parameters from
+     * @return the computed hash values
+     * @throws NoSuchAlgorithmException     when hashing fails
+     * @throws InvalidKeyException          when hashing fails
+     * @throws UnsupportedEncodingException when hashing fails
      */
-    public String computeHash(WebContext ctx) throws Exception {
+    public Collection<String> computeHash(final WebContext ctx)
+            throws NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException {
+        return ImmutableSet.of(computeHash(ctx, ctx.getRequestedURI()), computeHash(ctx, getEffectiveURI(ctx)));
+    }
+
+    private String computeHash(final WebContext ctx, String uri)
+            throws NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
@@ -93,7 +107,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(ctx.getRequestedURI());
+        stringToSign.append(uri);
 
         char separator = '?';
         for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {
@@ -113,6 +127,15 @@ public class AwsLegacyHashCalculator {
         mac.init(keySpec);
         byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
         return BaseEncoding.base64().encode(result);
+    }
+
+    private String getEffectiveURI(WebContext ctx) {
+        String uri = ctx.getRequestedURI();
+        if (uri.startsWith("/s3")) {
+            uri = uri.substring(3);
+        }
+
+        return uri;
     }
 
     private boolean relevantAmazonHeader(final String name) {

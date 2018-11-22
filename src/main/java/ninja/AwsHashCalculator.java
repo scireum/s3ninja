@@ -14,9 +14,7 @@ import sirius.kernel.health.Exceptions;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
 
-import java.io.UnsupportedEncodingException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
+import java.util.Collection;
 import java.util.regex.Pattern;
 
 /**
@@ -37,26 +35,20 @@ public class AwsHashCalculator {
     private AwsLegacyHashCalculator legacyHashCalculator;
 
     /**
-     * Computes the authentication hash as specified by the AWS SDK for verification purposes.
+     * Computes possible authentication hashes as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx        the current request to fetch parameters from
-     * @param pathPrefix the path prefix to append to the current uri
-     * @return the computes hash value
+     * @param ctx the current request to fetch parameters from
+     * @return the computes hash values
      */
-    public String computeHash(WebContext ctx, String pathPrefix) {
+    public Collection<String> computeHash(WebContext ctx) {
         try {
-            return doComputeHash(ctx, pathPrefix);
+            if (aws4HashCalculator.supports(ctx)) {
+                return aws4HashCalculator.computeHash(ctx);
+            } else {
+                return legacyHashCalculator.computeHash(ctx);
+            }
         } catch (Exception e) {
             throw Exceptions.handle(UserContext.LOG, e);
-        }
-    }
-
-    private String doComputeHash(final WebContext ctx, final String pathPrefix)
-            throws Exception {
-        if (aws4HashCalculator.supports(ctx)) {
-            return aws4HashCalculator.computeHash(ctx, pathPrefix);
-        } else {
-            return legacyHashCalculator.computeHash(ctx);
         }
     }
 }

@@ -34,7 +34,7 @@
         <div class="col-md-8">
             <div class="well">
                 <div class="pull-left">
-                    <form id="create-bucket" class="form-inline" action="/" method="post">
+                    <form id="create-bucket" class="form-inline" action="/ui" method="post">
                         <div class="input-group">
                             <input type="text" name="bucketName" class="form-control" placeholder="New Bucket..."
                                    autofocus/>
@@ -45,7 +45,7 @@
                     </form>
                 </div>
                 <div class="pull-right">
-                    <a class="btn btn-default" href="/">
+                    <a class="btn btn-default" href="/ui">
                         <i class="fa fa-refresh"></i>
                     </a>
                 </div>

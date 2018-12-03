@@ -542,14 +542,15 @@ public class S3Dispatcher implements WebDispatcher {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        String etag = etag(hash);
-        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag).xml();
+        String etag = BaseEncoding.base16().encode(hash.asBytes());
+
+        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
         structuredOutput.text(RFC822_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
         structuredOutput.beginObject(HTTP_HEADER_NAME_ETAG);
-        structuredOutput.text(etag);
+        structuredOutput.text(etag(etag));
         structuredOutput.endObject();
         structuredOutput.endOutput();
         signalObjectSuccess(ctx);
@@ -569,14 +570,25 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
         Response response = ctx.respondWith();
-        for (Map.Entry<Object, Object> entry : object.getProperties()) {
+        Properties properties = object.getProperties();
+        for (Map.Entry<Object, Object> entry : properties.entrySet()) {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
         for (Map.Entry<String, String> entry : getOverridenHeaders(ctx).entrySet()) {
             response.setHeader(entry.getKey(), entry.getValue());
         }
-        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        response.addHeader(HTTP_HEADER_NAME_ETAG, BaseEncoding.base16().encode(hash.asBytes()));
+
+        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
+        if (Strings.isEmpty(etag)) {
+            HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+            etag = BaseEncoding.base16().encode(hash.asBytes());
+            Map<String, String> data = new HashMap<>();
+            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
+            data.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.storeProperties(data);
+        }
+
+        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         if (sendFile) {
             response.file(object.getFile());

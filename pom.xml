@@ -24,8 +24,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>12.0-rc8</sirius.kernel>
-        <sirius.web>19.0-rc7</sirius.web>
+        <sirius.kernel>12.0</sirius.kernel>
+        <sirius.web>19.0</sirius.web>
     </properties>
 
     <dependencies>

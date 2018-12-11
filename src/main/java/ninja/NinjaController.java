@@ -47,6 +47,12 @@ import java.util.Map;
 @Register
 public class NinjaController implements Controller {
 
+    @Part
+    private Storage storage;
+
+    @Part
+    private APILog log;
+
     @Override
     public void onError(WebContext ctx, HandledException error) {
         if (error != null) {
@@ -59,18 +65,12 @@ public class NinjaController implements Controller {
             UserContext.message(Message.error(e.getMessage()));
         }
         ctx.respondWith()
-           .template("templates/index.html.pasta",
-                     buckets,
-                     storage.getBasePath(),
-                     storage.getAwsAccessKey(),
-                     storage.getAwsSecretKey());
+                .template("templates/index.html.pasta",
+                        buckets,
+                        storage.getBasePath(),
+                        storage.getAwsAccessKey(),
+                        storage.getAwsSecretKey());
     }
-
-    @Part
-    private Storage storage;
-
-    @Part
-    private APILog log;
 
     /**
      * Handles requests to /
@@ -123,13 +123,13 @@ public class NinjaController implements Controller {
             entries.remove(entries.size() - 1);
         }
         ctx.respondWith()
-           .template("templates/log.html.pasta",
-                     entries,
-                     canPagePrev,
-                     canPageNext,
-                     (start + 1) + " - " + (start + entries.size()),
-                     Math.max(1, start - pageSize + 1),
-                     start + pageSize + 1);
+                .template("templates/log.html.pasta",
+                        entries,
+                        canPagePrev,
+                        canPageNext,
+                        (start + 1) + " - " + (start + entries.size()),
+                        Math.max(1, start - pageSize + 1),
+                        start + pageSize + 1);
     }
 
     /**
@@ -177,7 +177,7 @@ public class NinjaController implements Controller {
                 return;
             }
             Response response = ctx.respondWith();
-            for (Map.Entry<Object, Object> entry : object.getProperties()) {
+            for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
                 response.addHeader(entry.getKey().toString(), entry.getValue().toString());
             }
             response.file(object.getFile());
@@ -190,6 +190,7 @@ public class NinjaController implements Controller {
      * Handles manual object uploads
      *
      * @param ctx    the context describing the current request
+     * @param out    the output to write to
      * @param bucket the name of the target bucket
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true)
@@ -206,7 +207,7 @@ public class NinjaController implements Controller {
 
             Map<String, String> properties = Maps.newTreeMap();
             properties.put(HttpHeaderNames.CONTENT_TYPE.toString(),
-                           ctx.getHeaderValue(HttpHeaderNames.CONTENT_TYPE).asString(MimeHelper.guessMimeType(name)));
+                    ctx.getHeaderValue(HttpHeaderNames.CONTENT_TYPE).asString(MimeHelper.guessMimeType(name)));
             HashCode hash = Files.hash(object.getFile(), Hashing.md5());
             String md5 = BaseEncoding.base64().encode(hash.asBytes());
             properties.put("Content-MD5", md5);

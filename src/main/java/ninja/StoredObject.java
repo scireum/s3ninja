@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 
 /**
  * Represents a stored object.
@@ -75,8 +74,8 @@ public class StoredObject {
         }
         if (!getPropertiesFile().delete()) {
             Storage.LOG.WARN("Failed to delete properties file for object %s (%s).",
-                             getName(),
-                             getPropertiesFile().getAbsolutePath());
+                    getName(),
+                    getPropertiesFile().getAbsolutePath());
         }
     }
 
@@ -107,14 +106,14 @@ public class StoredObject {
      * @return a set of name value pairs representing all properties stored for this object or an empty set if no
      * properties could be read.
      */
-    public Set<Map.Entry<Object, Object>> getProperties() {
+    public Properties getProperties() {
         Properties props = new Properties();
         try (FileInputStream in = new FileInputStream(getPropertiesFile())) {
             props.load(in);
         } catch (IOException e) {
             Exceptions.ignore(e);
         }
-        return props.entrySet();
+        return props;
     }
 
     /**

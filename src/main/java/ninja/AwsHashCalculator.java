@@ -14,9 +14,6 @@ import sirius.kernel.health.Exceptions;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
 
-import java.io.UnsupportedEncodingException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.regex.Pattern;
 
 /**
@@ -51,12 +48,11 @@ public class AwsHashCalculator {
         }
     }
 
-    private String doComputeHash(final WebContext ctx, final String pathPrefix)
-            throws Exception {
+    private String doComputeHash(final WebContext ctx, final String pathPrefix) throws Exception {
         if (aws4HashCalculator.supports(ctx)) {
             return aws4HashCalculator.computeHash(ctx, pathPrefix);
         } else {
-            return legacyHashCalculator.computeHash(ctx);
+            return legacyHashCalculator.computeHash(ctx, pathPrefix);
         }
     }
 }

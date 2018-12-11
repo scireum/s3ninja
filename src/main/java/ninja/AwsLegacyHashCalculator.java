@@ -63,10 +63,12 @@ public class AwsLegacyHashCalculator {
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
      * @param ctx        the current request to fetch parameters from
+     * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(WebContext) effective URI}
+     *                   of the request
      * @return the computes hash value
      * @throws Exception when hashing fails
      */
-    public String computeHash(WebContext ctx) throws Exception {
+    public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
@@ -93,7 +95,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(ctx.getRequestedURI());
+        stringToSign.append(pathPrefix + "/" + S3Dispatcher.getEffectiveURI(ctx));
 
         char separator = '?';
         for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {

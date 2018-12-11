@@ -21,8 +21,8 @@ class S3SignerWithPathSuffixAWSSpec extends BaseAWSSpec {
                 "AKIAIOSFODNN7EXAMPLE",
                 "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
         AmazonS3Client newClient = new AmazonS3Client(credentials,
-                                                      new ClientConfiguration().withSignerOverride("S3SignerType"))
-        newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true))
+                new ClientConfiguration().withSignerOverride("S3SignerType"))
+        newClient.setS3ClientOptions(S3ClientOptions.builder().setPathStyleAccess(true).build())
         newClient.setEndpoint("http://localhost:9999/s3")
 
         return newClient

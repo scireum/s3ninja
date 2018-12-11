@@ -17,7 +17,6 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import org.jetbrains.annotations.NotNull;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Strings;
@@ -31,7 +30,11 @@ import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.http.*;
+import sirius.web.http.InputStreamHandler;
+import sirius.web.http.MimeHelper;
+import sirius.web.http.Response;
+import sirius.web.http.WebContext;
+import sirius.web.http.WebDispatcher;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -43,7 +46,15 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.*;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -84,10 +95,10 @@ public class S3Dispatcher implements WebDispatcher {
      */
     public static final DateTimeFormatter RFC822_INSTANT =
             new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
-                    .toFormatter()
-                    .withLocale(Locale.ENGLISH)
-                    .withChronology(IsoChronology.INSTANCE)
-                    .withZone(ZoneOffset.ofHours(0));
+                                          .toFormatter()
+                                          .withLocale(Locale.ENGLISH)
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.ofHours(0));
 
     private static final Map<String, String> headerOverrides;
 
@@ -121,7 +132,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
-        if (!bucket.exists()) {
+        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return null;
         }
 
@@ -138,13 +149,24 @@ public class S3Dispatcher implements WebDispatcher {
         }
     }
 
-    private String getEffectiveURI(WebContext ctx) {
+    /**
+     * Returns the effective URI.
+     * <p>
+     * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
+     * also the first "/" and only return the effective URI to process.
+     *
+     * @param ctx the current request
+     * @return the effective URI to process
+     */
+    public static String getEffectiveURI(WebContext ctx) {
         String uri = ctx.getRequestedURI();
         if (uri.startsWith("/s3")) {
             uri = uri.substring(3);
         }
+        if (uri.startsWith("/")) {
+            uri = uri.substring(1);
+        }
 
-        uri = uri.substring(1);
         return uri;
     }
 
@@ -163,7 +185,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
-        if (!bucket.exists()) {
+        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return false;
         }
 
@@ -235,8 +257,8 @@ public class S3Dispatcher implements WebDispatcher {
 
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
-                    Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-            out.property("hint", "Goto: " + ctx.getRequestedURL() + "/ui to visit the admin UI");
+                            Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+            out.property("hint", "Goto: " + ctx.getBaseURL() + "/ui to visit the admin UI");
             outputOwnerInfo(out, "Owner");
 
             out.beginObject("Buckets");
@@ -244,7 +266,7 @@ public class S3Dispatcher implements WebDispatcher {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate",
-                        RFC822_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                             RFC822_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
                 out.endObject();
             }
             out.endObject();
@@ -262,7 +284,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
-     * Dispatching method handling bucket specific calls without content (HEAD and DELETE)
+     * Dispatching method handling bucket specific calls without content (HEAD, DELETE, GET and PUT)
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket of interest
@@ -407,8 +429,8 @@ public class S3Dispatcher implements WebDispatcher {
             String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 ctx.respondWith()
-                        .error(HttpResponseStatus.UNAUTHORIZED,
-                                Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                   .error(HttpResponseStatus.UNAUTHORIZED,
+                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
                 log.log(ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
@@ -493,8 +515,8 @@ public class S3Dispatcher implements WebDispatcher {
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
             signalObjectError(ctx,
-                    HttpResponseStatus.BAD_REQUEST,
-                    Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
+                              HttpResponseStatus.BAD_REQUEST,
+                              Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
 
@@ -507,7 +529,6 @@ public class S3Dispatcher implements WebDispatcher {
         signalObjectSuccess(ctx);
     }
 
-    @NotNull
     private String etag(String etag) {
         return "\"" + etag + "\"";
     }
@@ -596,7 +617,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                    RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -707,12 +728,12 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         File file = combineParts(id,
-                uploadId,
-                parts.entrySet()
-                        .stream()
-                        .sorted(Comparator.comparing(Map.Entry::getKey))
-                        .map(Map.Entry::getValue)
-                        .collect(Collectors.toList()));
+                                 uploadId,
+                                 parts.entrySet()
+                                      .stream()
+                                      .sorted(Comparator.comparing(Map.Entry::getKey))
+                                      .map(Map.Entry::getValue)
+                                      .collect(Collectors.toList()));
 
         file.deleteOnExit();
         if (!file.exists()) {
@@ -749,10 +770,12 @@ public class S3Dispatcher implements WebDispatcher {
         try {
             if (!file.createNewFile()) {
                 Storage.LOG.WARN("Failed to create multipart result file %s (%s).",
-                        file.getName(),
-                        file.getAbsolutePath());
+
+                                 file.getName(), file.getAbsolutePath());
             }
-            combineParts(parts, file);
+            try (FileChannel out = new FileOutputStream(file).getChannel()) {
+                combine(parts, out);
+            }
         } catch (IOException e) {
             throw Exceptions.handle(e);
         }
@@ -760,13 +783,11 @@ public class S3Dispatcher implements WebDispatcher {
         return file;
     }
 
-    private void combineParts(List<File> parts, File file) throws IOException {
-        try (FileChannel out = new FileOutputStream(file).getChannel()) {
-            for (File part : parts) {
-                try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
-                    FileChannel channel = raf.getChannel();
-                    out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
-                }
+    private void combine(List<File> parts, FileChannel out) throws IOException {
+        for (File part : parts) {
+            try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
+                FileChannel channel = raf.getChannel();
+                out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
             }
         }
     }

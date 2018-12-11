@@ -29,9 +29,7 @@ public class APILog {
     /**
      * Used to describe if a call was successful or why if failed.
      */
-    public enum Result {
-        OK, REJECTED, ERROR
-    }
+    public enum Result {OK, REJECTED, ERROR}
 
     /**
      * Represents a log entry.
@@ -42,6 +40,21 @@ public class APILog {
         private String description;
         private String result;
         private String duration;
+
+        /**
+         * Creates a new log entry.
+         *
+         * @param function    name or method of the function which was invoked
+         * @param description description of the call
+         * @param result      outcome of the call
+         * @param duration    duration of the call
+         */
+        protected Entry(String function, String description, String result, String duration) {
+            this.function = function;
+            this.description = description;
+            this.result = result;
+            this.duration = duration;
+        }
 
         /**
          * Returns the method or function which was called.
@@ -102,21 +115,6 @@ public class APILog {
             }
 
             return "";
-        }
-
-        /**
-         * Creates a new log entry.
-         *
-         * @param function    name or method of the function which was invoked
-         * @param description description of the call
-         * @param result      outcome of the call
-         * @param duration    duration of the call
-         */
-        protected Entry(String function, String description, String result, String duration) {
-            this.function = function;
-            this.description = description;
-            this.result = result;
-            this.duration = duration;
         }
     }
 

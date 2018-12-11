@@ -35,10 +35,8 @@ import java.util.stream.Stream;
  */
 public class Bucket {
 
-    private static final int PAGE_SIZE = 25;
-
     private File file;
-    private static Cache<String, Boolean> publicAccessCache = CacheManager.createCache("public-bucket-access");
+    private static Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
      * Creates a new bucket based on the given directory.

@@ -55,7 +55,9 @@ public class Aws4HashCalculator {
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx the current request to fetch parameters from
+     * @param ctx        the current request to fetch parameters from
+     * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(WebContext) effective URI}
+     *                   of the request
      * @return the computes hash value
      * @throws Exception when hashing fails
      */

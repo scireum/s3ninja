@@ -8,7 +8,6 @@
 
 package ninja;
 
-import com.google.common.base.Charsets;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -132,7 +131,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
-        if (!bucket.exists()) {
+        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return null;
         }
 
@@ -183,7 +182,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
-        if (!bucket.exists()) {
+        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return false;
         }
 

@@ -149,7 +149,16 @@ public class S3Dispatcher implements WebDispatcher {
         }
     }
 
-    private String getEffectiveURI(WebContext ctx) {
+    /**
+     * Returns the effective URI.
+     * <p>
+     * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
+     * also the first "/" and only return the effective URI to process.
+     *
+     * @param ctx the current request
+     * @return the effective URI to process
+     */
+    public static String getEffectiveURI(WebContext ctx) {
         String uri = ctx.getRequestedURI();
         if (uri.startsWith("/s3")) {
             uri = uri.substring(3);
@@ -489,8 +498,6 @@ public class S3Dispatcher implements WebDispatcher {
             ByteStreams.copy(inputStream, out);
         }
 
-        System.out.println(Files.toString(object.getFile(), Charsets.UTF_8));
-
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : ctx.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
@@ -750,18 +757,22 @@ public class S3Dispatcher implements WebDispatcher {
                                  file.getAbsolutePath());
             }
             try (FileChannel out = new FileOutputStream(file).getChannel()) {
-                for (File part : parts) {
-                    try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
-                        FileChannel channel = raf.getChannel();
-                        out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
-                    }
-                }
+                combine(parts, out);
             }
         } catch (IOException e) {
-            Exceptions.handle(e);
+            throw Exceptions.handle(e);
         }
 
         return file;
+    }
+
+    private void combine(List<File> parts, FileChannel out) throws IOException {
+        for (File part : parts) {
+            try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
+                FileChannel channel = raf.getChannel();
+                out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
+            }
+        }
     }
 
     /**

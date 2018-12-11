@@ -9,7 +9,6 @@
 package ninja;
 
 import io.netty.buffer.ByteBuf;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
@@ -42,7 +41,6 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         }
     }
 
-    @NotNull
     private String readChunkLengthHex(ByteBuf content) {
         StringBuilder lengthString = new StringBuilder();
         while (content.isReadable()) {

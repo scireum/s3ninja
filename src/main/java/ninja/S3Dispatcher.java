@@ -162,8 +162,10 @@ public class S3Dispatcher implements WebDispatcher {
         if (uri.startsWith("/s3")) {
             uri = uri.substring(3);
         }
+        if (uri.startsWith("/")) {
+            uri = uri.substring(1);
+        }
 
-        uri = uri.substring(1);
         return uri;
     }
 
@@ -255,7 +257,7 @@ public class S3Dispatcher implements WebDispatcher {
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
                             Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-            out.property("hint", "Goto: " + ctx.getRequestedURL() + "/ui to visit the admin UI");
+            out.property("hint", "Goto: " + ctx.getBaseURL() + "/ui to visit the admin UI");
             outputOwnerInfo(out, "Owner");
 
             out.beginObject("Buckets");
@@ -281,7 +283,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
-     * Dispatching method handling bucket specific calls without content (HEAD and DELETE)
+     * Dispatching method handling bucket specific calls without content (HEAD, DELETE, GET and PUT)
      *
      * @param ctx        the context describing the current request
      * @param bucketName name of the bucket of interest

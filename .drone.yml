@@ -1,25 +1,26 @@
+scireum_volumes: &scireum_volumes
+  - /var/run/docker.sock:/var/run/docker.sock
+  - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+  - /root/.m2:/root/.m2
+  - /root/.gnupg:/root/.gnupg
+  - /root/.ssh:/root/.ssh
 clone:
   git:
     image: plugins/git
-    volumes:
-    - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
 pipeline:
   compile:
     image: scireum/sirius-build
     commands:
       - mvn clean compile
-    volumes:
-      - /root/.m2:/root/.m2
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
     when:
       event: push
   test:
     image: scireum/sirius-build
     commands:
       - mvn clean test
-    volumes:
-      - /root/.m2:/root/.m2
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
     when:
       event: pull_request
   sonar:
@@ -27,9 +28,7 @@ pipeline:
     commands:
       - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
       - mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test sonar:sonar -Dsonar.projectKey=${DRONE_REPO_NAME}
-    volumes:
-      - /root/.m2:/root/.m2
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
     when:
       event: tag
   package:
@@ -37,10 +36,7 @@ pipeline:
     commands:
       - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
       - mvn clean package -DskipTests
-    volumes:
-      - /root/.m2:/root/.m2
-      - /root/.gnupg:/root/.gnupg
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
     when:
       event: tag
   publish:
@@ -49,16 +45,13 @@ pipeline:
     secrets: [ docker_username, docker_password ]
     tags:
       - ${DRONE_TAG}
-    volumes:
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
+    volumes: *scireum_volumes
     when:
       event: tag
   site:
     image: scireum/sirius-build
     commands:
       - rsync -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/
-    volumes:
-      - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
-      - /root/.ssh:/root/.ssh
+    volumes: *scireum_volumes
     when:
       event: tag

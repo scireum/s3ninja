@@ -3,7 +3,6 @@ scireum_volumes: &scireum_volumes
   - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
   - /root/.m2:/root/.m2
   - /root/.gnupg:/root/.gnupg
-  - /root/.ssh:/root/.ssh
 clone:
   git:
     image: plugins/git
@@ -51,7 +50,10 @@ pipeline:
   site:
     image: scireum/sirius-build
     commands:
-      - rsync -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/
+      - echo "$SSH_KEY" > /tmp/sshkey
+      - chmod 600 /tmp/sshkey
+      - rsync -e 'ssh -i /tmp/sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no' -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/
     volumes: *scireum_volumes
+    secrets: [ ssh_key ]
     when:
       event: tag

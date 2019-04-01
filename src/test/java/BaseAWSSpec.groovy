@@ -51,7 +51,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         and:
         File file = File.createTempFile("test", "")
         file.delete()
-        Files.write("This is a test.", file, Charsets.UTF_8)
+        for (int i = 0; i < 10000; i++) {
+            Files.append("This is a test.", file, Charsets.UTF_8)
+        }
         and:
         def tm = TransferManagerBuilder.standard().withS3Client(client).build()
         tm.upload("test", "test", file).waitForUploadResult()

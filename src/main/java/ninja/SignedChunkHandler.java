@@ -9,6 +9,7 @@
 package ninja;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.io.IOException;
 
@@ -19,18 +20,43 @@ import java.io.IOException;
  * This seems to do the job for a test / mock sever for now.
  */
 class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
+
+    private int remainingBytes = 0;
+
     @Override
     public void handle(ByteBuf content, boolean last) throws IOException {
         if (!content.isReadable()) {
             super.handle(content, last);
             return;
         }
-        String lengthString = readChunkLengthHex(content);
-        int lengthOfData = Integer.parseInt(lengthString, 16);
 
-        skipSignature(content);
+        while(true) {
+            if (remainingBytes > 0) {
+                if (content.writerIndex() - content.readerIndex() > remainingBytes) {
+                    super.handle(content.slice(content.readerIndex(), remainingBytes), false);
+                    content.readerIndex(content.readerIndex() + remainingBytes);
+                    remainingBytes = 0;
+                    skipSignature(content);
+                } else {
+                    super.handle(content, last);
+                    remainingBytes -= content.writerIndex() - content.readerIndex();
+                    return;
+                }
+            }
 
-        super.handle(content.slice(content.readerIndex(), lengthOfData), last);
+            if (remainingBytes == 0) {
+                String lengthString = readChunkLengthHex(content);
+                remainingBytes = Integer.parseInt(lengthString, 16);
+                skipSignature(content);
+                if (remainingBytes == 0) {
+                    skipSignature(content);
+                    super.handle(Unpooled.EMPTY_BUFFER, true);
+                    if (content.writerIndex() == content.readerIndex()) {
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     private void skipSignature(ByteBuf content) {

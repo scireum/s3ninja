@@ -69,6 +69,7 @@ public class Aws4HashCalculator {
         Matcher matcher = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
 
         if (!matcher.matches()) {
+            // If the header doesn't match, let's try an URL parameter as we might be processing a presigned URL
             matcher = X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString(""));
             if (!matcher.matches()) {
                 throw new IllegalArgumentException("Unknown AWS4 auth pattern");
@@ -79,6 +80,9 @@ public class Aws4HashCalculator {
         String region = matcher.group(3);
         String service = matcher.group(4);
         String serviceType = matcher.group(5);
+
+        // For header based requests, the signed headers are in the "Credentials" header, for presigned URLs
+        // an extra parameter is given...
         String signedHeaders = matcher.groupCount() == 7 ? matcher.group(6) : ctx.get("X-Amz-SignedHeaders").asString();
 
         byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), date);

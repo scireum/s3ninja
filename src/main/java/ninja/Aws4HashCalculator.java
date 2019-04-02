@@ -39,6 +39,9 @@ public class Aws4HashCalculator {
             Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+), SignedHeaders=([^,"
                             + "]+), Signature=(.+)");
 
+    protected static final Pattern X_AMZ_CREDENTIAL_PATTERN =
+            Pattern.compile("([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+)");
+
     @Part
     private Storage storage;
 
@@ -49,7 +52,8 @@ public class Aws4HashCalculator {
      * @return <tt>true</tt> if the request contains an AWS4 auth token, <tt>false</tt>  otherwise.
      */
     public boolean supports(final WebContext ctx) {
-        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString("")).matches();
+        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString("")).matches()
+               || X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString("")).matches();
     }
 
     /**
@@ -64,31 +68,57 @@ public class Aws4HashCalculator {
     public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
         Matcher matcher = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
 
-        if (!matcher.matches()) {
-            throw new IllegalArgumentException("Unknown AWS4 auth pattern");
+        String date;
+        String region;
+        String service;
+        String serviceType;
+        String signedHeaders;
+
+        if (matcher.matches()) {
+            date = matcher.group(2);
+            region = matcher.group(3);
+            service = matcher.group(4);
+            serviceType = matcher.group(5);
+            signedHeaders = matcher.group(6);
+        } else {
+            Matcher paramMatcher = X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString(""));
+            if (!paramMatcher.matches()) {
+                throw new IllegalArgumentException("Unknown AWS4 auth pattern");
+            }
+            date = paramMatcher.group(2);
+            region = paramMatcher.group(3);
+            service = paramMatcher.group(4);
+            serviceType = paramMatcher.group(5);
+            signedHeaders = ctx.get("X-Amz-SignedHeaders").asString();
         }
 
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), matcher.group(2));
-        byte[] dateRegionKey = hmacSHA256(dateKey, matcher.group(3));
-        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, matcher.group(4));
-        byte[] signingKey = hmacSHA256(dateRegionServiceKey, matcher.group(5));
+        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), date);
+        byte[] dateRegionKey = hmacSHA256(dateKey, region);
+        byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, service);
+        byte[] signingKey = hmacSHA256(dateRegionServiceKey, serviceType);
 
-        byte[] signedData =
-                hmacSHA256(signingKey, buildStringToSign(ctx, matcher.group(6), matcher.group(3), pathPrefix));
+        byte[] signedData = hmacSHA256(signingKey, buildStringToSign(ctx, signedHeaders, region, service, serviceType));
         return BaseEncoding.base16().lowerCase().encode(signedData);
     }
 
-    private String buildStringToSign(final WebContext ctx, String signedHeaders, String region, String pathPrefix) {
+    private String buildStringToSign(final WebContext ctx,
+                                     String signedHeaders,
+                                     String region,
+                                     String service,
+                                     String serviceType) {
         final StringBuilder canonicalRequest = buildCanonicalRequest(ctx, signedHeaders);
-        final String amazonDateHeader = ctx.getHeaderValue("x-amz-date").asString();
+        final String amazonDateHeader = ctx.getHeaderValue("x-amz-date").asString(ctx.get("X-Amz-Date").asString());
         return "AWS4-HMAC-SHA256\n"
                + amazonDateHeader
                + "\n"
                + amazonDateHeader.substring(0, 8)
                + "/"
                + region
-               + pathPrefix
-               + "/aws4_request\n"
+               + "/"
+               + service
+               + "/"
+               + serviceType
+               + "\n"
                + hashedCanonicalRequest(canonicalRequest);
     }
 
@@ -109,7 +139,8 @@ public class Aws4HashCalculator {
         canonicalRequest.append("\n");
         canonicalRequest.append(signedHeaders);
         canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getHeader("x-amz-content-sha256"));
+        canonicalRequest.append(ctx.getHeaderValue("x-amz-content-sha256").asString("UNSIGNED-PAYLOAD"));
+
         return canonicalRequest;
     }
 
@@ -121,11 +152,13 @@ public class Aws4HashCalculator {
 
         Monoflop mf = Monoflop.create();
         for (Tuple<String, List<String>> param : queryString) {
-            if (param.getSecond().isEmpty()) {
-                appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
-            } else {
-                for (String value : param.getSecond()) {
-                    appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
+            if (!Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
+                if (param.getSecond().isEmpty()) {
+                    appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
+                } else {
+                    for (String value : param.getSecond()) {
+                        appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
+                    }
                 }
             }
         }

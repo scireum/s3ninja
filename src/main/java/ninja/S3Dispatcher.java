@@ -199,7 +199,7 @@ public class S3Dispatcher implements WebDispatcher {
     private String getAuthHash(WebContext ctx) {
         Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaderNames.AUTHORIZATION);
         if (!authorizationHeaderValue.isFilled()) {
-            return ctx.get("Signature").getString();
+            return ctx.get("Signature").asString(ctx.get("X-Amz-Signature").asString());
         }
         String authentication =
                 Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();

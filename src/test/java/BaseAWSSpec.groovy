@@ -7,6 +7,7 @@
  */
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
+import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 import com.google.common.base.Charsets
@@ -81,8 +82,15 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def content = new String(
                 ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
                 Charsets.UTF_8)
+        and:
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+        URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
+        and:
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
         then:
         content == "Test"
+        and:
+        downloadedData == "Test"
     }
 
     def "PUT and then DELETE work as expected"() {

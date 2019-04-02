@@ -68,29 +68,18 @@ public class Aws4HashCalculator {
     public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
         Matcher matcher = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
 
-        String date;
-        String region;
-        String service;
-        String serviceType;
-        String signedHeaders;
-
-        if (matcher.matches()) {
-            date = matcher.group(2);
-            region = matcher.group(3);
-            service = matcher.group(4);
-            serviceType = matcher.group(5);
-            signedHeaders = matcher.group(6);
-        } else {
-            Matcher paramMatcher = X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString(""));
-            if (!paramMatcher.matches()) {
+        if (!matcher.matches()) {
+            matcher = X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString(""));
+            if (!matcher.matches()) {
                 throw new IllegalArgumentException("Unknown AWS4 auth pattern");
             }
-            date = paramMatcher.group(2);
-            region = paramMatcher.group(3);
-            service = paramMatcher.group(4);
-            serviceType = paramMatcher.group(5);
-            signedHeaders = ctx.get("X-Amz-SignedHeaders").asString();
         }
+
+        String date = matcher.group(2);
+        String region = matcher.group(3);
+        String service = matcher.group(4);
+        String serviceType = matcher.group(5);
+        String signedHeaders = matcher.groupCount() == 7 ? matcher.group(6) : ctx.get("X-Amz-SignedHeaders").asString();
 
         byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), date);
         byte[] dateRegionKey = hmacSHA256(dateKey, region);

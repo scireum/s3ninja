@@ -1,11 +1,15 @@
 FROM scireum/sirius-runtime:9
 
-RUN mkdir /var/s3 &&\
-    mkdir /var/s3/data &&\
-    mkdir /var/s3/multipart
+RUN mkdir /home/sirius/data && \
+    mkdir /home/sirius/multipart && \
+    mkdir /home/sirius/logs
 
-ADD target/release-dir /root/
+ADD target/release-dir /home/sirius/
 
-VOLUME /var/s3/data
-VOLUME /root/logs
-EXPOSE 80
+USER root
+RUN chown sirius:sirius -R /home/sirius
+USER sirius
+
+VOLUME /home/sirius/data
+VOLUME /home/sirius/logs
+EXPOSE 9000

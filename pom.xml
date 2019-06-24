@@ -27,6 +27,13 @@
         </repository>
     </repositories>
 
+    <pluginRepositories>
+        <pluginRepository>
+            <id>scireum-mvn</id>
+            <url>https://mvn.scireum.com</url>
+        </pluginRepository>
+    </pluginRepositories>
+
     <dependencies>
         <dependency>
             <groupId>com.scireum</groupId>

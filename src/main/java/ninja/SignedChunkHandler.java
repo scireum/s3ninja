@@ -10,6 +10,8 @@ package ninja;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import sirius.kernel.commons.Strings;
+import sirius.kernel.health.Log;
 
 import java.io.IOException;
 
@@ -30,7 +32,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             return;
         }
 
-        while(true) {
+        while (true) {
             if (remainingBytes > 0) {
                 if (content.writerIndex() - content.readerIndex() > remainingBytes) {
                     super.handle(content.slice(content.readerIndex(), remainingBytes), false);
@@ -46,17 +48,28 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
             if (remainingBytes == 0) {
                 String lengthString = readChunkLengthHex(content);
-                remainingBytes = Integer.parseInt(lengthString, 16);
+                if (Strings.isEmpty(lengthString)) {
+                    Log.BACKGROUND.WARN("Received a chunck without a length - Assuming 0!");
+                    remainingBytes = 0;
+                } else {
+                    remainingBytes = Integer.parseInt(lengthString, 16);
+                }
                 skipSignature(content);
                 if (remainingBytes == 0) {
                     skipSignature(content);
-                    super.handle(Unpooled.EMPTY_BUFFER, true);
-                    if (content.writerIndex() == content.readerIndex()) {
-                        return;
-                    }
+                    drainAndFlush(content);
+                    return;
                 }
             }
         }
+    }
+
+    private void drainAndFlush(ByteBuf content) throws IOException {
+        if (content.isReadable()) {
+            Log.BACKGROUND.WARN("Remaining bytes was 0 but content chunck is readable!");
+            super.handle(content, false);
+        }
+        super.handle(Unpooled.EMPTY_BUFFER, true);
     }
 
     private void skipSignature(ByteBuf content) {

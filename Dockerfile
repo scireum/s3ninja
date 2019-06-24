@@ -1,4 +1,4 @@
-FROM scireum/sirius-runtime:2
+FROM scireum/sirius-runtime:9
 
 RUN mkdir /var/s3 &&\
     mkdir /var/s3/data &&\

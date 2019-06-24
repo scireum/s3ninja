@@ -1,12 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ~ Made with all the love in the world
-  ~ by scireum in Remshalden, Germany
-  ~
-  ~ Copyright by scireum GmbH
-  ~ http://www.scireum.de - info@scireum.de
-  -->
-
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
@@ -24,8 +16,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>12.9.1</sirius.kernel>
-        <sirius.web>23.0</sirius.web>
+        <sirius.kernel>12.18.1</sirius.kernel>
+        <sirius.web>23.13.1</sirius.web>
     </properties>
 
     <repositories>

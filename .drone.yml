@@ -1,59 +1,91 @@
+---
 scireum_volumes: &scireum_volumes
-  - /var/run/docker.sock:/var/run/docker.sock
-  - /var/repos/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}:/drone/src/github.com/${DRONE_REPO_OWNER}/${DRONE_REPO_NAME}
-  - /root/.m2:/root/.m2
-  - /root/.gnupg:/root/.gnupg
+  - name: docker_socket
+    path: /var/run/docker.sock
+  - name: m2
+    path: /root/.m2
+
+kind: pipeline
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+
 clone:
-  git:
-    image: plugins/git
-    volumes: *scireum_volumes
-pipeline:
-  compile:
+  depth: 1
+
+steps:
+  - name: compile
     image: scireum/sirius-build
     commands:
       - mvn clean compile
     volumes: *scireum_volumes
     when:
-      event: push
-  test:
+     event:
+      - push
+
+  - name: test
     image: scireum/sirius-build
     commands:
       - mvn clean test
     volumes: *scireum_volumes
     when:
-      event: pull_request
-  sonar:
+      event:
+      - pull_request
+
+  - name: sonar
     image: scireum/sirius-build
     commands:
-      - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
-      - mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test sonar:sonar -Dsonar.projectKey=${DRONE_REPO_NAME}
+      - "sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml"
+      - "mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test sonar:sonar -Dsonar.projectKey=${DRONE_REPO_NAME}"
     volumes: *scireum_volumes
     when:
-      event: tag
-  package:
+      event:
+      - tag
+
+  - name: package
     image: scireum/sirius-build
     commands:
-      - sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml
+      - "sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml"
       - mvn clean package -DskipTests
     volumes: *scireum_volumes
     when:
-      event: tag
-  publish:
+      event:
+      - tag
+
+  - name: publish
     image: plugins/docker
-    repo: scireum/s3-ninja
-    secrets: [ docker_username, docker_password ]
     tags:
-      - ${DRONE_TAG}
+      - "${DRONE_TAG}"
+    environment:
+      DOCKER_PASSWORD:
+        from_secret: docker_password
+      DOCKER_USERNAME:
+        from_secret: docker_username
     volumes: *scireum_volumes
     when:
-      event: tag
-  site:
+      event:
+      - tag
+
+  - name: site
     image: scireum/sirius-build
     commands:
-      - echo "$SSH_KEY" > /tmp/sshkey
+      - "echo \"$SSH_KEY\" > /tmp/sshkey"
       - chmod 600 /tmp/sshkey
-      - rsync -e 'ssh -i /tmp/sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no' -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/
+      - "rsync -e 'ssh -i /tmp/sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no' -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/"
+    environment:
+      SSH_KEY:
+        from_secret: kass_server_ssh_key
     volumes: *scireum_volumes
-    secrets: [ ssh_key ]
     when:
-      event: tag
+      event:
+      - tag
+
+volumes:
+  - name: docker_socket
+    host:
+      path: /var/run/docker.sock
+  - name: m2
+    host:
+      path: /root/.m2

@@ -56,9 +56,10 @@ steps:
 
   - name: publish
     image: plugins/docker
-    repo: scireum/s3-ninja
-    tags:
-      - "${DRONE_TAG}"
+    settings:
+      repo: scireum/s3-ninja
+      tags:
+        - "${DRONE_TAG}"
     environment:
       DOCKER_PASSWORD:
         from_secret: docker_password

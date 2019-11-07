@@ -500,15 +500,7 @@ public class S3Dispatcher implements WebDispatcher {
             ByteStreams.copy(inputStream, out);
         }
 
-        Map<String, String> properties = Maps.newTreeMap();
-        for (String name : ctx.getRequest().headers().names()) {
-            String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || "x-amz-acl".equals(nameLower)) {
-                properties.put(name, ctx.getHeader(name));
-            }
-        }
-
+        Map<String, String> properties = parseUploadProperties(ctx);
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
         String contentMd5 = properties.get("Content-MD5");
@@ -527,6 +519,18 @@ public class S3Dispatcher implements WebDispatcher {
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).status(HttpResponseStatus.OK);
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         signalObjectSuccess(ctx);
+    }
+
+    private Map<String, String> parseUploadProperties(WebContext ctx) {
+        Map<String, String> properties = Maps.newTreeMap();
+        for (String name : ctx.getRequest().headers().names()) {
+            String nameLower = name.toLowerCase();
+            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
+                    nameLower) || "x-amz-acl".equals(nameLower)) {
+                properties.put(name, ctx.getHeader(name));
+            }
+        }
+        return properties;
     }
 
     private String etag(String etag) {
@@ -746,6 +750,13 @@ public class S3Dispatcher implements WebDispatcher {
             delete(getUploadDir(uploadId));
 
             String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+
+            // Update the ETAG of the underlying object...
+            Properties properties = object.getProperties();
+            Map<String, String> data = new HashMap<>();
+            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
+            data.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.storeProperties(data);
 
             XMLStructuredOutput out = ctx.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");

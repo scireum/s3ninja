@@ -747,6 +747,13 @@ public class S3Dispatcher implements WebDispatcher {
 
             String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
 
+            // Update the ETAG of the underlying object...
+            Properties properties = object.getProperties();
+            Map<String, String> data = new HashMap<>();
+            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
+            data.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.storeProperties(data);
+
             XMLStructuredOutput out = ctx.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");
             out.property("Location", "");

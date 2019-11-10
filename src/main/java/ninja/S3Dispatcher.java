@@ -676,8 +676,6 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        String etag = "";
-
         try {
             File partFile = new File(getUploadDir(uploadId), partNumber);
             partFile.deleteOnExit();
@@ -688,15 +686,14 @@ public class S3Dispatcher implements WebDispatcher {
             }
             part.close();
 
-            etag = Files.hash(partFile, Hashing.md5()).toString();
+            String etag = BaseEncoding.base16().encode(Files.hash(partFile, Hashing.md5()).asBytes());
+            ctx.respondWith()
+               .setHeader(HTTP_HEADER_NAME_ETAG, etag)
+               .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
+               .status(HttpResponseStatus.OK);
         } catch (IOException e) {
-            Exceptions.handle(e);
+            ctx.respondWith().error(HttpResponseStatus.INTERNAL_SERVER_ERROR, Exceptions.handle(e));
         }
-
-        Response response = ctx.respondWith();
-        response.setHeader(HTTP_HEADER_NAME_ETAG, etag);
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
-        response.status(HttpResponseStatus.OK);
     }
 
     /**

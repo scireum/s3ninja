@@ -142,7 +142,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext ctx) {
-        if (aws4HashCalculator.supports(ctx) && ctx.getRequest().method() == PUT) {
+        if (aws4HashCalculator.supports(ctx) && ctx.getRequest().method() == PUT && ctx.getHeader("x-amz-decoded-content-length") != null) {
             return new SignedChunkHandler();
         } else {
             return new InputStreamHandler();

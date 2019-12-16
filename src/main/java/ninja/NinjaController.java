@@ -26,6 +26,7 @@ import sirius.web.controller.Controller;
 import sirius.web.controller.Message;
 import sirius.web.controller.Page;
 import sirius.web.controller.Routed;
+import sirius.web.http.InputStreamHandler;
 import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
@@ -34,7 +35,6 @@ import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -192,17 +192,16 @@ public class NinjaController implements Controller {
      * @param ctx    the context describing the current request
      * @param out    the output to write to
      * @param bucket the name of the target bucket
+     * @param input  the data stream to read from
      */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true)
-    public void uploadFile(WebContext ctx, JSONStructuredOutput out, String bucket) {
+    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true, preDispatchable = true)
+    public void uploadFile(WebContext ctx, JSONStructuredOutput out, String bucket, InputStreamHandler input) {
         try {
             String name = ctx.get("filename").asString(ctx.get("qqfile").asString());
             Bucket storageBucket = storage.getBucket(bucket);
             StoredObject object = storageBucket.getObject(name);
-            try (InputStream inputStream = ctx.getContent()) {
-                try (FileOutputStream fos = new FileOutputStream(object.getFile())) {
-                    ByteStreams.copy(inputStream, fos);
-                }
+            try (FileOutputStream fos = new FileOutputStream(object.getFile())) {
+                ByteStreams.copy(input, fos);
             }
 
             Map<String, String> properties = Maps.newTreeMap();

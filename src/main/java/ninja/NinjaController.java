@@ -247,8 +247,8 @@ public class NinjaController implements Controller {
      * @param bucketName name of the bucket which contains the object to delete
      * @param id         name of the object to delete
      */
-    @Routed("/ui/:1/:2/delete")
-    public void deleteObject(WebContext ctx, String bucketName, String id) {
+    @Routed(value = "/ui/:1/:2/delete", preDispatchable = true)
+    public void deleteObject(WebContext ctx, String bucketName, String id, InputStreamHandler input) {
         Bucket bucket = storage.getBucket(bucketName);
         if (bucket.exists()) {
             StoredObject object = bucket.getObject(id);

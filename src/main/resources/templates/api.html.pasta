@@ -1,7 +1,7 @@
 <w:page title="Supported API">
     <i:block name="breadcrumbBar"/>
 
-    <i:invoke template="/templates/header.html.pasta" inline="true" title="Supported API"/>
+    <i:invoke template="/templates/header.html.pasta" title="Supported API"/>
 
     <div class="row">
         <div class="col-md-12">

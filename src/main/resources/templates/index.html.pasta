@@ -6,7 +6,7 @@
 <w:page title="Start">
     <i:block name="breadcrumbBar"/>
 
-    <i:invoke template="/templates/header.html.pasta" inline="true" title="S3 ninja" subtitle="@tagLine"/>
+    <i:invoke template="/templates/header.html.pasta" title="S3 ninja" subtitle="@tagLine"/>
 
     <div class="row">
         <div class="col-md-4">
@@ -79,6 +79,6 @@
     </div>
 
     <i:block name="footer">
-        <i:invoke template="/templates/footer.html.pasta" inline="true"/>
+        <i:invoke template="/templates/footer.html.pasta"/>
     </i:block>
 </w:page>

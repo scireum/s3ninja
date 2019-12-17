@@ -4,7 +4,7 @@
 <w:page title="@bucket.getName()">
     <i:block name="breadcrumbBar"/>
 
-    <i:invoke template="/templates/header.html.pasta" inline="true"
+    <i:invoke template="/templates/header.html.pasta"
               title="@bucket.getName()"
               subtitle="Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone."/>
 

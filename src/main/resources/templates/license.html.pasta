@@ -1,7 +1,7 @@
 <w:page title="License">
     <i:block name="breadcrumbBar"/>
 
-    <i:invoke template="/templates/header.html.pasta" inline="true" title="License"/>
+    <i:invoke template="/templates/header.html.pasta" title="License"/>
 
     <div class="row">
         <div class="col-md-12">

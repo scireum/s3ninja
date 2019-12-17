@@ -10,6 +10,7 @@ package ninja;
 
 import com.google.common.collect.Lists;
 import sirius.kernel.Sirius;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
@@ -117,6 +118,13 @@ public class Storage {
                                     "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",
                                     bucket)
                             .handle();
+        }
+        if (Strings.areEqual(bucket, "ui")) {
+            throw Exceptions.createHandled()
+                    .withSystemErrorMessage(
+                            "Invalid bucket name: %s. The string 'ui' is reserved for internal use.",
+                            bucket)
+                    .handle();
         }
         return new Bucket(new File(getBaseDir(), bucket));
     }

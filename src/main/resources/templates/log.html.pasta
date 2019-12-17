@@ -8,7 +8,7 @@
 <w:page title="Access Logs">
     <i:block name="breadcrumbBar"/>
 
-    <i:invoke template="/templates/header.html.pasta" inline="true" title="Access Logs"
+    <i:invoke template="/templates/header.html.pasta" title="Access Logs"
               subtitle="All API calls are listed here."
               notice="Note that this log is stored in memory and will be cleared once the server restarts."/>
 

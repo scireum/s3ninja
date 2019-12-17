@@ -65,7 +65,7 @@ public class NinjaController implements Controller {
             UserContext.message(Message.error(e.getMessage()));
         }
         ctx.respondWith()
-                .template("templates/index.html.pasta",
+                .template("/templates/index.html.pasta",
                         buckets,
                         storage.getBasePath(),
                         storage.getAwsAccessKey(),
@@ -93,7 +93,7 @@ public class NinjaController implements Controller {
      */
     @Routed(value = "/ui/license", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void license(WebContext ctx) {
-        ctx.respondWith().template("templates/license.html.pasta");
+        ctx.respondWith().template("/templates/license.html.pasta");
     }
 
     /**
@@ -103,7 +103,7 @@ public class NinjaController implements Controller {
      */
     @Routed(value = "/ui/api", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void api(WebContext ctx) {
-        ctx.respondWith().template("templates/api.html.pasta");
+        ctx.respondWith().template("/templates/api.html.pasta");
     }
 
     /**
@@ -123,7 +123,7 @@ public class NinjaController implements Controller {
             entries.remove(entries.size() - 1);
         }
         ctx.respondWith()
-                .template("templates/log.html.pasta",
+                .template("/templates/log.html.pasta",
                         entries,
                         canPagePrev,
                         canPageNext,
@@ -150,7 +150,7 @@ public class NinjaController implements Controller {
         page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
         page.withTotalItems(bucket.countObjects(page.getQuery()));
 
-        ctx.respondWith().template("templates/bucket.html.pasta", bucket, page);
+        ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
     }
 
     /**
@@ -215,6 +215,7 @@ public class NinjaController implements Controller {
             out.property("message", "File successfully uploaded.");
             out.property("action", "/ui/" + bucket);
             out.property("actionLabel", NLS.get("NLS.refresh"));
+            out.property("refresh", "true");
         } catch (IOException e) {
             UserContext.handle(e);
             ctx.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");

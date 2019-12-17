@@ -614,7 +614,7 @@ public class S3Dispatcher implements WebDispatcher {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
+        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG).toLowerCase();
         if (Strings.isEmpty(etag)) {
             HashCode hash = Files.hash(object.getFile(), Hashing.md5());
             etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();

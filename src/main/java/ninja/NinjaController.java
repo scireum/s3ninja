@@ -215,6 +215,7 @@ public class NinjaController implements Controller {
             out.property("message", "File successfully uploaded.");
             out.property("action", "/ui/" + bucket);
             out.property("actionLabel", NLS.get("NLS.refresh"));
+            out.property("refresh", "true");
         } catch (IOException e) {
             UserContext.handle(e);
             ctx.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");

@@ -230,8 +230,8 @@ public class NinjaController implements Controller {
      * @param ctx    the context describing the current request
      * @param bucket name of the bucket to delete
      */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/delete", preDispatchable = true)
-    public void deleteBucket(WebContext ctx, String bucket, InputStreamHandler input) {
+    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/delete")
+    public void deleteBucket(WebContext ctx, String bucket) {
         storage.getBucket(bucket).delete();
         UserContext.message(Message.info("Bucket successfully deleted."));
         onError(ctx, null);
@@ -247,8 +247,8 @@ public class NinjaController implements Controller {
      * @param bucketName name of the bucket which contains the object to delete
      * @param id         name of the object to delete
      */
-    @Routed(value = "/ui/:1/:2/delete", preDispatchable = true)
-    public void deleteObject(WebContext ctx, String bucketName, String id, InputStreamHandler input) {
+    @Routed(value = "/ui/:1/:2/delete")
+    public void deleteObject(WebContext ctx, String bucketName, String id) {
         Bucket bucket = storage.getBucket(bucketName);
         if (bucket.exists()) {
             StoredObject object = bucket.getObject(id);

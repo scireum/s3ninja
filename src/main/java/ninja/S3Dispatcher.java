@@ -523,7 +523,7 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        String etag = BaseEncoding.base16().encode(hash.asBytes());
+        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
         object.storeProperties(properties);
         Response response = ctx.respondWith();
@@ -578,7 +578,7 @@ public class S3Dispatcher implements WebDispatcher {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
         HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        String etag = BaseEncoding.base16().encode(hash.asBytes());
+        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
 
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
@@ -614,10 +614,10 @@ public class S3Dispatcher implements WebDispatcher {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
+        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG).toLowerCase();
         if (Strings.isEmpty(etag)) {
             HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-            etag = BaseEncoding.base16().encode(hash.asBytes());
+            etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
             Map<String, String> data = new HashMap<>();
             properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
             data.put(HTTP_HEADER_NAME_ETAG, etag);
@@ -697,7 +697,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
             part.close();
 
-            String etag = BaseEncoding.base16().encode(Files.hash(partFile, Hashing.md5()).asBytes());
+            String etag = BaseEncoding.base16().encode(Files.hash(partFile, Hashing.md5()).asBytes()).toLowerCase();
             ctx.respondWith()
                .setHeader(HTTP_HEADER_NAME_ETAG, etag)
                .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)

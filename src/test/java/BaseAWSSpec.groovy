@@ -5,6 +5,7 @@
  * Copyright by scireum GmbH
  * http://www.scireum.de - info@scireum.de
  */
+import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
@@ -159,4 +160,35 @@ abstract class BaseAWSSpec extends BaseSpecification {
         AmazonS3Exception e = thrown()
         e.statusCode == 404
     }
+
+    def "PUT on presigned URL without signed chunks works as expected"() {
+        given:
+        def client = getClient()
+        when:
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        and:
+        def content = "NotSigned"
+        and:
+        GeneratePresignedUrlRequest putRequest = new GeneratePresignedUrlRequest("test", "test", HttpMethod.PUT)
+        HttpURLConnection hc = new URL(getClient().generatePresignedUrl(putRequest).toString()).openConnection()
+        hc.setDoOutput(true)
+        hc.setRequestMethod("PUT")
+        OutputStreamWriter out = new OutputStreamWriter(hc.getOutputStream())
+        try {
+            out.write(content)
+        } finally {
+            out.close()
+        }
+        hc.getResponseCode()
+        and:
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+        URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
+        and:
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        then:
+        downloadedData == content
+    }
+
 }

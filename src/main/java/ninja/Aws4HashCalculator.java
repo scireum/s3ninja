@@ -36,8 +36,8 @@ import java.util.regex.Pattern;
 public class Aws4HashCalculator {
 
     protected static final Pattern AWS_AUTH4_PATTERN =
-            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+), SignedHeaders=([^,"
-                            + "]+), Signature=(.+)");
+            Pattern.compile("AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+),\\s?SignedHeaders=([^,"
+                            + "]+),\\s?Signature=(.+)");
 
     protected static final Pattern X_AMZ_CREDENTIAL_PATTERN =
             Pattern.compile("([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^,]+)");

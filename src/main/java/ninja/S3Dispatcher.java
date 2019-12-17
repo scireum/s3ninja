@@ -68,6 +68,8 @@ import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 @Register
 public class S3Dispatcher implements WebDispatcher {
 
+    private static final String UI_PREFIX = "ui/";
+
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
     private static final String CONTENT_TYPE_XML = "application/xml";
@@ -126,6 +128,10 @@ public class S3Dispatcher implements WebDispatcher {
     @Override
     public Callback<WebContext> preparePreDispatch(WebContext ctx) {
         String uri = getEffectiveURI(ctx);
+        if (uri.startsWith(UI_PREFIX)) {
+            return null;
+        }
+
         Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
         if (Strings.isEmpty(bucketAndObject.getSecond())) {
             return null;
@@ -173,6 +179,10 @@ public class S3Dispatcher implements WebDispatcher {
     @Override
     public boolean dispatch(WebContext ctx) throws Exception {
         String uri = getEffectiveURI(ctx);
+        if (uri.startsWith(UI_PREFIX)) {
+            return false;
+        }
+
         if (Strings.isEmpty(uri)) {
             listBuckets(ctx);
             return true;

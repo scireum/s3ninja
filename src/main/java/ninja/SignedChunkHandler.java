@@ -49,7 +49,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             if (remainingBytes == 0) {
                 String lengthString = readChunkLengthHex(content);
                 if (Strings.isEmpty(lengthString)) {
-                    Log.BACKGROUND.WARN("Received a chunck without a length - Assuming 0!");
+                    Log.BACKGROUND.WARN("Received a chunk without a length - Assuming 0!");
                     remainingBytes = 0;
                 } else {
                     remainingBytes = Integer.parseInt(lengthString, 16);
@@ -66,7 +66,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     private void drainAndFlush(ByteBuf content) throws IOException {
         if (content.isReadable()) {
-            Log.BACKGROUND.WARN("Remaining bytes was 0 but content chunck is readable!");
+            Log.BACKGROUND.WARN("Remaining bytes was 0 but content chunk is readable!");
             super.handle(content, false);
         }
         super.handle(Unpooled.EMPTY_BUFFER, true);

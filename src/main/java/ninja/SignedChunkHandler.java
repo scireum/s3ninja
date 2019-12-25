@@ -44,10 +44,11 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
     }
 
     /**
-     * Extracts all complete chunks from {@link #chunkBuffer} and returns flag indicating whether the entire transfer
-     * is complete. The latter condition is indicated by a zero-length chunk.
+     * Extracts all complete chunks from {@link #chunkBuffer} and returns a flag indicating whether the entire transfer
+     * is complete. The latter case is given when receiving a zero-length chunk.
      *
-     * @return flag indicating whether the transfer is complete. If <b>false</b>, continue to invoke the method.
+     * @return flag indicating whether the transfer is complete. If <b>false</b>, continue to invoke the method after
+     * more data has been received.
      */
     private boolean tryToCompleteTransfer() throws IOException {
         while (true) {
@@ -65,9 +66,10 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     /**
      * Extracts the next chunk from the {@link #chunkBuffer} and returns its size in bytes. If the number is negative,
-     * the next chunk is not complete and can not be read yet.
+     * the next chunk is not complete and can not be read yet. The chunk can be processed once more data has been
+     * received.
      *
-     * @return number of bytes transferred, or negative number if the chunk is not yet complete.
+     * @return number of bytes transferred, or negative number if the chunk has not yet been completely transmitted.
      */
     private int transferNextChunk() throws IOException {
         // mark the reader index; we'll jump back if running out of data

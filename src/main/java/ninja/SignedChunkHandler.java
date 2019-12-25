@@ -72,14 +72,6 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         super.handle(Unpooled.EMPTY_BUFFER, true);
     }
 
-    private void skipSignature(ByteBuf content) {
-        while (content.isReadable()) {
-            if (content.readByte() == '\r' && content.readByte() == '\n') {
-                return;
-            }
-        }
-    }
-
     private String readChunkLengthHex(ByteBuf content) {
         StringBuilder lengthString = new StringBuilder();
         while (content.isReadable()) {
@@ -90,5 +82,13 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             lengthString.append((char) data);
         }
         return lengthString.toString();
+    }
+
+    private void skipSignature(ByteBuf content) {
+        while (content.isReadable()) {
+            if (content.readByte() == '\r' && content.readByte() == '\n') {
+                return;
+            }
+        }
     }
 }

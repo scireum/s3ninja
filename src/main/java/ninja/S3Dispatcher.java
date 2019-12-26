@@ -29,6 +29,7 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
+import sirius.kernel.health.Log;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
@@ -194,8 +195,12 @@ public class S3Dispatcher implements WebDispatcher {
             S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
             if (synthesizer != null) {
                 synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
-                return true;
+            } else {
+                // todo: synthesize better error repsonse, see #123
+                Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
+                ctx.respondWith().error(HttpResponseStatus.SERVICE_UNAVAILABLE);
             }
+            return true;
         }
 
         if (Strings.isEmpty(request.bucket)) {

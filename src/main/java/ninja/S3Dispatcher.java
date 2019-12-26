@@ -40,21 +40,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.net.InetAddress;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -113,6 +106,23 @@ public class S3Dispatcher implements WebDispatcher {
         headerOverrides.put("response-cache-control", "Cache-Control");
         headerOverrides.put("response-content-disposition", "Content-Disposition");
         headerOverrides.put("response-content-encoding", "Content-Encoding");
+    }
+
+    private static final Set<String> domains;
+
+    static {
+        domains = new HashSet<>();
+        domains.add(".localhost");
+        domains.add(".127.0.0.1");
+
+        try {
+            InetAddress myself = InetAddress.getLocalHost();
+            domains.add('.' + myself.getHostAddress());
+            domains.add('.' + myself.getHostName());
+            domains.add('.' + myself.getCanonicalHostName());
+        } catch (Exception e) {
+            // reaching this point, we failed to resolve the local host name. tant pis.
+        }
     }
 
     @Part

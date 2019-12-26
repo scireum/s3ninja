@@ -17,11 +17,13 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
+import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -83,6 +85,9 @@ public class S3Dispatcher implements WebDispatcher {
 
         private String query;
     }
+
+    @Part
+    private static GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -183,6 +188,14 @@ public class S3Dispatcher implements WebDispatcher {
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return false;
+        }
+
+        if (Strings.isFilled(request.query)) {
+            S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
+            if (synthesizer != null) {
+                synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
+                return true;
+            }
         }
 
         if (Strings.isEmpty(request.bucket)) {

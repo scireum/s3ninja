@@ -166,27 +166,6 @@ public class S3Dispatcher implements WebDispatcher {
         }
     }
 
-    /**
-     * Returns the effective URI.
-     * <p>
-     * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
-     * also the first "/" and only return the effective URI to process.
-     *
-     * @param ctx the current request
-     * @return the effective URI to process
-     */
-    public static String getEffectiveURI(WebContext ctx) {
-        String uri = ctx.getRequestedURI();
-        if (uri.startsWith("/s3")) {
-            uri = uri.substring(3);
-        }
-        if (uri.startsWith("/")) {
-            uri = uri.substring(1);
-        }
-
-        return uri;
-    }
-
     @Override
     public boolean dispatch(WebContext ctx) throws Exception {
         String uri = getEffectiveURI(ctx);
@@ -212,6 +191,27 @@ public class S3Dispatcher implements WebDispatcher {
 
         readObject(ctx, bucketAndObject.getFirst(), bucketAndObject.getSecond());
         return true;
+    }
+
+    /**
+     * Returns the effective URI.
+     * <p>
+     * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
+     * also the first "/" and only return the effective URI to process.
+     *
+     * @param ctx the current request
+     * @return the effective URI to process
+     */
+    public static String getEffectiveURI(WebContext ctx) {
+        String uri = ctx.getRequestedURI();
+        if (uri.startsWith("/s3")) {
+            uri = uri.substring(3);
+        }
+        if (uri.startsWith("/")) {
+            uri = uri.substring(1);
+        }
+
+        return uri;
     }
 
     /**

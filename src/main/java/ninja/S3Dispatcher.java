@@ -73,6 +73,15 @@ public class S3Dispatcher implements WebDispatcher {
     private static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
     private static final String PATH_DELIMITER = "/";
 
+    private static class S3Request {
+
+        private String uri;
+
+        private String bucket;
+
+        private String key;
+    }
+
     @Part
     private APILog log;
 

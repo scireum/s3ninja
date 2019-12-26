@@ -224,6 +224,42 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
+     * Parses a S3 request from the given HTTP request.
+     *
+     * @param ctx the HTTP request to parse.
+     * @return a structured {@link S3Request}.
+     */
+    private static S3Request parseRequest(WebContext ctx) {
+        String uri = getEffectiveURI(ctx);
+
+        // chop off potential port from host
+        Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
+        String host = hostAndPort.getFirst();
+
+        // check whether the host contains a subdomain by matching against the list of local domains
+        if (Strings.isFilled(host)) {
+            for (String domain : domains) {
+                int length = host.length() - domain.length();
+                if (host.endsWith(domain) && length > 0) {
+                    S3Request request = new S3Request();
+                    request.bucket = host.substring(0, length);
+                    request.key = uri;
+                    request.uri = request.bucket + "/" + request.key;
+                    return request;
+                }
+            }
+        }
+
+        Tuple<String, String> bucketAndKey = Strings.split(uri, "/");
+
+        S3Request request = new S3Request();
+        request.bucket = bucketAndKey.getFirst();
+        request.key = bucketAndKey.getSecond();
+        request.uri = uri;
+        return request;
+    }
+
+    /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
     private String getAuthHash(WebContext ctx) {

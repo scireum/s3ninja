@@ -17,7 +17,7 @@ import javax.annotation.Nullable;
 
 /**
  * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation">bucket location</a>
- * queries. The response is hard-wired to yield region &quot;EU&quot;.
+ * responses.
  */
 @Register(name = "location")
 public class BucketLocationSynthesizer implements S3QuerySynthesizer {

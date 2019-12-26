@@ -20,7 +20,7 @@ import javax.annotation.Nullable;
  * queries. The response is hard-wired to yield region &quot;EU&quot;.
  */
 @Register(name = "location")
-public class LocationQuerySynthesizer implements S3QuerySynthesizer {
+public class BucketLocationSynthesizer implements S3QuerySynthesizer {
     @Override
     public void processQuery(@Nonnull WebContext ctx,
                              @Nullable String bucket,

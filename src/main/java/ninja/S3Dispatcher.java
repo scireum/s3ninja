@@ -147,24 +147,24 @@ public class S3Dispatcher implements WebDispatcher {
 
     @Override
     public Callback<WebContext> preparePreDispatch(WebContext ctx) {
-        String uri = getEffectiveURI(ctx);
-        if (uri.equals(UI_PATH) || uri.startsWith(UI_PATH_PREFIX)) {
+        S3Request request = parseRequest(ctx);
+
+        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return null;
         }
 
-        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
-        if (Strings.isEmpty(bucketAndObject.getSecond())) {
+        if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
             return null;
         }
 
-        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
+        Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return null;
         }
 
         InputStreamHandler handler = createInputStreamHandler(ctx);
         ctx.setContentHandler(handler);
-        return req -> writeObject(req, bucketAndObject.getFirst(), bucketAndObject.getSecond(), handler);
+        return req -> writeObject(req, request.bucket, request.key, handler);
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext ctx) {
@@ -177,28 +177,28 @@ public class S3Dispatcher implements WebDispatcher {
 
     @Override
     public boolean dispatch(WebContext ctx) throws Exception {
-        String uri = getEffectiveURI(ctx);
-        if (uri.equals(UI_PATH) || uri.startsWith(UI_PATH_PREFIX)) {
+        S3Request request = parseRequest(ctx);
+
+        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return false;
         }
 
-        if (Strings.isEmpty(uri)) {
+        if (Strings.isEmpty(request.bucket)) {
             listBuckets(ctx);
             return true;
         }
 
-        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
-        if (Strings.isEmpty(bucketAndObject.getSecond())) {
-            bucket(ctx, bucketAndObject.getFirst());
+        if (Strings.isEmpty(request.key)) {
+            bucket(ctx, request.bucket);
             return true;
         }
 
-        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
+        Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return false;
         }
 
-        readObject(ctx, bucketAndObject.getFirst(), bucketAndObject.getSecond());
+        readObject(ctx, request.bucket, request.key);
         return true;
     }
 

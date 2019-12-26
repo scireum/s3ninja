@@ -80,6 +80,8 @@ public class S3Dispatcher implements WebDispatcher {
         private String bucket;
 
         private String key;
+
+        private String query;
     }
 
     @Part
@@ -232,6 +234,11 @@ public class S3Dispatcher implements WebDispatcher {
     private static S3Request parseRequest(WebContext ctx) {
         String uri = getEffectiveURI(ctx);
 
+        // we treat the first parameter without value as query string
+        Iterator<String> parameterIterator = ctx.getParameterNames().iterator();
+        String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
+        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(ctx.getParameter(firstParameter)) ? firstParameter : null;
+
         // chop off potential port from host
         Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
         String host = hostAndPort.getFirst();
@@ -245,6 +252,7 @@ public class S3Dispatcher implements WebDispatcher {
                     request.bucket = host.substring(0, length);
                     request.key = uri;
                     request.uri = request.bucket + "/" + request.key;
+                    request.query = query;
                     return request;
                 }
             }
@@ -256,6 +264,7 @@ public class S3Dispatcher implements WebDispatcher {
         request.bucket = bucketAndKey.getFirst();
         request.key = bucketAndKey.getSecond();
         request.uri = uri;
+        request.query = query;
         return request;
     }
 

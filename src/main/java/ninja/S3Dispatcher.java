@@ -167,7 +167,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
-            ctx.respondWith().status(HttpResponseStatus.OK);
+            forwardQueryToSynthesizer(ctx, request);
             return null;
         }
 
@@ -202,17 +202,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isFilled(request.query)) {
-            S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
-            if (synthesizer != null) {
-                synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
-            } else {
-                Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
-                errorSynthesizer.synthesiseError(ctx,
-                                                 request.bucket,
-                                                 request.key,
-                                                 S3ErrorCode.InvalidRequest,
-                                                 String.format("Received unknown query '%s'.", request.query));
-            }
+            forwardQueryToSynthesizer(ctx, request);
             return true;
         }
 
@@ -297,6 +287,20 @@ public class S3Dispatcher implements WebDispatcher {
         request.uri = uri;
         request.query = query;
         return request;
+    }
+
+    private void forwardQueryToSynthesizer(WebContext ctx, S3Request request) {
+        S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
+        if (synthesizer != null) {
+            synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
+        } else {
+            Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
+            errorSynthesizer.synthesiseError(ctx,
+                                             request.bucket,
+                                             request.key,
+                                             S3ErrorCode.InvalidRequest,
+                                             String.format("Received unknown query '%s'.", request.query));
+        }
     }
 
     /**

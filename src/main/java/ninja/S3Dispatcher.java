@@ -161,6 +161,11 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
+        if (Strings.isFilled(request.query)) {
+            ctx.respondWith().status(HttpResponseStatus.OK);
+            return null;
+        }
+
         if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
             return null;
         }

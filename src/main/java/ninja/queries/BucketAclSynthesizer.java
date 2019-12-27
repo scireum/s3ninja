@@ -20,6 +20,7 @@ import javax.annotation.Nullable;
  */
 @Register(name = "acl")
 public class BucketAclSynthesizer implements S3QuerySynthesizer {
+
     @Override
     public void processQuery(@Nonnull WebContext ctx,
                              @Nullable String bucket,

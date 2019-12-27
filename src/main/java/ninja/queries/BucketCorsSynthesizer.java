@@ -20,6 +20,7 @@ import javax.annotation.Nullable;
  */
 @Register(name = "cors")
 public class BucketCorsSynthesizer implements S3QuerySynthesizer {
+
     @Override
     public void processQuery(@Nonnull WebContext ctx,
                              @Nullable String bucket,

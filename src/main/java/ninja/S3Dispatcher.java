@@ -206,9 +206,12 @@ public class S3Dispatcher implements WebDispatcher {
             if (synthesizer != null) {
                 synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
             } else {
-                // todo: synthesize better error repsonse, see #123
                 Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
-                ctx.respondWith().error(HttpResponseStatus.SERVICE_UNAVAILABLE);
+                errorSynthesizer.synthesiseError(ctx,
+                                                 request.bucket,
+                                                 request.key,
+                                                 S3ErrorCode.InvalidRequest,
+                                                 String.format("Received unknown query '%s'.", request.query));
             }
             return true;
         }
@@ -395,7 +398,7 @@ public class S3Dispatcher implements WebDispatcher {
     private void bucket(WebContext ctx, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
 
-        if (!objectCheckAuth(ctx, bucket)) {
+        if (!objectCheckAuth(ctx, bucket, null)) {
             return;
         }
 
@@ -510,7 +513,7 @@ public class S3Dispatcher implements WebDispatcher {
             signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Please provide an object id.");
             return false;
         }
-        if (!objectCheckAuth(ctx, bucket)) {
+        if (!objectCheckAuth(ctx, bucket, id)) {
             return false;
         }
 
@@ -525,15 +528,17 @@ public class S3Dispatcher implements WebDispatcher {
         return true;
     }
 
-    private boolean objectCheckAuth(WebContext ctx, Bucket bucket) {
+    private boolean objectCheckAuth(WebContext ctx, Bucket bucket, String key) {
         String hash = getAuthHash(ctx);
         if (hash != null) {
             String expectedHash = hashCalculator.computeHash(ctx, "");
             String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
-                ctx.respondWith()
-                   .error(HttpResponseStatus.UNAUTHORIZED,
-                          Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                errorSynthesizer.synthesiseError(ctx,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.BadDigest,
+                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
                 log.log(ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
@@ -542,7 +547,11 @@ public class S3Dispatcher implements WebDispatcher {
             }
         }
         if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
-            ctx.respondWith().error(HttpResponseStatus.UNAUTHORIZED, "Authentication required");
+            errorSynthesizer.synthesiseError(ctx,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.AccessDenied,
+                                             "Authentication required");
             log.log(ctx.getRequest().method().name(),
                     ctx.getRequestedURI(),
                     APILog.Result.REJECTED,
@@ -789,7 +798,11 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void multiObject(WebContext ctx, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -809,7 +822,11 @@ public class S3Dispatcher implements WebDispatcher {
                .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
                .status(HttpResponseStatus.OK);
         } catch (IOException e) {
-            ctx.respondWith().error(HttpResponseStatus.INTERNAL_SERVER_ERROR, Exceptions.handle(e));
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.InternalError,
+                                             Exceptions.handle(e).getMessage());
         }
     }
 
@@ -828,7 +845,11 @@ public class S3Dispatcher implements WebDispatcher {
                                          final String uploadId,
                                          InputStreamHandler in) {
         if (!multipartUploads.remove(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -855,7 +876,11 @@ public class S3Dispatcher implements WebDispatcher {
 
         file.deleteOnExit();
         if (!file.exists()) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Multipart File does not exist");
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             "Multipart File does not exist");
             return;
         }
         try {
@@ -881,7 +906,11 @@ public class S3Dispatcher implements WebDispatcher {
             out.endOutput();
         } catch (IOException e) {
             Exceptions.ignore(e);
-            ctx.respondWith().error(HttpResponseStatus.INTERNAL_SERVER_ERROR, "Could not build response");
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.InternalError,
+                                             "Could not build response");
         }
     }
 
@@ -946,7 +975,11 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
-            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+            errorSynthesizer.synthesiseError(ctx,
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 

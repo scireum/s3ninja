@@ -161,7 +161,7 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
-        if (Strings.isFilled(request.query)) {
+        if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
             ctx.respondWith().status(HttpResponseStatus.OK);
             return null;
         }

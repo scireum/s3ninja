@@ -17,6 +17,8 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import ninja.errors.S3ErrorCode;
+import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
@@ -95,6 +97,9 @@ public class S3Dispatcher implements WebDispatcher {
 
     @Part
     private AwsHashCalculator hashCalculator;
+
+    @Part
+    private S3ErrorSynthesizer errorSynthesizer;
 
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
@@ -312,11 +317,11 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Writes an API error to the log
      */
-    private void signalObjectError(WebContext ctx, HttpResponseStatus status, String message) {
+    private void signalObjectError(WebContext ctx, String bucket, String key, S3ErrorCode errorCode, String message) {
         if (ctx.getRequest().method() == HEAD) {
-            ctx.respondWith().status(status);
+            ctx.respondWith().status(errorCode.getHttpStatusCode());
         } else {
-            ctx.respondWith().error(status, message);
+            errorSynthesizer.synthesiseError(ctx, bucket, key, errorCode, message);
         }
         log.log(ctx.getRequest().method().name(),
                 message + " - " + ctx.getRequestedURI(),
@@ -396,13 +401,13 @@ public class S3Dispatcher implements WebDispatcher {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
         } else if (GET == method) {
             if (bucket.exists()) {
                 listObjects(ctx, bucket);
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
         } else if (DELETE == method) {
             bucket.delete();
@@ -497,7 +502,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     private boolean checkObjectRequest(WebContext ctx, Bucket bucket, String id) {
         if (Strings.isEmpty(id)) {
-            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Please provide an object id");
+            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Please provide an object id.");
             return false;
         }
         if (!objectCheckAuth(ctx, bucket)) {
@@ -508,7 +513,7 @@ public class S3Dispatcher implements WebDispatcher {
             if (storage.isAutocreateBuckets()) {
                 bucket.create();
             } else {
-                signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
                 return false;
             }
         }
@@ -586,7 +591,7 @@ public class S3Dispatcher implements WebDispatcher {
             throws IOException {
         StoredObject object = bucket.getObject(id);
         if (inputStream == null) {
-            signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "No content posted");
+            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.IncompleteBody, "No content posted");
             return;
         }
         try (FileOutputStream out = new FileOutputStream(object.getFile())) {
@@ -600,7 +605,9 @@ public class S3Dispatcher implements WebDispatcher {
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
             signalObjectError(ctx,
-                              HttpResponseStatus.BAD_REQUEST,
+                              bucket.getName(),
+                              id,
+                              S3ErrorCode.BadDigest,
                               Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
@@ -640,19 +647,31 @@ public class S3Dispatcher implements WebDispatcher {
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!copy.contains(PATH_DELIMITER)) {
-            signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source must contain '/'");
+            signalObjectError(ctx,
+                              null,
+                              null,
+                              S3ErrorCode.InvalidRequest,
+                              String.format("Source '%s' must contain '/'", copy));
             return;
         }
         String srcBucketName = copy.substring(1, copy.lastIndexOf(PATH_DELIMITER));
         String srcId = copy.substring(copy.lastIndexOf(PATH_DELIMITER) + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {
-            signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source bucket does not exist");
+            signalObjectError(ctx,
+                              srcBucketName,
+                              srcId,
+                              S3ErrorCode.NoSuchBucket,
+                              String.format("Source bucket '%s' does not exist", srcBucketName));
             return;
         }
         StoredObject src = srcBucket.getObject(srcId);
         if (!src.exists()) {
-            signalObjectError(ctx, HttpResponseStatus.BAD_REQUEST, "Source object does not exist");
+            signalObjectError(ctx,
+                              srcBucketName,
+                              srcId,
+                              S3ErrorCode.NoSuchKey,
+                              String.format("Source object '%s/%s' does not exist", srcBucketName, srcId));
             return;
         }
         Files.copy(src.getFile(), object.getFile());
@@ -684,7 +703,7 @@ public class S3Dispatcher implements WebDispatcher {
     private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
-            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
+            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;
         }
         Response response = ctx.respondWith();

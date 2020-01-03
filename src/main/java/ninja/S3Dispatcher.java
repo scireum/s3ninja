@@ -8,6 +8,7 @@
 
 package ninja;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -40,21 +41,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.net.InetAddress;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -79,6 +73,15 @@ public class S3Dispatcher implements WebDispatcher {
     private static final String ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST = "Multipart Upload does not exist";
     private static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
     private static final String PATH_DELIMITER = "/";
+
+    private static class S3Request {
+
+        private String uri;
+
+        private String bucket;
+
+        private String key;
+    }
 
     @Part
     private APILog log;
@@ -115,6 +118,26 @@ public class S3Dispatcher implements WebDispatcher {
         headerOverrides.put("response-content-encoding", "Content-Encoding");
     }
 
+    private static final ImmutableSet<String> DOMAINS;
+
+    static {
+        ImmutableSet.Builder<String> builder = ImmutableSet.builder();
+        builder.add(".localhost");
+        builder.add(".127.0.0.1");
+
+        try {
+            InetAddress myself = InetAddress.getLocalHost();
+            builder.add('.' + myself.getHostAddress());
+            builder.add('.' + myself.getHostName());
+            builder.add('.' + myself.getCanonicalHostName());
+        } catch (Exception e) {
+            // reaching this point, we failed to resolve the local host name. tant pis.
+            Exceptions.ignore(e);
+        }
+
+        DOMAINS = builder.build();
+    }
+
     @Part
     private Storage storage;
 
@@ -128,24 +151,24 @@ public class S3Dispatcher implements WebDispatcher {
 
     @Override
     public Callback<WebContext> preparePreDispatch(WebContext ctx) {
-        String uri = getEffectiveURI(ctx);
-        if (uri.equals(UI_PATH) || uri.startsWith(UI_PATH_PREFIX)) {
+        S3Request request = parseRequest(ctx);
+
+        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return null;
         }
 
-        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
-        if (Strings.isEmpty(bucketAndObject.getSecond())) {
+        if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
             return null;
         }
 
-        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
+        Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists() && !storage.isAutocreateBuckets()) {
             return null;
         }
 
         InputStreamHandler handler = createInputStreamHandler(ctx);
         ctx.setContentHandler(handler);
-        return req -> writeObject(req, bucketAndObject.getFirst(), bucketAndObject.getSecond(), handler);
+        return req -> writeObject(req, request.bucket, request.key, handler);
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext ctx) {
@@ -154,6 +177,33 @@ public class S3Dispatcher implements WebDispatcher {
         } else {
             return new InputStreamHandler();
         }
+    }
+
+    @Override
+    public boolean dispatch(WebContext ctx) throws Exception {
+        S3Request request = parseRequest(ctx);
+
+        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
+            return false;
+        }
+
+        if (Strings.isEmpty(request.bucket)) {
+            listBuckets(ctx);
+            return true;
+        }
+
+        if (Strings.isEmpty(request.key)) {
+            bucket(ctx, request.bucket);
+            return true;
+        }
+
+        Bucket bucket = storage.getBucket(request.bucket);
+        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
+            return false;
+        }
+
+        readObject(ctx, request.bucket, request.key);
+        return true;
     }
 
     /**
@@ -177,31 +227,40 @@ public class S3Dispatcher implements WebDispatcher {
         return uri;
     }
 
-    @Override
-    public boolean dispatch(WebContext ctx) throws Exception {
+    /**
+     * Parses a S3 request from the given HTTP request.
+     *
+     * @param ctx the HTTP request to parse.
+     * @return a structured {@link S3Request}.
+     */
+    private static S3Request parseRequest(WebContext ctx) {
         String uri = getEffectiveURI(ctx);
-        if (uri.equals(UI_PATH) || uri.startsWith(UI_PATH_PREFIX)) {
-            return false;
+
+        // chop off potential port from host
+        Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
+        String host = hostAndPort.getFirst();
+
+        // check whether the host contains a subdomain by matching against the list of local domains
+        if (Strings.isFilled(host)) {
+            for (String domain : DOMAINS) {
+                int length = host.length() - domain.length();
+                if (host.endsWith(domain) && length > 0) {
+                    S3Request request = new S3Request();
+                    request.bucket = host.substring(0, length);
+                    request.key = uri;
+                    request.uri = request.bucket + "/" + request.key;
+                    return request;
+                }
+            }
         }
 
-        if (Strings.isEmpty(uri)) {
-            listBuckets(ctx);
-            return true;
-        }
+        Tuple<String, String> bucketAndKey = Strings.split(uri, "/");
 
-        Tuple<String, String> bucketAndObject = Strings.split(uri, "/");
-        if (Strings.isEmpty(bucketAndObject.getSecond())) {
-            bucket(ctx, bucketAndObject.getFirst());
-            return true;
-        }
-
-        Bucket bucket = storage.getBucket(bucketAndObject.getFirst());
-        if (!bucket.exists() && !storage.isAutocreateBuckets()) {
-            return false;
-        }
-
-        readObject(ctx, bucketAndObject.getFirst(), bucketAndObject.getSecond());
-        return true;
+        S3Request request = new S3Request();
+        request.bucket = bucketAndKey.getFirst();
+        request.key = bucketAndKey.getSecond();
+        request.uri = uri;
+        return request;
     }
 
     /**

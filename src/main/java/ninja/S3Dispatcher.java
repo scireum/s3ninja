@@ -18,16 +18,19 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
+import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
+import sirius.kernel.health.Log;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
@@ -81,7 +84,12 @@ public class S3Dispatcher implements WebDispatcher {
         private String bucket;
 
         private String key;
+
+        private String query;
     }
+
+    @Part
+    private static GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -157,6 +165,11 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
+        if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
+            forwardQueryToSynthesizer(ctx, request);
+            return null;
+        }
+
         if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
             return null;
         }
@@ -185,6 +198,11 @@ public class S3Dispatcher implements WebDispatcher {
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return false;
+        }
+
+        if (Strings.isFilled(request.query)) {
+            forwardQueryToSynthesizer(ctx, request);
+            return true;
         }
 
         if (Strings.isEmpty(request.bucket)) {
@@ -236,6 +254,11 @@ public class S3Dispatcher implements WebDispatcher {
     private static S3Request parseRequest(WebContext ctx) {
         String uri = getEffectiveURI(ctx);
 
+        // we treat the first parameter without value as query string
+        Iterator<String> parameterIterator = ctx.getParameterNames().iterator();
+        String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
+        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(ctx.getParameter(firstParameter)) ? firstParameter : null;
+
         // chop off potential port from host
         Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
         String host = hostAndPort.getFirst();
@@ -249,6 +272,7 @@ public class S3Dispatcher implements WebDispatcher {
                     request.bucket = host.substring(0, length);
                     request.key = uri;
                     request.uri = request.bucket + "/" + request.key;
+                    request.query = query;
                     return request;
                 }
             }
@@ -260,7 +284,19 @@ public class S3Dispatcher implements WebDispatcher {
         request.bucket = bucketAndKey.getFirst();
         request.key = bucketAndKey.getSecond();
         request.uri = uri;
+        request.query = query;
         return request;
+    }
+
+    private void forwardQueryToSynthesizer(WebContext ctx, S3Request request) {
+        S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
+        if (synthesizer != null) {
+            synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
+        } else {
+            // todo: synthesize better error repsonse, see #123
+            Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
+            ctx.respondWith().error(HttpResponseStatus.SERVICE_UNAVAILABLE);
+        }
     }
 
     /**

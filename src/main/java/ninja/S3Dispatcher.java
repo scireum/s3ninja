@@ -131,6 +131,7 @@ public class S3Dispatcher implements WebDispatcher {
             domains.add('.' + myself.getCanonicalHostName());
         } catch (Exception e) {
             // reaching this point, we failed to resolve the local host name. tant pis.
+            Exceptions.ignore(e);
         }
     }
 

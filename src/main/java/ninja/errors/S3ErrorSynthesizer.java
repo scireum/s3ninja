@@ -53,7 +53,6 @@ public class S3ErrorSynthesizer {
         xml.property("Code", code.toString());
         xml.propertyIfFilled("Message", message);
         xml.propertyIfFilled("Resource", resource);
-        // xml.property("RequestId", XXX); // a real error includes this request id that would need to be generated here
         xml.endOutput();
     }
 }

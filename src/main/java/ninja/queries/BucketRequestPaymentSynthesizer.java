@@ -21,6 +21,7 @@ import javax.annotation.Nullable;
  */
 @Register(name = "requestPayment")
 public class BucketRequestPaymentSynthesizer implements S3QuerySynthesizer {
+
     @Override
     public void processQuery(@Nonnull WebContext ctx,
                              @Nullable String bucket,

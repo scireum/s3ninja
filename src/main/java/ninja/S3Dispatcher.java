@@ -8,6 +8,7 @@
 
 package ninja;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
@@ -125,21 +126,24 @@ public class S3Dispatcher implements WebDispatcher {
         headerOverrides.put("response-content-encoding", "Content-Encoding");
     }
 
-    private static final Set<String> domains;
+    private static final ImmutableSet<String> DOMAINS;
 
     static {
-        domains = new HashSet<>();
-        domains.add(".localhost");
-        domains.add(".127.0.0.1");
+        ImmutableSet.Builder<String> builder = ImmutableSet.builder();
+        builder.add(".localhost");
+        builder.add(".127.0.0.1");
 
         try {
             InetAddress myself = InetAddress.getLocalHost();
-            domains.add('.' + myself.getHostAddress());
-            domains.add('.' + myself.getHostName());
-            domains.add('.' + myself.getCanonicalHostName());
+            builder.add('.' + myself.getHostAddress());
+            builder.add('.' + myself.getHostName());
+            builder.add('.' + myself.getCanonicalHostName());
         } catch (Exception e) {
             // reaching this point, we failed to resolve the local host name. tant pis.
+            Exceptions.ignore(e);
         }
+
+        DOMAINS = builder.build();
     }
 
     @Part
@@ -261,7 +265,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         // check whether the host contains a subdomain by matching against the list of local domains
         if (Strings.isFilled(host)) {
-            for (String domain : domains) {
+            for (String domain : DOMAINS) {
                 int length = host.length() - domain.length();
                 if (host.endsWith(domain) && length > 0) {
                     S3Request request = new S3Request();
@@ -705,7 +709,7 @@ public class S3Dispatcher implements WebDispatcher {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG).toLowerCase();
+        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
             HashCode hash = Files.hash(object.getFile(), Hashing.md5());
             etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
@@ -715,7 +719,7 @@ public class S3Dispatcher implements WebDispatcher {
             object.storeProperties(data);
         }
 
-        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag));
+        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag.toLowerCase()));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         if (sendFile) {
             response.file(object.getFile());

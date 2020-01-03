@@ -669,7 +669,7 @@ public class S3Dispatcher implements WebDispatcher {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG).toLowerCase();
+        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
             HashCode hash = Files.hash(object.getFile(), Hashing.md5());
             etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
@@ -679,7 +679,7 @@ public class S3Dispatcher implements WebDispatcher {
             object.storeProperties(data);
         }
 
-        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag));
+        response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag.toLowerCase()));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
         if (sendFile) {
             response.file(object.getFile());

@@ -21,6 +21,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -116,6 +117,23 @@ public class Bucket {
      */
     private static void walkFileTreeOurWay(Path start, FileVisitor<? super Path> visitor) throws IOException {
         Files.walkFileTree(start, visitor);
+    }
+
+    private static int compareUtf8Binary(Path p1, Path p2) {
+        String s1 = p1.getFileName().toString();
+        String s2 = p2.getFileName().toString();
+
+        byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
+        byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
+
+        // unless we upgrade to java 9+ offering Arrays.compare(...), we need to compare the arrays manually :(
+        int length = Math.min(b1.length, b2.length);
+        for (int i = 0; i < length; ++i) {
+            if (b1[i] != b2[i]) {
+                return Byte.compare(b1[i], b2[i]);
+            }
+        }
+        return b1.length - b2.length;
     }
 
     /**

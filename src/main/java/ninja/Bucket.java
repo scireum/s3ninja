@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -109,14 +110,29 @@ public class Bucket {
     }
 
     /**
-     * Simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
+     * Very simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
      *
-     * @param start the start path.
+     * @param path the start path.
      * @param visitor the visitor processing the files.
      * @throws IOException forwarded from nested I/O operations.
      */
-    private static void walkFileTreeOurWay(Path start, FileVisitor<? super Path> visitor) throws IOException {
-        Files.walkFileTree(start, visitor);
+    private static void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
+        if (!path.toFile().isDirectory()) {
+            throw new IOException("Directory expected.");
+        }
+
+        try (Stream<Path> children = Files.list(path)) {
+            children.sorted(Bucket::compareUtf8Binary)
+                    .filter(p -> p.toFile().isFile())
+                    .forEach(p -> {
+                try {
+                    BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+                    visitor.visitFile(p, attrs);
+                } catch (IOException e) {
+                    Exceptions.handle(e);
+                }
+            });
+        }
     }
 
     private static int compareUtf8Binary(Path p1, Path p2) {

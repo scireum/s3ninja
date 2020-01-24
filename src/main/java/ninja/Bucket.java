@@ -21,8 +21,11 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -98,12 +101,55 @@ public class Bucket {
         output.property("Marker", marker);
         output.property("Prefix", prefix);
         try {
-            Files.walkFileTree(file.toPath(), visitor);
+            walkFileTreeOurWay(file.toPath(), visitor);
         } catch (IOException e) {
             Exceptions.handle(e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
+    }
+
+    /**
+     * Very simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
+     *
+     * @param path the start path.
+     * @param visitor the visitor processing the files.
+     * @throws IOException forwarded from nested I/O operations.
+     */
+    private static void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
+        if (!path.toFile().isDirectory()) {
+            throw new IOException("Directory expected.");
+        }
+
+        try (Stream<Path> children = Files.list(path)) {
+            children.sorted(Bucket::compareUtf8Binary)
+                    .filter(p -> p.toFile().isFile())
+                    .forEach(p -> {
+                try {
+                    BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
+                    visitor.visitFile(p, attrs);
+                } catch (IOException e) {
+                    Exceptions.handle(e);
+                }
+            });
+        }
+    }
+
+    private static int compareUtf8Binary(Path p1, Path p2) {
+        String s1 = p1.getFileName().toString();
+        String s2 = p2.getFileName().toString();
+
+        byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
+        byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
+
+        // unless we upgrade to java 9+ offering Arrays.compare(...), we need to compare the arrays manually :(
+        int length = Math.min(b1.length, b2.length);
+        for (int i = 0; i < length; ++i) {
+            if (b1[i] != b2[i]) {
+                return Byte.compare(b1[i], b2[i]);
+            }
+        }
+        return b1.length - b2.length;
     }
 
     /**
@@ -191,7 +237,8 @@ public class Bucket {
      */
     public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
-            return stream.map(Path::toFile)
+            return stream.sorted(Bucket::compareUtf8Binary)
+                         .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())
                          .map(StoredObject::new)

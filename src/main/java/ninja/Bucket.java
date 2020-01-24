@@ -126,7 +126,7 @@ public class Bucket {
                     .filter(p -> p.toFile().isFile())
                     .forEach(p -> {
                 try {
-                    BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+                    BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
                     visitor.visitFile(p, attrs);
                 } catch (IOException e) {
                     Exceptions.handle(e);

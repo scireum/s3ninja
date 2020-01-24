@@ -221,7 +221,8 @@ public class Bucket {
      */
     public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
-            return stream.map(Path::toFile)
+            return stream.sorted(Bucket::compareUtf8Binary)
+                         .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())
                          .map(StoredObject::new)

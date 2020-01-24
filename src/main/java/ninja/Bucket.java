@@ -21,6 +21,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -98,12 +99,23 @@ public class Bucket {
         output.property("Marker", marker);
         output.property("Prefix", prefix);
         try {
-            Files.walkFileTree(file.toPath(), visitor);
+            walkFileTreeOurWay(file.toPath(), visitor);
         } catch (IOException e) {
             Exceptions.handle(e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
+    }
+
+    /**
+     * Simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
+     *
+     * @param start the start path.
+     * @param visitor the visitor processing the files.
+     * @throws IOException forwarded from nested I/O operations.
+     */
+    private static void walkFileTreeOurWay(Path start, FileVisitor<? super Path> visitor) throws IOException {
+        Files.walkFileTree(start, visitor);
     }
 
     /**

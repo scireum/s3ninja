@@ -765,7 +765,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               ISO8601_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }

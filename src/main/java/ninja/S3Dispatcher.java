@@ -110,10 +110,20 @@ public class S3Dispatcher implements WebDispatcher {
     private Counter uploadIdCounter = new Counter();
 
     /**
-     * Formatter to create appropriate timestamps as expected by AWS...
+     * ISO 8601 formatter creating timestamps as expected by AWS.
      */
     public static final DateTimeFormatter ISO8601_INSTANT =
             new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                                          .toFormatter()
+                                          .withLocale(Locale.ENGLISH)
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.ofHours(0));
+
+    /**
+     * RFC 822 formatter creating timestamps as expected by AWS.
+     */
+    public static final DateTimeFormatter RFC822_INSTANT =
+            new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
                                           .toFormatter()
                                           .withLocale(Locale.ENGLISH)
                                           .withChronology(IsoChronology.INSTANCE)

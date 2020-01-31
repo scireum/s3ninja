@@ -112,8 +112,8 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Formatter to create appropriate timestamps as expected by AWS...
      */
-    public static final DateTimeFormatter RFC822_INSTANT =
-            new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
+    public static final DateTimeFormatter ISO8601_INSTANT =
+            new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
                                           .toFormatter()
                                           .withLocale(Locale.ENGLISH)
                                           .withChronology(IsoChronology.INSTANCE)
@@ -380,7 +380,7 @@ public class S3Dispatcher implements WebDispatcher {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate",
-                             RFC822_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
                 out.endObject();
             }
             out.endObject();
@@ -706,7 +706,7 @@ public class S3Dispatcher implements WebDispatcher {
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
-        structuredOutput.text(RFC822_INSTANT.format(object.getLastModifiedInstant()));
+        structuredOutput.text(ISO8601_INSTANT.format(object.getLastModifiedInstant()));
         structuredOutput.endObject();
         structuredOutput.beginObject(HTTP_HEADER_NAME_ETAG);
         structuredOutput.text(etag(etag));
@@ -755,7 +755,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               ISO8601_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -1024,7 +1024,7 @@ public class S3Dispatcher implements WebDispatcher {
         for (File part : uploadDir.listFiles()) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
-            out.property("LastModified", RFC822_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
+            out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
                 out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
             } catch (IOException e) {

@@ -42,10 +42,7 @@ import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.http.WebDispatcher;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.net.InetAddress;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
@@ -69,6 +66,8 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
+
+    private static final String TEMPORARY_PROPERTIES_FILENAME = "properties";
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
@@ -798,12 +797,24 @@ public class S3Dispatcher implements WebDispatcher {
 
         getUploadDir(uploadId).mkdirs();
 
+        storePropertiesInUploadDir(properties, uploadId);
+
         XMLStructuredOutput out = response.xml();
         out.beginOutput("InitiateMultipartUploadResult");
         out.property(RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
         out.property("UploadId", uploadId);
         out.endOutput();
+    }
+
+    private void storePropertiesInUploadDir(Map<String, String> properties, String uploadId) {
+        Properties props = new Properties();
+        properties.forEach(props::setProperty);
+        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
+            props.store(propsOut, "");
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
     }
 
     /**
@@ -904,6 +915,9 @@ public class S3Dispatcher implements WebDispatcher {
         try {
             StoredObject object = bucket.getObject(id);
             Files.move(file, object.getFile());
+
+            commitPropertiesFromUploadDir(uploadId, object);
+
             delete(getUploadDir(uploadId));
 
             String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
@@ -929,6 +943,13 @@ public class S3Dispatcher implements WebDispatcher {
                                              null,
                                              S3ErrorCode.InternalError,
                                              "Could not build response");
+        }
+    }
+
+    private void commitPropertiesFromUploadDir(String uploadId, StoredObject object) throws IOException {
+        File propsFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
+        if (propsFile.exists()) {
+            Files.move(propsFile, object.getPropertiesFile());
         }
     }
 
@@ -1018,9 +1039,12 @@ public class S3Dispatcher implements WebDispatcher {
         int marker = ctx.get("part-number-marker").asInt(0);
         int maxParts = ctx.get("max-parts").asInt(0);
 
+        FileFilter filter = file -> !Strings.areEqual(file.getName(), TEMPORARY_PROPERTIES_FILENAME);
+        File[] parts = Objects.requireNonNull(uploadDir.listFiles(filter));
+
         out.property("StorageClass", "STANDARD");
         out.property("PartNumberMarker", marker);
-        if ((marker + maxParts) < uploadDir.list().length) {
+        if ((marker + maxParts) < parts.length) {
             out.property("NextPartNumberMarker", marker + maxParts + 1);
         }
 
@@ -1028,10 +1052,10 @@ public class S3Dispatcher implements WebDispatcher {
             out.property("MaxParts", maxParts);
         }
 
-        boolean truncated = 0 < maxParts && maxParts < uploadDir.list().length;
+        boolean truncated = 0 < maxParts && maxParts < parts.length;
         out.property("IsTruncated", truncated);
 
-        for (File part : uploadDir.listFiles()) {
+        for (File part : parts) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));

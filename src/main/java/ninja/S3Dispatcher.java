@@ -42,10 +42,7 @@ import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.http.WebDispatcher;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.net.InetAddress;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
@@ -69,6 +66,8 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
+
+    private static final String TEMPORARY_PROPERTIES_FILENAME = "properties";
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
@@ -798,6 +797,15 @@ public class S3Dispatcher implements WebDispatcher {
 
         getUploadDir(uploadId).mkdirs();
 
+        // temporarily store properties into upload dir
+        Properties props = new Properties();
+        properties.forEach(props::setProperty);
+        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
+            props.store(propsOut, "");
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
+
         XMLStructuredOutput out = response.xml();
         out.beginOutput("InitiateMultipartUploadResult");
         out.property(RESPONSE_BUCKET, bucket.getName());
@@ -904,6 +912,13 @@ public class S3Dispatcher implements WebDispatcher {
         try {
             StoredObject object = bucket.getObject(id);
             Files.move(file, object.getFile());
+
+            // move properties file to final location
+            File propsFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
+            if (propsFile.exists()) {
+                Files.move(propsFile, object.getPropertiesFile());
+            }
+
             delete(getUploadDir(uploadId));
 
             String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
@@ -1032,6 +1047,10 @@ public class S3Dispatcher implements WebDispatcher {
         out.property("IsTruncated", truncated);
 
         for (File part : uploadDir.listFiles()) {
+            if (Strings.areEqual(part.getName(), TEMPORARY_PROPERTIES_FILENAME)) {
+                continue;
+            }
+
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));

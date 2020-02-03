@@ -1033,9 +1033,12 @@ public class S3Dispatcher implements WebDispatcher {
         int marker = ctx.get("part-number-marker").asInt(0);
         int maxParts = ctx.get("max-parts").asInt(0);
 
+        FileFilter filter = file -> !Strings.areEqual(file.getName(), TEMPORARY_PROPERTIES_FILENAME);
+        File[] parts = Objects.requireNonNull(uploadDir.listFiles(filter));
+
         out.property("StorageClass", "STANDARD");
         out.property("PartNumberMarker", marker);
-        if ((marker + maxParts) < uploadDir.list().length) {
+        if ((marker + maxParts) < parts.length) {
             out.property("NextPartNumberMarker", marker + maxParts + 1);
         }
 
@@ -1043,14 +1046,10 @@ public class S3Dispatcher implements WebDispatcher {
             out.property("MaxParts", maxParts);
         }
 
-        boolean truncated = 0 < maxParts && maxParts < uploadDir.list().length;
+        boolean truncated = 0 < maxParts && maxParts < parts.length;
         out.property("IsTruncated", truncated);
 
-        for (File part : uploadDir.listFiles()) {
-            if (Strings.areEqual(part.getName(), TEMPORARY_PROPERTIES_FILENAME)) {
-                continue;
-            }
-
+        for (File part : parts) {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));

@@ -797,14 +797,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         getUploadDir(uploadId).mkdirs();
 
-        // temporarily store properties into upload dir
-        Properties props = new Properties();
-        properties.forEach(props::setProperty);
-        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
-            props.store(propsOut, "");
-        } catch (IOException e) {
-            Exceptions.handle(e);
-        }
+        storePropertiesInUploadDir(properties, uploadId);
 
         XMLStructuredOutput out = response.xml();
         out.beginOutput("InitiateMultipartUploadResult");
@@ -812,6 +805,16 @@ public class S3Dispatcher implements WebDispatcher {
         out.property("Key", id);
         out.property("UploadId", uploadId);
         out.endOutput();
+    }
+
+    private void storePropertiesInUploadDir(Map<String, String> properties, String uploadId) {
+        Properties props = new Properties();
+        properties.forEach(props::setProperty);
+        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
+            props.store(propsOut, "");
+        } catch (IOException e) {
+            Exceptions.handle(e);
+        }
     }
 
     /**
@@ -913,11 +916,7 @@ public class S3Dispatcher implements WebDispatcher {
             StoredObject object = bucket.getObject(id);
             Files.move(file, object.getFile());
 
-            // move properties file to final location
-            File propsFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
-            if (propsFile.exists()) {
-                Files.move(propsFile, object.getPropertiesFile());
-            }
+            commitPropertiesFromUploadDir(uploadId, object);
 
             delete(getUploadDir(uploadId));
 
@@ -944,6 +943,13 @@ public class S3Dispatcher implements WebDispatcher {
                                              null,
                                              S3ErrorCode.InternalError,
                                              "Could not build response");
+        }
+    }
+
+    private void commitPropertiesFromUploadDir(String uploadId, StoredObject object) throws IOException {
+        File propsFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
+        if (propsFile.exists()) {
+            Files.move(propsFile, object.getPropertiesFile());
         }
     }
 

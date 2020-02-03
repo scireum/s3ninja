@@ -128,13 +128,16 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         and:
         meta.setContentLength(message.length)
+        meta.addUserMetadata("userdata", "test123")
         def upload = transfer.upload("test", "test", new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)), meta)
         upload.waitForUploadResult()
         def content = new String(
                 ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
                 Charsets.UTF_8)
+        def userdata = client.getObjectMetadata("test", "test").getUserMetaDataOf("userdata")
         then:
         content == "Test"
+        userdata == "test123"
     }
 
     def "MultipartUpload and then DELETE work as expected"() {

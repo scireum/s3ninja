@@ -462,7 +462,7 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void readObject(WebContext ctx, String bucketName, String objectId) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '__');
+        String id = objectId.replace("/", "__");
         String uploadId = ctx.get("uploadId").asString();
 
         if (!checkObjectRequest(ctx, bucket, id)) {
@@ -501,7 +501,7 @@ public class S3Dispatcher implements WebDispatcher {
     private void writeObject(WebContext ctx, String bucketName, String objectId, InputStreamHandler in)
             throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '__');
+        String id = objectId.replace("/", "__");
         String uploadId = ctx.get("uploadId").asString();
 
         if (!checkObjectRequest(ctx, bucket, id)) {

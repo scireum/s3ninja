@@ -51,7 +51,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         useLimit = limit > 0;
         usePrefix = Strings.isFilled(prefix);
         if (usePrefix) {
-            this.prefix = prefix.replace('/', '__');
+            this.prefix = prefix.replace("/", "__");
         }
         markerReached = Strings.isEmpty(marker);
     }

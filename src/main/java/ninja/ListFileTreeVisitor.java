@@ -8,11 +8,9 @@
 
 package ninja;
 
-import com.google.common.hash.Hashing;
-import sirius.kernel.commons.Explain;
+import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Counter;
-import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.XMLStructuredOutput;
 
 import javax.annotation.Nullable;
@@ -90,15 +88,8 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         return FileVisitResult.CONTINUE;
     }
 
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private String getETag(File file) {
-        try {
-            return com.google.common.io.Files.asByteSource(file).hash(Hashing.md5()).toString();
-        } catch (IOException e) {
-            Exceptions.ignore(e);
-        }
-        return null;
+        return Hasher.md5().hashFile(file).toHexString();
     }
 
     public long getCount() {

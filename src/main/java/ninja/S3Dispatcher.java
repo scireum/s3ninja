@@ -10,8 +10,6 @@ package ninja;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
-import com.google.common.hash.HashCode;
-import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
@@ -22,11 +20,7 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.Callback;
-import sirius.kernel.commons.Explain;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.commons.Tuple;
-import sirius.kernel.commons.Value;
+import sirius.kernel.commons.*;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
@@ -623,8 +617,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to upload
      * @param id     name of the object to upload
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream)
             throws IOException {
         StoredObject object = bucket.getObject(id);
@@ -637,8 +629,8 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Map<String, String> properties = parseUploadProperties(ctx);
-        HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
-        String md5 = BaseEncoding.base64().encode(hash.asBytes());
+        byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
+        String md5 = BaseEncoding.base64().encode(hash);
         String contentMd5 = properties.get("Content-MD5");
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
@@ -650,7 +642,7 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+        String etag = BaseEncoding.base16().encode(hash).toLowerCase();
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
         object.storeProperties(properties);
         Response response = ctx.respondWith();
@@ -682,8 +674,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to use as destination
      * @param id     name of the object to use as destination
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!copy.contains(PATH_DELIMITER)) {
@@ -718,8 +708,7 @@ public class S3Dispatcher implements WebDispatcher {
         if (src.getPropertiesFile().exists()) {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
-        HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
-        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+        String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
 
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
@@ -740,8 +729,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
@@ -759,8 +746,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
-            HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
-            etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+            etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
             Map<String, String> data = new HashMap<>();
             properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
             data.put(HTTP_HEADER_NAME_ETAG, etag);
@@ -836,8 +822,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param partNumber the number of this part in the complete upload
      * @param part       input stream with the content of this part
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void multiObject(WebContext ctx, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(ctx,
@@ -858,7 +842,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
             part.close();
 
-            String etag = BaseEncoding.base16().encode(Files.asByteSource(partFile).hash(Hashing.md5()).asBytes()).toLowerCase();
+            String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(partFile).toHash()).toLowerCase();
             ctx.respondWith()
                .setHeader(HTTP_HEADER_NAME_ETAG, etag)
                .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
@@ -881,8 +865,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param uploadId the multipart upload that should be completed
      * @param in       input stream with xml listing uploaded parts
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void completeMultipartUpload(WebContext ctx,
                                          Bucket bucket,
                                          String id,
@@ -935,7 +917,7 @@ public class S3Dispatcher implements WebDispatcher {
 
             delete(getUploadDir(uploadId));
 
-            String etag = Files.asByteSource(object.getFile()).hash(Hashing.md5()).toString();
+            String etag = Hasher.md5().hashFile(object.getFile()).toHexString();
 
             // Update the ETAG of the underlying object...
             Properties properties = object.getProperties();
@@ -1027,8 +1009,6 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
-    @SuppressWarnings({"deprecation", "java:S1874"})
-    @Explain("MD5 is required by Amazon")
     private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(ctx,
@@ -1076,11 +1056,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
-            try {
-                out.property(HTTP_HEADER_NAME_ETAG, Files.asByteSource(part).hash(Hashing.md5()).toString());
-            } catch (IOException e) {
-                Exceptions.ignore(e);
-            }
+            out.property(HTTP_HEADER_NAME_ETAG, Hasher.md5().hashFile(part).toBase64String());
             out.property("Size", part.length());
             out.endObject();
         }

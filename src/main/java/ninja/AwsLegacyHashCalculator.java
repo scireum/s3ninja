@@ -95,7 +95,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix + "/" + S3Dispatcher.getEffectiveURI(ctx));
+        stringToSign.append(pathPrefix).append('/').append(S3Dispatcher.getEffectiveURI(ctx));
 
         char separator = '?';
         for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {

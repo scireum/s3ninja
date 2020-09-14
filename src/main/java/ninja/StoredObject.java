@@ -23,7 +23,7 @@ import java.util.Properties;
  * Represents a stored object.
  */
 public class StoredObject {
-    private File file;
+    private final File file;
 
     /**
      * Creates a new StoredObject based on a file.

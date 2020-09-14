@@ -26,13 +26,13 @@ import java.nio.file.attribute.BasicFileAttributes;
  */
 class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
 
-    private Counter objectCount;
-    private XMLStructuredOutput output;
-    private int limit;
-    private String marker;
+    private final Counter objectCount;
+    private final XMLStructuredOutput output;
+    private final int limit;
+    private final String marker;
     private String prefix;
-    private boolean useLimit;
-    private boolean usePrefix;
+    private final boolean useLimit;
+    private final boolean usePrefix;
     private boolean markerReached;
 
     // Supressed warning "Null pointers should not be dereferenced"

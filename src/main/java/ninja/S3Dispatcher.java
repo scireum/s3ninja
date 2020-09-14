@@ -103,9 +103,9 @@ public class S3Dispatcher implements WebDispatcher {
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
 
-    private Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
+    private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
-    private Counter uploadIdCounter = new Counter();
+    private final Counter uploadIdCounter = new Counter();
 
     /**
      * ISO 8601 date/time formatter.

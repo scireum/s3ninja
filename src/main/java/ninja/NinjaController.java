@@ -207,7 +207,7 @@ public class NinjaController implements Controller {
             Map<String, String> properties = Maps.newTreeMap();
             properties.put(HttpHeaderNames.CONTENT_TYPE.toString(),
                     ctx.getHeaderValue(HttpHeaderNames.CONTENT_TYPE).asString(MimeHelper.guessMimeType(name)));
-            HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+            HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
             String md5 = BaseEncoding.base64().encode(hash.asBytes());
             properties.put("Content-MD5", md5);
             object.storeProperties(properties);

@@ -91,7 +91,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
 
     private String getETag(File file) {
         try {
-            return com.google.common.io.Files.hash(file, Hashing.md5()).toString();
+            return com.google.common.io.Files.asByteSource(file).hash(Hashing.md5()).toString();
         } catch (IOException e) {
             Exceptions.ignore(e);
         }

@@ -634,7 +634,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Map<String, String> properties = parseUploadProperties(ctx);
-        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+        HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
         String md5 = BaseEncoding.base64().encode(hash.asBytes());
         String contentMd5 = properties.get("Content-MD5");
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
@@ -713,7 +713,7 @@ public class S3Dispatcher implements WebDispatcher {
         if (src.getPropertiesFile().exists()) {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
-        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+        HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
         String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
 
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
@@ -752,7 +752,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
-            HashCode hash = Files.hash(object.getFile(), Hashing.md5());
+            HashCode hash = Files.asByteSource(object.getFile()).hash(Hashing.md5());
             etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
             Map<String, String> data = new HashMap<>();
             properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
@@ -849,7 +849,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
             part.close();
 
-            String etag = BaseEncoding.base16().encode(Files.hash(partFile, Hashing.md5()).asBytes()).toLowerCase();
+            String etag = BaseEncoding.base16().encode(Files.asByteSource(partFile).hash(Hashing.md5()).asBytes()).toLowerCase();
             ctx.respondWith()
                .setHeader(HTTP_HEADER_NAME_ETAG, etag)
                .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
@@ -924,7 +924,7 @@ public class S3Dispatcher implements WebDispatcher {
 
             delete(getUploadDir(uploadId));
 
-            String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+            String etag = Files.asByteSource(object.getFile()).hash(Hashing.md5()).toString();
 
             // Update the ETAG of the underlying object...
             Properties properties = object.getProperties();
@@ -1064,7 +1064,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
             try {
-                out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
+                out.property(HTTP_HEADER_NAME_ETAG, Files.asByteSource(part).hash(Hashing.md5()).toString());
             } catch (IOException e) {
                 Exceptions.ignore(e);
             }

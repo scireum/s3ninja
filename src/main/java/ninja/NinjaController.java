@@ -16,6 +16,7 @@ import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import sirius.kernel.commons.Explain;
 import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -194,6 +195,8 @@ public class NinjaController implements Controller {
      * @param bucket the name of the target bucket
      * @param input  the data stream to read from
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true, preDispatchable = true)
     public void uploadFile(WebContext ctx, JSONStructuredOutput out, String bucket, InputStreamHandler input) {
         try {

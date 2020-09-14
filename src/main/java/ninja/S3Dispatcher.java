@@ -23,6 +23,7 @@ import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
+import sirius.kernel.commons.Explain;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
@@ -622,6 +623,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to upload
      * @param id     name of the object to upload
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream)
             throws IOException {
         StoredObject object = bucket.getObject(id);
@@ -679,6 +682,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to use as destination
      * @param id     name of the object to use as destination
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!copy.contains(PATH_DELIMITER)) {
@@ -735,6 +740,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
@@ -829,6 +836,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param partNumber the number of this part in the complete upload
      * @param part       input stream with the content of this part
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void multiObject(WebContext ctx, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(ctx,
@@ -872,6 +881,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param uploadId the multipart upload that should be completed
      * @param in       input stream with xml listing uploaded parts
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void completeMultipartUpload(WebContext ctx,
                                          Bucket bucket,
                                          String id,
@@ -1016,6 +1027,8 @@ public class S3Dispatcher implements WebDispatcher {
      * @param bucket the bucket containing the object to download
      * @param id     name of the object to use as download
      */
+    @SuppressWarnings({"deprecation", "java:S1874"})
+    @Explain("MD5 is required by Amazon")
     private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(ctx,

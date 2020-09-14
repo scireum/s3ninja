@@ -211,35 +211,35 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Override
-    public boolean dispatch(WebContext ctx) throws Exception {
+    public DispatchDecision dispatch(WebContext ctx) throws Exception {
         S3Request request = parseRequest(ctx);
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
-            return false;
+            return DispatchDecision.CONTINUE;
         }
 
         if (Strings.isFilled(request.query)) {
             forwardQueryToSynthesizer(ctx, request);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.bucket)) {
             listBuckets(ctx);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.key)) {
             bucket(ctx, request.bucket);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists() && !storage.isAutocreateBuckets()) {
-            return false;
+            return DispatchDecision.CONTINUE;
         }
 
         readObject(ctx, request.bucket, request.key);
-        return true;
+        return DispatchDecision.DONE;
     }
 
     /**

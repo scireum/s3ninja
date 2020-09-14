@@ -16,8 +16,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>14.0</sirius.kernel>
-        <sirius.web>25.0</sirius.web>
+        <sirius.kernel>dev-19.9</sirius.kernel>
+        <sirius.web>dev-29.14</sirius.web>
     </properties>
 
     <repositories>

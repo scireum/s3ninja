@@ -1056,7 +1056,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
-            out.property(HTTP_HEADER_NAME_ETAG, Hasher.md5().hashFile(part).toBase64String());
+            out.property(HTTP_HEADER_NAME_ETAG, Hasher.md5().hashFile(part).toHexString());
             out.property("Size", part.length());
             out.endObject();
         }

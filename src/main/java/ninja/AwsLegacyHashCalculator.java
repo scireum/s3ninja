@@ -8,7 +8,6 @@
 
 package ninja;
 
-import com.google.common.base.Charsets;
 import com.google.common.io.BaseEncoding;
 import io.netty.handler.codec.http.HttpHeaders;
 import sirius.kernel.commons.Strings;
@@ -18,6 +17,7 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -113,7 +113,7 @@ public class AwsLegacyHashCalculator {
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
         mac.init(keySpec);
-        byte[] result = mac.doFinal(stringToSign.toString().getBytes(Charsets.UTF_8.name()));
+        byte[] result = mac.doFinal(stringToSign.toString().getBytes(StandardCharsets.UTF_8.name()));
         return BaseEncoding.base64().encode(result);
     }
 

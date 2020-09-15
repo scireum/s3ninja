@@ -38,8 +38,8 @@ import java.util.stream.Stream;
  */
 public class Bucket {
 
-    private File file;
-    private static Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
+    private final File file;
+    private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
      * Creates a new bucket based on the given directory.

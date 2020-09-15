@@ -10,8 +10,6 @@ package ninja;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
-import com.google.common.hash.HashCode;
-import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
@@ -22,10 +20,7 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.Callback;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.commons.Tuple;
-import sirius.kernel.commons.Value;
+import sirius.kernel.commons.*;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
@@ -108,9 +103,9 @@ public class S3Dispatcher implements WebDispatcher {
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
 
-    private Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
+    private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
-    private Counter uploadIdCounter = new Counter();
+    private final Counter uploadIdCounter = new Counter();
 
     /**
      * ISO 8601 date/time formatter.
@@ -211,35 +206,35 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Override
-    public boolean dispatch(WebContext ctx) throws Exception {
+    public DispatchDecision dispatch(WebContext ctx) throws Exception {
         S3Request request = parseRequest(ctx);
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
-            return false;
+            return DispatchDecision.CONTINUE;
         }
 
         if (Strings.isFilled(request.query)) {
             forwardQueryToSynthesizer(ctx, request);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.bucket)) {
             listBuckets(ctx);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.key)) {
             bucket(ctx, request.bucket);
-            return true;
+            return DispatchDecision.DONE;
         }
 
         Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists() && !storage.isAutocreateBuckets()) {
-            return false;
+            return DispatchDecision.CONTINUE;
         }
 
         readObject(ctx, request.bucket, request.key);
-        return true;
+        return DispatchDecision.DONE;
     }
 
     /**
@@ -634,8 +629,8 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         Map<String, String> properties = parseUploadProperties(ctx);
-        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        String md5 = BaseEncoding.base64().encode(hash.asBytes());
+        byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
+        String md5 = BaseEncoding.base64().encode(hash);
         String contentMd5 = properties.get("Content-MD5");
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
@@ -647,7 +642,7 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+        String etag = BaseEncoding.base16().encode(hash).toLowerCase();
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
         object.storeProperties(properties);
         Response response = ctx.respondWith();
@@ -713,8 +708,7 @@ public class S3Dispatcher implements WebDispatcher {
         if (src.getPropertiesFile().exists()) {
             Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
         }
-        HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-        String etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+        String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
 
         XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
@@ -752,8 +746,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
-            HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-            etag = BaseEncoding.base16().encode(hash.asBytes()).toLowerCase();
+            etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
             Map<String, String> data = new HashMap<>();
             properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
             data.put(HTTP_HEADER_NAME_ETAG, etag);
@@ -849,7 +842,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
             part.close();
 
-            String etag = BaseEncoding.base16().encode(Files.hash(partFile, Hashing.md5()).asBytes()).toLowerCase();
+            String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(partFile).toHash()).toLowerCase();
             ctx.respondWith()
                .setHeader(HTTP_HEADER_NAME_ETAG, etag)
                .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
@@ -924,7 +917,7 @@ public class S3Dispatcher implements WebDispatcher {
 
             delete(getUploadDir(uploadId));
 
-            String etag = Files.hash(object.getFile(), Hashing.md5()).toString();
+            String etag = Hasher.md5().hashFile(object.getFile()).toHexString();
 
             // Update the ETAG of the underlying object...
             Properties properties = object.getProperties();
@@ -1063,11 +1056,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.beginObject("Part");
             out.property("PartNumber", part.getName());
             out.property("LastModified", ISO8601_INSTANT.format(Instant.ofEpochMilli(part.lastModified())));
-            try {
-                out.property(HTTP_HEADER_NAME_ETAG, Files.hash(part, Hashing.md5()).toString());
-            } catch (IOException e) {
-                Exceptions.ignore(e);
-            }
+            out.property(HTTP_HEADER_NAME_ETAG, Hasher.md5().hashFile(part).toHexString());
             out.property("Size", part.length());
             out.endObject();
         }

@@ -35,11 +35,11 @@ public class APILog {
      * Represents a log entry.
      */
     public static class Entry {
-        private String tod = NLS.toUserString(LocalDateTime.now());
-        private String function;
-        private String description;
-        private String result;
-        private String duration;
+        private final String tod = NLS.toUserString(LocalDateTime.now());
+        private final String function;
+        private final String description;
+        private final String result;
+        private final String duration;
 
         /**
          * Creates a new log entry.

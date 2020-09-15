@@ -8,7 +8,6 @@
 
 package ninja;
 
-import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -21,6 +20,7 @@ import sirius.web.http.WebContext;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
@@ -85,7 +85,7 @@ public class Aws4HashCalculator {
         // an extra parameter is given...
         String signedHeaders = matcher.groupCount() == 7 ? matcher.group(6) : ctx.get("X-Amz-SignedHeaders").asString();
 
-        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(Charsets.UTF_8), date);
+        byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8), date);
         byte[] dateRegionKey = hmacSHA256(dateKey, region);
         byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, service);
         byte[] signingKey = hmacSHA256(dateRegionServiceKey, serviceType);
@@ -138,7 +138,7 @@ public class Aws4HashCalculator {
     }
 
     private void appendCanonicalQueryString(WebContext ctx, StringBuilder canonicalRequest) {
-        QueryStringDecoder qsd = new QueryStringDecoder(ctx.getRequest().uri(), Charsets.UTF_8);
+        QueryStringDecoder qsd = new QueryStringDecoder(ctx.getRequest().uri(), StandardCharsets.UTF_8);
 
         List<Tuple<String, List<String>>> queryString = Tuple.fromMap(qsd.parameters());
         queryString.sort(Comparator.comparing(Tuple::getFirst));
@@ -172,13 +172,13 @@ public class Aws4HashCalculator {
     }
 
     private String hashedCanonicalRequest(final StringBuilder canonicalRequest) {
-        return Hashing.sha256().hashString(canonicalRequest, Charsets.UTF_8).toString();
+        return Hashing.sha256().hashString(canonicalRequest, StandardCharsets.UTF_8).toString();
     }
 
     private byte[] hmacSHA256(byte[] key, String value) throws NoSuchAlgorithmException, InvalidKeyException {
         SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(keySpec);
-        return mac.doFinal(value.getBytes(Charsets.UTF_8));
+        return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -8,10 +8,9 @@
 
 package ninja;
 
-import com.google.common.hash.Hashing;
+import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Counter;
-import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.XMLStructuredOutput;
 
 import javax.annotation.Nullable;
@@ -27,13 +26,13 @@ import java.nio.file.attribute.BasicFileAttributes;
  */
 class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
 
-    private Counter objectCount;
-    private XMLStructuredOutput output;
-    private int limit;
-    private String marker;
+    private final Counter objectCount;
+    private final XMLStructuredOutput output;
+    private final int limit;
+    private final String marker;
     private String prefix;
-    private boolean useLimit;
-    private boolean usePrefix;
+    private final boolean useLimit;
+    private final boolean usePrefix;
     private boolean markerReached;
 
     // Supressed warning "Null pointers should not be dereferenced"
@@ -90,12 +89,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
     }
 
     private String getETag(File file) {
-        try {
-            return com.google.common.io.Files.hash(file, Hashing.md5()).toString();
-        } catch (IOException e) {
-            Exceptions.ignore(e);
-        }
-        return null;
+        return Hasher.md5().hashFile(file).toHexString();
     }
 
     public long getCount() {

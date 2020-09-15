@@ -9,13 +9,10 @@
 package ninja;
 
 import com.google.common.collect.Maps;
-import com.google.common.hash.HashCode;
-import com.google.common.hash.Hashing;
-import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
-import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -207,8 +204,7 @@ public class NinjaController implements Controller {
             Map<String, String> properties = Maps.newTreeMap();
             properties.put(HttpHeaderNames.CONTENT_TYPE.toString(),
                     ctx.getHeaderValue(HttpHeaderNames.CONTENT_TYPE).asString(MimeHelper.guessMimeType(name)));
-            HashCode hash = Files.hash(object.getFile(), Hashing.md5());
-            String md5 = BaseEncoding.base64().encode(hash.asBytes());
+            String md5 = Hasher.md5().hashFile(object.getFile()).toBase64String();
             properties.put("Content-MD5", md5);
             object.storeProperties(properties);
 

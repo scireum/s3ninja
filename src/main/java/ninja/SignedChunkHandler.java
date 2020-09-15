@@ -26,7 +26,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
     /**
      * Temporary buffer object used for caching incomplete chunks.
      */
-    private ByteBuf chunkBuffer = Unpooled.buffer();
+    private final ByteBuf chunkBuffer = Unpooled.buffer();
 
     @Override
     public void handle(ByteBuf content, boolean last) throws IOException {

@@ -546,7 +546,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     private boolean objectCheckAuth(WebContext ctx, Bucket bucket, String key) {
         String hash = getAuthHash(ctx);
-        if (hash != null) {
+        if (Strings.isFilled(hash)) {
             String expectedHash = hashCalculator.computeHash(ctx, "");
             String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
@@ -562,7 +562,7 @@ public class S3Dispatcher implements WebDispatcher {
                 return false;
             }
         }
-        if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && hash == null) {
+        if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
             errorSynthesizer.synthesiseError(ctx,
                                              bucket.getName(),
                                              key,

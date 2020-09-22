@@ -10,11 +10,15 @@ import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ObjectMetadata
+import com.amazonaws.services.s3.model.ResponseHeaderOverrides
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
 import com.google.common.io.Files
 import sirius.kernel.BaseSpecification
+
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 abstract class BaseAWSSpec extends BaseSpecification {
 
@@ -194,4 +198,35 @@ abstract class BaseAWSSpec extends BaseSpecification {
         downloadedData == content
     }
 
+    // reported in https://github.com/scireum/s3ninja/issues/153
+    def "PUT and then GET on presigned URL with ResponseHeaderOverrides works as expected"() {
+        given:
+        def client = getClient()
+        when:
+        if (!client.doesBucketExist("test")) {
+            client.createBucket("test")
+        }
+        and:
+        client.putObject(
+                "test",
+                "test",
+                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        def content = new String(
+                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                Charsets.UTF_8)
+        and:
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+                .withExpiration(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
+                .withResponseHeaders(
+                        new ResponseHeaderOverrides()
+                                .withContentDisposition("inline; filename=\"hello.txt\""))
+        URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
+        and:
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        then:
+        content == "Test"
+        and:
+        downloadedData == "Test"
+    }
 }

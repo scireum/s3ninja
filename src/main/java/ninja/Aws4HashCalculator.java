@@ -168,7 +168,7 @@ public class Aws4HashCalculator {
         }
         canonicalRequest.append(Strings.urlEncode(name));
         canonicalRequest.append("=");
-        canonicalRequest.append(Strings.urlEncode(value));
+        canonicalRequest.append(Strings.urlEncode(value).replace("+", "%20"));
     }
 
     private String hashedCanonicalRequest(final StringBuilder canonicalRequest) {

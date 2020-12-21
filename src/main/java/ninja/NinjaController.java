@@ -126,24 +126,59 @@ public class NinjaController extends BasicController {
     public void bucket(WebContext webContext, String bucketName) {
         try {
             Bucket bucket = storage.getBucket(bucketName);
+            if (!bucket.exists() && webContext.hasParameter("create")) {
+                bucket.create();
+
+                // todo: forward to /ui/[bucket] and show message
+                UserContext.message(Message.info("Bucket successfully created."));
+                objects(webContext, bucket);
+                return;
+            }
             if (!bucket.exists()) {
-                if (webContext.hasParameter("create")) {
-                    bucket.create();
-                    UserContext.message(Message.info("Bucket successfully created."));
-                } else {
-                    webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                    return;
-                }
+                // todo: forward to /ui and show error
+                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                return;
             }
 
-            Page<StoredObject> page = new Page<StoredObject>().bindToRequest(webContext);
-            page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
-            page.withTotalItems(bucket.countObjects(page.getQuery()));
+            if (webContext.hasParameter("delete")) {
+                bucket.delete();
 
-            webContext.respondWith().template("/templates/bucket.html.pasta", bucket, page);
+                // todo: forward to /ui and show message
+                UserContext.message(Message.info("Bucket successfully deleted."));
+                buckets(webContext);
+                return;
+            }
+
+            if (webContext.hasParameter("make-public")) {
+                bucket.makePublic();
+
+                // todo: forward to /ui/[bucket] and show message
+                UserContext.message(Message.info("ACLs successfully changed"));
+                objects(webContext, bucket);
+                return;
+            }
+
+            if (webContext.hasParameter("make-private")) {
+                bucket.makePrivate();
+
+                // todo: forward to /ui/[bucket] and show message
+                UserContext.message(Message.info("ACLs successfully changed"));
+                objects(webContext, bucket);
+                return;
+            }
+
+            objects(webContext, bucket);
         } catch (Exception e) {
             webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
         }
+    }
+
+    private void objects(WebContext webContext, Bucket bucket) {
+        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(webContext);
+        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
+        page.withTotalItems(bucket.countObjects(page.getQuery()));
+
+        webContext.respondWith().template("/templates/bucket.html.pasta", bucket, page);
     }
 
     /**
@@ -218,21 +253,6 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to /ui/[bucketName]/delete
-     * <p>
-     * This will delete the given bucket and list the remaining.
-     *
-     * @param webContext the context describing the current request
-     * @param bucket     name of the bucket to delete
-     */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/delete")
-    public void deleteBucket(WebContext webContext, String bucket) {
-        storage.getBucket(bucket).delete();
-        UserContext.message(Message.info("Bucket successfully deleted."));
-        buckets(webContext);
-    }
-
-    /**
      * Handles requests to /ui/[bucketName]/[object]/delete
      * <p>
      * This will delete the given object and list the remaining.
@@ -252,35 +272,5 @@ public class NinjaController extends BasicController {
             }
         }
         bucket(webContext, bucketName);
-    }
-
-    /**
-     * Handles requests to /ui/[bucketName]/makePublic
-     * <p>
-     * This will make the given bucket public and list its contents.
-     *
-     * @param webContext the context describing the current request
-     * @param bucket     name of the bucket to make public
-     */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePublic")
-    public void makePublic(WebContext webContext, String bucket) {
-        storage.getBucket(bucket).makePublic();
-        UserContext.message(Message.info("ACLs successfully changed"));
-        bucket(webContext, bucket);
-    }
-
-    /**
-     * Handles requests to /ui/[bucketName]/makePrivate
-     * <p>
-     * This will make the given bucket private and list its contents.
-     *
-     * @param webContext the context describing the current request
-     * @param bucket     name of the bucket to make private
-     */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePrivate")
-    public void makePrivate(WebContext webContext, String bucket) {
-        storage.getBucket(bucket).makePrivate();
-        UserContext.message(Message.info("ACLs successfully changed"));
-        bucket(webContext, bucket);
     }
 }

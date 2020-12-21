@@ -12,15 +12,15 @@
     <div class="row">
         <div class="col-md-4">
             <div class="well">
-                <w:fileUpload uploadUrl="@apply('/ui/%s/upload', bucket.getName())"/>
+                <w:fileUpload uploadUrl="@apply('/ui/%s/upload', bucket.getEncodedName())"/>
             </div>
         </div>
         <div class="col-md-8">
-            <w:tableSearchHeader page="@page" baseUrl="@apply('/ui/%s', bucket.getName())">
+            <w:tableSearchHeader page="@page" baseUrl="@apply('/ui/%s', bucket.getEncodedName())">
                 <i:if test="bucket.isPrivate()">
-                    <a class="btn btn-success" href="/ui/@bucket.getName()/makePublic">Make Public</a>
+                    <a class="btn btn-success" href="/ui/@bucket.getEncodedName()?make-public">Make Public</a>
                     <i:else>
-                        <a class="btn btn-danger" href="/ui/@bucket.getName()/makePrivate">Make Private</a>
+                        <a class="btn btn-danger" href="/ui/@bucket.getEncodedName()?make-private">Make Private</a>
                     </i:else>
                 </i:if>
             </w:tableSearchHeader>
@@ -36,19 +36,19 @@
                 <i:for type="ninja.StoredObject" var="obj" items="page.getItems()">
                     <tr>
                         <td>
-                            <a class="link" href="/ui/@bucket.getName()/@obj.getName()?noAuth=true">@obj.getName()</a><br/>
+                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedName()?noAuth=true">@obj.getName()</a><br/>
                             <span class="muted">@obj.getSize()</span>
                             <span class="muted pull-right">@obj.getLastModified()</span>
                         </td>
                         <td class="align-center col-md-2">
-                            <w:deleteLink url="@apply('/ui/%s/%s/delete', bucket.getName(), obj.getName())"/>
+                            <w:deleteLink url="@apply('/ui/%s/%s/delete', bucket.getEncodedName(), obj.getEncodedName())"/>
                         </td>
                     </tr>
                 </i:for>
                 </tbody>
             </w:table>
 
-            <w:pagination page="@page" baseUrl="@apply('/ui/%s', bucket.getName())"/>
+            <w:pagination page="@page" baseUrl="@apply('/ui/%s', bucket.getEncodedName())"/>
         </div>
     </div>
 

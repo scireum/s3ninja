@@ -125,13 +125,13 @@
                 <i:for type="ninja.Bucket" var="bucket" items="buckets">
                     <tr @if(bucket.isPrivate()) { class="error" }>
                         <td>
-                            <a class="link" href="/ui/@bucket.getName()">@bucket.getName()</a><br>
+                            <a class="link" href="/ui/@bucket.getEncodedName()">@bucket.getName()</a><br>
                             <i:if test="bucket.isPrivate()">
                                 <small class="muted">private</small>
                             </i:if>
                         </td>
                         <td class="align-right col-md-2">
-                            <w:deleteLink url="@apply('/ui/%s/delete', bucket.getName())"/>
+                            <w:deleteLink url="@apply('/ui/%s?delete', bucket.getEncodedName())"/>
                         </td>
                     </tr>
                 </i:for>

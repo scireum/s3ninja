@@ -144,7 +144,7 @@ public class NinjaController extends BasicController {
      * </ul>
      *
      * @param webContext the context describing the current request
-     * @param bucketName name of the bucket to process
+     * @param bucketName the name of the bucket to process
      */
     @Routed("/ui/:1")
     public void bucket(WebContext webContext, String bucketName) {
@@ -204,6 +204,12 @@ public class NinjaController extends BasicController {
                 return;
             }
 
+            // handle /ui/[bucket]?upload
+            if (webContext.hasParameter("upload")) {
+                uploadFile(webContext, bucket);
+                return;
+            }
+
             objects(webContext, bucket);
         } catch (Exception e) {
             webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
@@ -211,24 +217,17 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles manual object uploads
+     * Handles manual object via <tt>/ui/[bucketName]?upload</tt>.
      *
      * @param webContext the context describing the current request
-     * @param out        the output to write to
-     * @param bucket     the name of the target bucket
-     * @param input      the data stream to read from
+     * @param bucket     the target bucket
      */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1,
-            value = "/ui/:1/upload",
-            jsonCall = true,
-            preDispatchable = true)
-    public void uploadFile(WebContext webContext, JSONStructuredOutput out, String bucket, InputStreamHandler input) {
+    private void uploadFile(WebContext webContext, Bucket bucket) {
         try {
             String name = webContext.get("filename").asString(webContext.get("qqfile").asString());
-            Bucket storageBucket = storage.getBucket(bucket);
-            StoredObject object = storageBucket.getObject(name);
+            StoredObject object = bucket.getObject(name);
             try (FileOutputStream fos = new FileOutputStream(object.getFile())) {
-                ByteStreams.copy(input, fos);
+                ByteStreams.copy(webContext.getContent(), fos);
             }
 
             Map<String, String> properties = Maps.newTreeMap();
@@ -239,13 +238,24 @@ public class NinjaController extends BasicController {
             properties.put("Content-MD5", md5);
             object.storeProperties(properties);
 
-            out.property("message", "File successfully uploaded.");
-            out.property("action", "/ui/" + bucket);
-            out.property("actionLabel", NLS.get("NLS.refresh"));
-            out.property("refresh", "true");
+            webContext.respondWith()
+                      .json()
+                      .beginResult()
+                      .property("success", true)
+                      .property("error", false)
+                      .property("message", "File successfully uploaded.")
+                      .property("action", "/ui/" + bucket)
+                      .property("actionLabel", NLS.get("NLS.refresh"))
+                      .property("refresh", "true")
+                      .endResult();
         } catch (IOException e) {
-            UserContext.handle(e);
-            webContext.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");
+            webContext.respondWith()
+                      .json(HttpResponseStatus.OK)
+                      .beginResult()
+                      .property("success", false)
+                      .property("error", true)
+                      .property("message", Exceptions.handle(e).getMessage())
+                      .endResult();
         }
     }
 

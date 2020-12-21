@@ -118,7 +118,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]
      * <p>
      * This will list the contents of the bucket.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucketName name of the bucket to show
@@ -151,7 +150,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]/[object]
      * <p>
      * This will start a download of the requested object. No access checks will be performed.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucketName name of the bucket to show
@@ -223,7 +221,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]/delete
      * <p>
      * This will delete the given bucket and list the remaining.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucket     name of the bucket to delete
@@ -239,7 +236,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]/[object]/delete
      * <p>
      * This will delete the given object and list the remaining.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucketName name of the bucket which contains the object to delete
@@ -262,7 +258,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]/makePublic
      * <p>
      * This will make the given bucket public and list its contents.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucket     name of the bucket to make public
@@ -278,7 +273,6 @@ public class NinjaController extends BasicController {
      * Handles requests to /ui/[bucketName]/makePrivate
      * <p>
      * This will make the given bucket private and list its contents.
-     * </p>
      *
      * @param webContext the context describing the current request
      * @param bucket     name of the bucket to make private

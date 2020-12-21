@@ -34,7 +34,6 @@ import java.util.stream.Stream;
  * Represents a bucket.
  * <p>
  * Internally a bucket is just a directory within the base directory.
- * </p>
  */
 public class Bucket {
 

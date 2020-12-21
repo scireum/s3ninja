@@ -54,51 +54,51 @@ public class NinjaController extends BasicController {
     /**
      * Handles requests to /ui, possibly branching away for special sites.
      *
-     * @param ctx the context describing the current request
+     * @param webContext the context describing the current request
      */
     @DefaultRoute
     @Routed("/ui")
-    public void index(WebContext ctx) {
-        if (ctx.hasParameter("license")) {
-            license(ctx);
+    public void index(WebContext webContext) {
+        if (webContext.hasParameter("license")) {
+            license(webContext);
             return;
         }
-        if (ctx.hasParameter("api")) {
-            api(ctx);
+        if (webContext.hasParameter("api")) {
+            api(webContext);
             return;
         }
-        if (ctx.hasParameter("log")) {
-            log(ctx);
+        if (webContext.hasParameter("log")) {
+            log(webContext);
             return;
         }
-        buckets(ctx);
+        buckets(webContext);
     }
 
     /**
      * Handles requests to /ui?license
      *
-     * @param ctx the context describing the current request
+     * @param webContext the context describing the current request
      */
-    private void license(WebContext ctx) {
-        ctx.respondWith().template("/templates/license.html.pasta");
+    private void license(WebContext webContext) {
+        webContext.respondWith().template("/templates/license.html.pasta");
     }
 
     /**
      * Handles requests to /ui?api
      *
-     * @param ctx the context describing the current request
+     * @param webContext the context describing the current request
      */
-    private void api(WebContext ctx) {
-        ctx.respondWith().template("/templates/api.html.pasta");
+    private void api(WebContext webContext) {
+        webContext.respondWith().template("/templates/api.html.pasta");
     }
 
     /**
      * Handles requests to /ui?log
      *
-     * @param ctx the context describing the current request
+     * @param webContext the context describing the current request
      */
-    private void log(WebContext ctx) {
-        int start = ctx.get("start").asInt(1) - 1;
+    private void log(WebContext webContext) {
+        int start = webContext.get("start").asInt(1) - 1;
         int pageSize = 50;
 
         List<APILog.Entry> entries = log.getEntries(start, pageSize + 1);
@@ -107,29 +107,29 @@ public class NinjaController extends BasicController {
         if (canPageNext) {
             entries.remove(entries.size() - 1);
         }
-        ctx.respondWith()
-                .template("/templates/log.html.pasta",
-                        entries,
-                        canPagePrev,
-                        canPageNext,
-                        (start + 1) + " - " + (start + entries.size()),
-                        Math.max(1, start - pageSize + 1),
-                        start + pageSize + 1);
+        webContext.respondWith()
+                  .template("/templates/log.html.pasta",
+                            entries,
+                            canPagePrev,
+                            canPageNext,
+                            (start + 1) + " - " + (start + entries.size()),
+                            Math.max(1, start - pageSize + 1),
+                            start + pageSize + 1);
     }
 
-    private void buckets(WebContext ctx) {
+    private void buckets(WebContext webContext) {
         List<Bucket> buckets = Collections.emptyList();
         try {
             buckets = storage.getBuckets();
         } catch (HandledException e) {
             UserContext.message(Message.error(e.getMessage()));
         }
-        ctx.respondWith()
-           .template("/templates/index.html.pasta",
-                     buckets,
-                     storage.getBasePath(),
-                     storage.getAwsAccessKey(),
-                     storage.getAwsSecretKey());
+        webContext.respondWith()
+                  .template("/templates/index.html.pasta",
+                            buckets,
+                            storage.getBasePath(),
+                            storage.getAwsAccessKey(),
+                            storage.getAwsSecretKey());
     }
 
     /**
@@ -138,30 +138,30 @@ public class NinjaController extends BasicController {
      * This will list the contents of the bucket.
      * </p>
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName name of the bucket to show
      */
     @Routed("/ui/:1")
-    public void bucket(WebContext ctx, String bucketName) {
+    public void bucket(WebContext webContext, String bucketName) {
         try {
             Bucket bucket = storage.getBucket(bucketName);
             if (!bucket.exists()) {
-                if (ctx.hasParameter("create")) {
+                if (webContext.hasParameter("create")) {
                     bucket.create();
                     UserContext.message(Message.info("Bucket successfully created."));
                 } else {
-                    ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                    webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
                     return;
                 }
             }
 
-            Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
+            Page<StoredObject> page = new Page<StoredObject>().bindToRequest(webContext);
             page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
             page.withTotalItems(bucket.countObjects(page.getQuery()));
 
-            ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
+            webContext.respondWith().template("/templates/bucket.html.pasta", bucket, page);
         } catch (Exception e) {
-            ctx.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
         }
     }
 
@@ -171,45 +171,48 @@ public class NinjaController extends BasicController {
      * This will start a download of the requested object. No access checks will be performed.
      * </p>
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName name of the bucket to show
      * @param id         the name of the object to fetch
      */
     @Routed("/ui/:1/:2")
-    public void object(WebContext ctx, String bucketName, String id) {
+    public void object(WebContext webContext, String bucketName, String id) {
         try {
             Bucket bucket = storage.getBucket(bucketName);
             if (!bucket.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
                 return;
             }
             StoredObject object = bucket.getObject(id);
             if (!object.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
+                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
                 return;
             }
-            Response response = ctx.respondWith();
+            Response response = webContext.respondWith();
             for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
                 response.addHeader(entry.getKey().toString(), entry.getValue().toString());
             }
             response.file(object.getFile());
         } catch (Exception e) {
-            ctx.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
         }
     }
 
     /**
      * Handles manual object uploads
      *
-     * @param ctx    the context describing the current request
-     * @param out    the output to write to
-     * @param bucket the name of the target bucket
-     * @param input  the data stream to read from
+     * @param webContext the context describing the current request
+     * @param out        the output to write to
+     * @param bucket     the name of the target bucket
+     * @param input      the data stream to read from
      */
-    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/upload", jsonCall = true, preDispatchable = true)
-    public void uploadFile(WebContext ctx, JSONStructuredOutput out, String bucket, InputStreamHandler input) {
+    @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1,
+            value = "/ui/:1/upload",
+            jsonCall = true,
+            preDispatchable = true)
+    public void uploadFile(WebContext webContext, JSONStructuredOutput out, String bucket, InputStreamHandler input) {
         try {
-            String name = ctx.get("filename").asString(ctx.get("qqfile").asString());
+            String name = webContext.get("filename").asString(webContext.get("qqfile").asString());
             Bucket storageBucket = storage.getBucket(bucket);
             StoredObject object = storageBucket.getObject(name);
             try (FileOutputStream fos = new FileOutputStream(object.getFile())) {
@@ -218,7 +221,8 @@ public class NinjaController extends BasicController {
 
             Map<String, String> properties = Maps.newTreeMap();
             properties.put(HttpHeaderNames.CONTENT_TYPE.toString(),
-                    ctx.getHeaderValue(HttpHeaderNames.CONTENT_TYPE).asString(MimeHelper.guessMimeType(name)));
+                           webContext.getHeaderValue(HttpHeaderNames.CONTENT_TYPE)
+                                     .asString(MimeHelper.guessMimeType(name)));
             String md5 = Hasher.md5().hashFile(object.getFile()).toBase64String();
             properties.put("Content-MD5", md5);
             object.storeProperties(properties);
@@ -229,7 +233,7 @@ public class NinjaController extends BasicController {
             out.property("refresh", "true");
         } catch (IOException e) {
             UserContext.handle(e);
-            ctx.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");
+            webContext.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");
         }
     }
 
@@ -239,14 +243,14 @@ public class NinjaController extends BasicController {
      * This will delete the given bucket and list the remaining.
      * </p>
      *
-     * @param ctx    the context describing the current request
-     * @param bucket name of the bucket to delete
+     * @param webContext the context describing the current request
+     * @param bucket     name of the bucket to delete
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/delete")
-    public void deleteBucket(WebContext ctx, String bucket) {
+    public void deleteBucket(WebContext webContext, String bucket) {
         storage.getBucket(bucket).delete();
         UserContext.message(Message.info("Bucket successfully deleted."));
-        buckets(ctx);
+        buckets(webContext);
     }
 
     /**
@@ -255,12 +259,12 @@ public class NinjaController extends BasicController {
      * This will delete the given object and list the remaining.
      * </p>
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName name of the bucket which contains the object to delete
      * @param id         name of the object to delete
      */
     @Routed("/ui/:1/:2/delete")
-    public void deleteObject(WebContext ctx, String bucketName, String id) {
+    public void deleteObject(WebContext webContext, String bucketName, String id) {
         Bucket bucket = storage.getBucket(bucketName);
         if (bucket.exists()) {
             StoredObject object = bucket.getObject(id);
@@ -269,7 +273,7 @@ public class NinjaController extends BasicController {
                 UserContext.message(Message.info("Object successfully deleted."));
             }
         }
-        bucket(ctx, bucketName);
+        bucket(webContext, bucketName);
     }
 
     /**
@@ -278,14 +282,14 @@ public class NinjaController extends BasicController {
      * This will make the given bucket public and list its contents.
      * </p>
      *
-     * @param ctx    the context describing the current request
-     * @param bucket name of the bucket to make public
+     * @param webContext the context describing the current request
+     * @param bucket     name of the bucket to make public
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePublic")
-    public void makePublic(WebContext ctx, String bucket) {
+    public void makePublic(WebContext webContext, String bucket) {
         storage.getBucket(bucket).makePublic();
         UserContext.message(Message.info("ACLs successfully changed"));
-        bucket(ctx, bucket);
+        bucket(webContext, bucket);
     }
 
     /**
@@ -294,13 +298,13 @@ public class NinjaController extends BasicController {
      * This will make the given bucket private and list its contents.
      * </p>
      *
-     * @param ctx    the context describing the current request
-     * @param bucket name of the bucket to make private
+     * @param webContext the context describing the current request
+     * @param bucket     name of the bucket to make private
      */
     @Routed(priority = PriorityCollector.DEFAULT_PRIORITY - 1, value = "/ui/:1/makePrivate")
-    public void makePrivate(WebContext ctx, String bucket) {
+    public void makePrivate(WebContext webContext, String bucket) {
         storage.getBucket(bucket).makePrivate();
         UserContext.message(Message.info("ACLs successfully changed"));
-        bucket(ctx, bucket);
+        bucket(webContext, bucket);
     }
 }

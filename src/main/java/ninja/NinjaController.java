@@ -74,10 +74,6 @@ public class NinjaController extends BasicController {
     @DefaultRoute
     @Routed("/ui")
     public void index(WebContext ctx) {
-        if (ctx.isUnsafePOST() && ctx.get("bucketName").isFilled()) {
-            storage.getBucket(ctx.get("bucketName").asString()).create();
-            UserContext.message(Message.info("Bucket successfully created."));
-        }
         buckets(ctx);
     }
 
@@ -141,8 +137,13 @@ public class NinjaController extends BasicController {
         try {
             Bucket bucket = storage.getBucket(bucketName);
             if (!bucket.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                return;
+                if (ctx.hasParameter("create")) {
+                    bucket.create();
+                    UserContext.message(Message.info("Bucket successfully created."));
+                } else {
+                    ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                    return;
+                }
             }
 
             Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);

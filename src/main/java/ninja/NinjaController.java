@@ -51,21 +51,6 @@ public class NinjaController extends BasicController {
     @Part
     private APILog log;
 
-    private void buckets(WebContext ctx) {
-        List<Bucket> buckets = Collections.emptyList();
-        try {
-            buckets = storage.getBuckets();
-        } catch (HandledException e) {
-            UserContext.message(Message.error(e.getMessage()));
-        }
-        ctx.respondWith()
-                .template("/templates/index.html.pasta",
-                        buckets,
-                        storage.getBasePath(),
-                        storage.getAwsAccessKey(),
-                        storage.getAwsSecretKey());
-    }
-
     /**
      * Handles requests to /
      *
@@ -121,6 +106,21 @@ public class NinjaController extends BasicController {
                         (start + 1) + " - " + (start + entries.size()),
                         Math.max(1, start - pageSize + 1),
                         start + pageSize + 1);
+    }
+
+    private void buckets(WebContext ctx) {
+        List<Bucket> buckets = Collections.emptyList();
+        try {
+            buckets = storage.getBuckets();
+        } catch (HandledException e) {
+            UserContext.message(Message.error(e.getMessage()));
+        }
+        ctx.respondWith()
+           .template("/templates/index.html.pasta",
+                     buckets,
+                     storage.getBasePath(),
+                     storage.getAwsAccessKey(),
+                     storage.getAwsSecretKey());
     }
 
     /**

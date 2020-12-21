@@ -21,6 +21,8 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -56,6 +58,19 @@ public class Bucket {
      */
     public String getName() {
         return file.getName();
+    }
+
+    /**
+     * Returns the encoded name of the bucket.
+     *
+     * @return the encoded name of the bucket
+     */
+    public String getEncodedName() {
+        try {
+            return URLEncoder.encode(getName(), StandardCharsets.UTF_8.toString());
+        } catch (UnsupportedEncodingException e) {
+            return getName();
+        }
     }
 
     /**

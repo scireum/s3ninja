@@ -19,7 +19,8 @@ import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
 import sirius.kernel.nls.NLS;
-import sirius.web.controller.Controller;
+import sirius.web.controller.BasicController;
+import sirius.web.controller.DefaultRoute;
 import sirius.web.controller.Message;
 import sirius.web.controller.Page;
 import sirius.web.controller.Routed;
@@ -42,7 +43,7 @@ import java.util.Map;
  * Handles all requests required to render the web-pages.
  */
 @Register
-public class NinjaController implements Controller {
+public class NinjaController extends BasicController {
 
     @Part
     private Storage storage;
@@ -50,11 +51,7 @@ public class NinjaController implements Controller {
     @Part
     private APILog log;
 
-    @Override
-    public void onError(WebContext ctx, HandledException error) {
-        if (error != null) {
-            UserContext.message(Message.error(error.getMessage()));
-        }
+    private void buckets(WebContext ctx) {
         List<Bucket> buckets = Collections.emptyList();
         try {
             buckets = storage.getBuckets();
@@ -74,13 +71,14 @@ public class NinjaController implements Controller {
      *
      * @param ctx the context describing the current request
      */
+    @DefaultRoute
     @Routed("/ui")
     public void index(WebContext ctx) {
         if (ctx.isUnsafePOST() && ctx.get("bucketName").isFilled()) {
             storage.getBucket(ctx.get("bucketName").asString()).create();
             UserContext.message(Message.info("Bucket successfully created."));
         }
-        onError(ctx, null);
+        buckets(ctx);
     }
 
     /**
@@ -231,7 +229,7 @@ public class NinjaController implements Controller {
     public void deleteBucket(WebContext ctx, String bucket) {
         storage.getBucket(bucket).delete();
         UserContext.message(Message.info("Bucket successfully deleted."));
-        onError(ctx, null);
+        buckets(ctx);
     }
 
     /**

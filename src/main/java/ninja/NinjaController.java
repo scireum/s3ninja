@@ -52,43 +52,52 @@ public class NinjaController extends BasicController {
     private APILog log;
 
     /**
-     * Handles requests to /
+     * Handles requests to /ui, possibly branching away for special sites.
      *
      * @param ctx the context describing the current request
      */
     @DefaultRoute
     @Routed("/ui")
     public void index(WebContext ctx) {
+        if (ctx.hasParameter("license")) {
+            license(ctx);
+            return;
+        }
+        if (ctx.hasParameter("api")) {
+            api(ctx);
+            return;
+        }
+        if (ctx.hasParameter("log")) {
+            log(ctx);
+            return;
+        }
         buckets(ctx);
     }
 
     /**
-     * Handles requests to /ui/license
+     * Handles requests to /ui?license
      *
      * @param ctx the context describing the current request
      */
-    @Routed(value = "/ui/license", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
-    public void license(WebContext ctx) {
+    private void license(WebContext ctx) {
         ctx.respondWith().template("/templates/license.html.pasta");
     }
 
     /**
-     * Handles requests to /ui/api
+     * Handles requests to /ui?api
      *
      * @param ctx the context describing the current request
      */
-    @Routed(value = "/ui/api", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
-    public void api(WebContext ctx) {
+    private void api(WebContext ctx) {
         ctx.respondWith().template("/templates/api.html.pasta");
     }
 
     /**
-     * Handles requests to /ui/log
+     * Handles requests to /ui?log
      *
      * @param ctx the context describing the current request
      */
-    @Routed(value = "/ui/log", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
-    public void log(WebContext ctx) {
+    private void log(WebContext ctx) {
         int start = ctx.get("start").asInt(1) - 1;
         int pageSize = 50;
 

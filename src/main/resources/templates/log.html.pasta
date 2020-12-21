@@ -37,14 +37,14 @@
             <nav class="text-center">
                 <ul class="pagination">
                     <i:if test="canPagePrev">
-                        <li><a href="/ui/log?&start=prevStart">&#8592;</a></li>
+                        <li><a href="/ui?log&start=@prevStart">&#8592;</a></li>
                         <i:else>
                             <li class="disabled"><span>&#8592;</span></li>
                         </i:else>
                     </i:if>
                     <li><span>@range</span></li>
                     <i:if test="canPageNext">
-                        <li><a href="/ui/log?start=@nextStart">&#8594;</a></li>
+                        <li><a href="/ui?log&start=@nextStart">&#8594;</a></li>
                         <i:else>
                             <li class="disabled"><span>&#8594;</span></li>
                         </i:else>

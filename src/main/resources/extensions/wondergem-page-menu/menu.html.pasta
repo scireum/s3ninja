@@ -3,9 +3,9 @@
 
 <i:switch test="@point">
     <i:block name="left">
-        <w:menuItem title="Access Logs" url="/ui/log" />
-        <w:menuItem title="License" url="/ui/license" />
-        <w:menuItem title="Supported API" url="/ui/api"/>
+        <w:menuItem title="Access Logs" url="/ui?log" />
+        <w:menuItem title="License" url="/ui?license" />
+        <w:menuItem title="Supported API" url="/ui?api"/>
     </i:block>
     <i:block name="right">
         <w:menuItem title="F**k me on GitHub" url="https://github.com/scireum/s3ninja" />

@@ -138,14 +138,21 @@ public class NinjaController extends BasicController {
      */
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
-        Bucket bucket = storage.getBucket(bucketName);
+        try {
+            Bucket bucket = storage.getBucket(bucketName);
+            if (!bucket.exists()) {
+                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                return;
+            }
 
-        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
+            Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
+            page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
+            page.withTotalItems(bucket.countObjects(page.getQuery()));
 
-        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
-        page.withTotalItems(bucket.countObjects(page.getQuery()));
-
-        ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
+            ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
+        } catch (Exception e) {
+            ctx.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+        }
     }
 
     /**

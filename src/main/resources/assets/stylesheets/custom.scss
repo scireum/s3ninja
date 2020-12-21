@@ -14,7 +14,7 @@ $linkColor:                     $primary-color;
  * Fixes the margin set by .help-block for checkboxes
  */
 .checkbox-help {
-  margin-top: 0px;
+  margin-top: 0;
 }
 
 /*
@@ -42,7 +42,7 @@ table td.align-center, table th.align-center, .align-center {
  * Removes the bottom margin of inline forms within wells
  */
 .well .form-inline {
-  margin: 0px;
+  margin: 0;
 }
 
 /*

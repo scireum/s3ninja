@@ -210,14 +210,6 @@ public class NinjaController extends BasicController {
         }
     }
 
-    private void objects(WebContext webContext, Bucket bucket) {
-        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(webContext);
-        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
-        page.withTotalItems(bucket.countObjects(page.getQuery()));
-
-        webContext.respondWith().template("/templates/bucket.html.pasta", bucket, page);
-    }
-
     /**
      * Handles manual object uploads
      *
@@ -255,6 +247,14 @@ public class NinjaController extends BasicController {
             UserContext.handle(e);
             webContext.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");
         }
+    }
+
+    private void objects(WebContext webContext, Bucket bucket) {
+        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(webContext);
+        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
+        page.withTotalItems(bucket.countObjects(page.getQuery()));
+
+        webContext.respondWith().template("/templates/bucket.html.pasta", bucket, page);
     }
 
     /**

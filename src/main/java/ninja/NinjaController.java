@@ -60,11 +60,11 @@ public class NinjaController extends BasicController {
     @Routed("/ui")
     public void index(WebContext webContext) {
         if (webContext.hasParameter("license")) {
-            license(webContext);
+            webContext.respondWith().template("/templates/license.html.pasta");
             return;
         }
         if (webContext.hasParameter("api")) {
-            api(webContext);
+            webContext.respondWith().template("/templates/api.html.pasta");
             return;
         }
         if (webContext.hasParameter("log")) {
@@ -72,24 +72,6 @@ public class NinjaController extends BasicController {
             return;
         }
         buckets(webContext);
-    }
-
-    /**
-     * Handles requests to /ui?license
-     *
-     * @param webContext the context describing the current request
-     */
-    private void license(WebContext webContext) {
-        webContext.respondWith().template("/templates/license.html.pasta");
-    }
-
-    /**
-     * Handles requests to /ui?api
-     *
-     * @param webContext the context describing the current request
-     */
-    private void api(WebContext webContext) {
-        webContext.respondWith().template("/templates/api.html.pasta");
     }
 
     /**

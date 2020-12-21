@@ -219,38 +219,6 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to /ui/[bucketName]/[object]
-     * <p>
-     * This will start a download of the requested object. No access checks will be performed.
-     *
-     * @param webContext the context describing the current request
-     * @param bucketName name of the bucket to show
-     * @param id         the name of the object to fetch
-     */
-    @Routed("/ui/:1/:2")
-    public void object(WebContext webContext, String bucketName, String id) {
-        try {
-            Bucket bucket = storage.getBucket(bucketName);
-            if (!bucket.exists()) {
-                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                return;
-            }
-            StoredObject object = bucket.getObject(id);
-            if (!object.exists()) {
-                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
-                return;
-            }
-            Response response = webContext.respondWith();
-            for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
-                response.addHeader(entry.getKey().toString(), entry.getValue().toString());
-            }
-            response.file(object.getFile());
-        } catch (Exception e) {
-            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
-        }
-    }
-
-    /**
      * Handles manual object uploads
      *
      * @param webContext the context describing the current request
@@ -286,6 +254,38 @@ public class NinjaController extends BasicController {
         } catch (IOException e) {
             UserContext.handle(e);
             webContext.respondWith().direct(HttpResponseStatus.OK, "{ success: false }");
+        }
+    }
+
+    /**
+     * Handles requests to /ui/[bucketName]/[object]
+     * <p>
+     * This will start a download of the requested object. No access checks will be performed.
+     *
+     * @param webContext the context describing the current request
+     * @param bucketName name of the bucket to show
+     * @param id         the name of the object to fetch
+     */
+    @Routed("/ui/:1/:2")
+    public void object(WebContext webContext, String bucketName, String id) {
+        try {
+            Bucket bucket = storage.getBucket(bucketName);
+            if (!bucket.exists()) {
+                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                return;
+            }
+            StoredObject object = bucket.getObject(id);
+            if (!object.exists()) {
+                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
+                return;
+            }
+            Response response = webContext.respondWith();
+            for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
+                response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+            }
+            response.file(object.getFile());
+        } catch (Exception e) {
+            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
         }
     }
 

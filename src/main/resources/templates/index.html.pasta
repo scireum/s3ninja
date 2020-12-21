@@ -34,13 +34,75 @@
         <div class="col-md-8">
             <div class="well">
                 <div class="pull-left">
-                    <form id="create-bucket" class="form-inline" action="/ui" method="post">
+                    <script type="text/javascript">
+
+                        function resolveTextfield() {
+                            return document.querySelector('#create-bucket div input[name=bucketName]')
+                        }
+
+                        function checkBucketName() {
+                            return new Promise(function (resolve, reject) {
+                                // make sure we have the text field
+                                const textfield = resolveTextfield();
+                                if (!textfield) {
+                                    reject(undefined);
+                                }
+
+                                // make sure we have a proper name
+                                const name = textfield.value;
+                                if (!name || name.trim() !== name
+                                          || name.indexOf('/') >= 0
+                                          || name.indexOf('\\') >= 0
+                                          || name.indexOf('..') >= 0
+                                          || name === '.') {
+                                    reject(name);
+                                }
+
+                                resolve(name);
+                            });
+                        }
+
+                        /**
+                         * Checks the form for errors and styles the input accordingly.
+                         */
+                        function checkForm() {
+                            checkBucketName().then(function (name) {
+                                // remove style class `error`
+                                const textfield = resolveTextfield();
+                                if (textfield) {
+                                    textfield.classList.remove('error');
+                                }
+                            }).catch(function (name) {
+                                // add style class `error` unless empty
+                                const textfield = resolveTextfield();
+                                if (textfield) {
+                                    textfield.classList.remove('error');
+                                    if (name) {
+                                        textfield.classList.add('error');
+                                    }
+                                }
+                            });
+                        }
+
+                        /**
+                         * Checks the form for errors and submits the form if everything is fine.
+                         */
+                        function submitForm() {
+                            checkBucketName().then(function (name) {
+                                location.href = '/ui/' + encodeURIComponent(name) + '?create'
+                            }).catch(function () {
+                                // ignore, error has already been indicated while typing
+                            });
+                        }
+
+                    </script>
+                    <form id="create-bucket" class="form-inline" onsubmit="submitForm(); return false;">
                         <div class="input-group">
                             <input type="text" name="bucketName" class="form-control" placeholder="New Bucket..."
-                                   autofocus/>
-                            <span class="input-group-addon" onclick="$('#create-bucket').submit()">
-                                    <i class="fa fa-plus"></i>
-                                </span>
+                                   autofocus oninput="checkForm();"/>
+                            <span class="input-group-addon" onclick="submitForm();">
+                                <i class="fa fa-plus"></i>
+                            </span>
                         </div>
                     </form>
                 </div>

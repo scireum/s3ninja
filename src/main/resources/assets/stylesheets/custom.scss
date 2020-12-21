@@ -77,7 +77,14 @@ img#ninja {
   max-height: 178px;
 }
 
-#create-bucket .input-group .input-group-addon:hover {
-  cursor: pointer;
-  background-color: #858689;
+#create-bucket .input-group {
+  .error {
+    border-color: $primary-color;
+    background-color: transparentize($primary-color, 0.9);
+  }
+
+  .input-group-addon:hover {
+    cursor: pointer;
+    background-color: #858689;
+  }
 }

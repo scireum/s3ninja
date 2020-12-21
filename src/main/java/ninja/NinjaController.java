@@ -38,7 +38,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Takes care of the "management ui".
+ * Takes care of the "management UI".
  * <p>
  * Handles all requests required to render the web-pages.
  */
@@ -52,30 +52,46 @@ public class NinjaController extends BasicController {
     private APILog log;
 
     /**
-     * Handles requests to /ui, possibly branching away for special sites.
+     * Handles requests to <tt>/ui</tt>.
+     * <p>
+     * By default, this lists all buckets available on the system.
+     * <p>
+     * Optional query parameters include:
+     * <ul>
+     *     <li><tt>/ui?license</tt>: Shows the license terms.</li>
+     *     <li><tt>/ui?api</tt>: Shows the implemented S3 API.</li>
+     *     <li><tt>/ui?log</tt>: Shows the log.</li>
+     * </ul>
      *
      * @param webContext the context describing the current request
      */
     @DefaultRoute
     @Routed("/ui")
     public void index(WebContext webContext) {
+        // handle /ui?license
         if (webContext.hasParameter("license")) {
             webContext.respondWith().template("/templates/license.html.pasta");
             return;
         }
+
+        // handle /ui?api
         if (webContext.hasParameter("api")) {
             webContext.respondWith().template("/templates/api.html.pasta");
             return;
         }
+
+        // handle /ui?log
         if (webContext.hasParameter("log")) {
             log(webContext);
             return;
         }
+
+        // handle /ui
         buckets(webContext);
     }
 
     /**
-     * Handles requests to /ui?log
+     * Handles requests to <tt>/ui?log</tt>.
      *
      * @param webContext the context describing the current request
      */
@@ -115,18 +131,27 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to /ui/[bucketName]
+     * Handles requests to <tt>/ui/[bucketName]</tt>.
      * <p>
-     * This will list the contents of the bucket.
+     * By default, this lists the contents of the bucket.
+     * <p>
+     * Optional query parameters include:
+     * <ul>
+     *     <li><tt>/ui/[bucketName]?create</tt>: Creates the bucket.</li>
+     *     <li><tt>/ui/[bucketName]?delete</tt>: Deletes the bucket.</li>
+     *     <li><tt>/ui/[bucketName]?make-public</tt>: Makes the bucket public.</li>
+     *     <li><tt>/ui/[bucketName]?make-private</tt>: Makes the bucket private.</li>
+     * </ul>
      *
      * @param webContext the context describing the current request
-     * @param bucketName name of the bucket to show
+     * @param bucketName name of the bucket to process
      */
     @Routed("/ui/:1")
     public void bucket(WebContext webContext, String bucketName) {
         try {
             Bucket bucket = storage.getBucket(bucketName);
 
+            // handle /ui/[bucket]?create
             if (webContext.hasParameter("create")) {
                 if (bucket.exists()) {
                     // todo: forward to /ui/[bucket] and show error
@@ -142,12 +167,14 @@ public class NinjaController extends BasicController {
                 return;
             }
 
+            // from this point on, make sure that the bucket exists
             if (!bucket.exists()) {
                 // todo: forward to /ui and show error
                 webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist.");
                 return;
             }
 
+            // handle /ui/[bucket]?make-public
             if (webContext.hasParameter("make-public")) {
                 bucket.makePublic();
 
@@ -157,6 +184,7 @@ public class NinjaController extends BasicController {
                 return;
             }
 
+            // handle /ui/[bucket]?make-private
             if (webContext.hasParameter("make-private")) {
                 bucket.makePrivate();
 
@@ -166,6 +194,7 @@ public class NinjaController extends BasicController {
                 return;
             }
 
+            // handle /ui/[bucket]?delete
             if (webContext.hasParameter("delete")) {
                 bucket.delete();
 

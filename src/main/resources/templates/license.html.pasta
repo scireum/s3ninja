@@ -29,4 +29,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 </pre>
         </div>
     </div>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta"/>
+    </i:block>
 </w:page>

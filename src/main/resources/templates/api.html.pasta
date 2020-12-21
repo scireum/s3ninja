@@ -34,4 +34,8 @@
             </div>
         </div>
     </div>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta"/>
+    </i:block>
 </w:page>

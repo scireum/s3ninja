@@ -20,6 +20,7 @@ import sirius.kernel.nls.NLS;
 import javax.annotation.Nonnull;
 import java.io.File;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Storage service which takes care of organizing buckets on disk.
@@ -97,7 +98,7 @@ public class Storage {
      */
     public List<Bucket> getBuckets() {
         List<Bucket> result = Lists.newArrayList();
-        for (File file : getBaseDir().listFiles()) {
+        for (File file : Objects.requireNonNull(getBaseDir().listFiles())) {
             if (file.isDirectory()) {
                 result.add(new Bucket(file));
             }

@@ -13,6 +13,7 @@ import com.google.common.io.ByteStreams;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.commons.Hasher;
+import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
@@ -270,7 +271,7 @@ public class NinjaController extends BasicController {
      * @param bucketName the name of the bucket to consider
      * @param idParts    the name of the object to fetch
      */
-    @Routed("/ui/:1/**")
+    @Routed(value = "/ui/:1/**", priority = PriorityCollector.DEFAULT_PRIORITY + 1)
     public void object(WebContext webContext, String bucketName, List<String> idParts) {
         try {
             Bucket bucket = storage.getBucket(bucketName);

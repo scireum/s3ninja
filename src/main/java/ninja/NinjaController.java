@@ -128,16 +128,16 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to <tt>/ui/[bucketName]</tt>.
+     * Handles requests to <tt>/ui/[bucket]</tt>.
      * <p>
      * By default, this lists the contents of the bucket.
      * <p>
      * Optional query parameters include:
      * <ul>
-     *     <li><tt>/ui/[bucketName]?create</tt>: Creates the bucket.</li>
-     *     <li><tt>/ui/[bucketName]?delete</tt>: Deletes the bucket.</li>
-     *     <li><tt>/ui/[bucketName]?make-public</tt>: Makes the bucket public.</li>
-     *     <li><tt>/ui/[bucketName]?make-private</tt>: Makes the bucket private.</li>
+     *     <li><tt>/ui/[bucket]?create</tt>: Creates the bucket.</li>
+     *     <li><tt>/ui/[bucket]?delete</tt>: Deletes the bucket.</li>
+     *     <li><tt>/ui/[bucket]?make-public</tt>: Makes the bucket public.</li>
+     *     <li><tt>/ui/[bucket]?make-private</tt>: Makes the bucket private.</li>
      * </ul>
      *
      * @param webContext the context describing the current request
@@ -210,7 +210,7 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles manual object via <tt>/ui/[bucketName]?upload</tt>.
+     * Handles manual object via <tt>/ui/[bucket]?upload</tt>.
      *
      * @param webContext the context describing the current request
      * @param bucket     the target bucket

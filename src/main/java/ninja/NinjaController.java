@@ -151,23 +151,22 @@ public class NinjaController extends BasicController {
             // handle /ui/[bucket]?create
             if (webContext.hasParameter("create")) {
                 if (bucket.exists()) {
-                    // todo: forward to /ui/[bucket] and show error
-                    webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, "Bucket does already exist.");
+                    UserContext.message(Message.error("Bucket does already exist."));
+                    webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                     return;
                 }
 
                 bucket.create();
 
-                // todo: forward to /ui/[bucket] and show message
                 UserContext.message(Message.info("Bucket successfully created."));
-                objects(webContext, bucket);
+                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
 
             // from this point on, make sure that the bucket exists
             if (!bucket.exists()) {
-                // todo: forward to /ui and show error
-                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist.");
+                UserContext.message(Message.error("Bucket does not exist."));
+                webContext.respondWith().redirectTemporarily("/ui");
                 return;
             }
 
@@ -175,9 +174,8 @@ public class NinjaController extends BasicController {
             if (webContext.hasParameter("make-public")) {
                 bucket.makePublic();
 
-                // todo: forward to /ui/[bucket] and show message
                 UserContext.message(Message.info("ACLs successfully changed"));
-                objects(webContext, bucket);
+                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
 
@@ -185,9 +183,8 @@ public class NinjaController extends BasicController {
             if (webContext.hasParameter("make-private")) {
                 bucket.makePrivate();
 
-                // todo: forward to /ui/[bucket] and show message
                 UserContext.message(Message.info("ACLs successfully changed"));
-                objects(webContext, bucket);
+                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
 
@@ -195,9 +192,8 @@ public class NinjaController extends BasicController {
             if (webContext.hasParameter("delete")) {
                 bucket.delete();
 
-                // todo: forward to /ui and show message
                 UserContext.message(Message.info("Bucket successfully deleted."));
-                buckets(webContext);
+                webContext.respondWith().redirectTemporarily("/ui");
                 return;
             }
 

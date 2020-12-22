@@ -283,4 +283,28 @@ public class Bucket {
             throw Exceptions.handle(e);
         }
     }
+
+    /**
+     * Checks whether the given string is valid for use as bucket name.
+     * <p>
+     * Currently, the name must not be effectively empty, must not equal the single dot, and it must not contain:
+     * <ul>
+     *     <li><tt>/</tt> (forward slashes)</li>
+     *     <li><tt>\</tt> (backward slashes)</li>
+     *     <li><tt>..</tt> (two consecutive dots)</li>
+     * </ul>
+     * Note that the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official naming
+     * rules</a> are much more strict.
+     *
+     * @param name the name to check
+     * @return <b>true</b> if the name is valid as bucket name
+     */
+    public static boolean isValidName(@Nullable String name) {
+        if (name == null || Strings.isEmpty(name.trim())) {
+            return false;
+        }
+
+        // todo: check full official naming rules
+        return !name.equals(".") && !name.contains("..") && !name.contains("/") && !name.contains("\\");
+    }
 }

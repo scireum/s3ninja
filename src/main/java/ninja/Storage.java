@@ -17,6 +17,7 @@ import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
 import sirius.kernel.nls.NLS;
 
+import javax.annotation.Nonnull;
 import java.io.File;
 import java.util.List;
 
@@ -106,13 +107,18 @@ public class Storage {
     }
 
     /**
-     * Returns a bucket with the given name
+     * Returns a bucket with the given name.
+     * <p>
+     * The method never returns <b>null</b>, but {@link Bucket#exists()} may return <b>false</b>.
+     * <p>
+     * Make sure that the name passes {@link Bucket#isValidName(String)} by meeting the naming restrictions documented
+     * there.
      *
-     * @param bucket the name of the bucket to fetch. Must not contain .. or / or \
-     * @return the bucket with the given id. Might not exist, but will never be <tt>null</tt>
+     * @param bucket the name of the bucket to fetch
+     * @return the bucket with the given id
      */
-    public Bucket getBucket(String bucket) {
-        if (bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
+    public @Nonnull Bucket getBucket(@Nonnull String bucket) {
+        if (!Bucket.isValidName(bucket)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
                                     "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",

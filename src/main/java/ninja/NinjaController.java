@@ -273,38 +273,34 @@ public class NinjaController extends BasicController {
      */
     @Routed(value = "/ui/:1/**", priority = PriorityCollector.DEFAULT_PRIORITY + 1)
     public void object(WebContext webContext, String bucketName, List<String> idParts) {
-        try {
-            Bucket bucket = storage.getBucket(bucketName);
-            if (!bucket.exists()) {
-                UserContext.message(Message.error("Bucket does not exist."));
-                webContext.respondWith().redirectTemporarily("/ui");
-                return;
-            }
-
-            String id = String.join("/", idParts);
-            StoredObject object = bucket.getObject(id);
-            if (!object.exists()) {
-                UserContext.message(Message.error("Object does not exist."));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            // handle /ui/[bucket]/[object]?delete
-            if (webContext.hasParameter("delete")) {
-                object.delete();
-
-                UserContext.message(Message.info("Object successfully deleted."));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            Response response = webContext.respondWith();
-            for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
-                response.addHeader(entry.getKey().toString(), entry.getValue().toString());
-            }
-            response.file(object.getFile());
-        } catch (Exception e) {
-            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+        Bucket bucket = storage.getBucket(bucketName);
+        if (!bucket.exists()) {
+            UserContext.message(Message.error("Bucket does not exist."));
+            webContext.respondWith().redirectTemporarily("/ui");
+            return;
         }
+
+        String id = String.join("/", idParts);
+        StoredObject object = bucket.getObject(id);
+        if (!object.exists()) {
+            UserContext.message(Message.error("Object does not exist."));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        // handle /ui/[bucket]/[object]?delete
+        if (webContext.hasParameter("delete")) {
+            object.delete();
+
+            UserContext.message(Message.info("Object successfully deleted."));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        Response response = webContext.respondWith();
+        for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
+            response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+        }
+        response.file(object.getFile());
     }
 }

@@ -26,20 +26,19 @@ public class S3ErrorSynthesizer {
     /**
      * Synthesizes an error response.
      *
-     * @param ctx the request to process.
-     * @param bucket the requested bucket, potentially <b>null</b>.
-     * @param key the requested object's key, potentially <b>null</b>.
-     * @param code the error code to send.
-     * @param message a human-readable description of the error.
+     * @param ctx     the request to process
+     * @param bucket  the requested bucket, potentially <b>null</b>
+     * @param key     the requested object's key, potentially <b>null</b>
+     * @param code    the error code to send
+     * @param message a human-readable description of the error
      */
     public void synthesiseError(@Nonnull WebContext ctx,
                                 @Nullable String bucket,
                                 @Nullable String key,
                                 @Nonnull S3ErrorCode code,
                                 @Nullable String message) {
-        XMLStructuredOutput
-                xml = new XMLStructuredOutput(ctx.respondWith()
-                                                 .outputStream(code.getHttpStatusCode(), "text/xml"));
+        XMLStructuredOutput xml =
+                new XMLStructuredOutput(ctx.respondWith().outputStream(code.getHttpStatusCode(), "text/xml"));
 
         String resource = null;
         if (Strings.isFilled(bucket)) {

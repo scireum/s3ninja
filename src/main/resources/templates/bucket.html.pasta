@@ -41,7 +41,7 @@
                             <span class="muted pull-right">@obj.getLastModified()</span>
                         </td>
                         <td class="align-center col-md-2">
-                            <w:deleteLink url="@apply('/ui/%s/%s/delete', bucket.getEncodedName(), obj.getEncodedName())"/>
+                            <w:deleteLink url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedName())"/>
                         </td>
                     </tr>
                 </i:for>

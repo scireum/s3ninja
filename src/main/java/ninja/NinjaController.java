@@ -261,27 +261,46 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to /ui/[bucketName]/[object]
+     * Handles requests to /ui/[bucket]/[object]
      * <p>
-     * This will start a download of the requested object. No access checks will be performed.
+     * By default, this starts a download of the requested object. No access checks will be performed.
+     * <p>
+     * Optional query parameters include:
+     * <ul>
+     *     <li><tt>/ui/[bucket]/[object]?delete</tt>: Deletes the object.</li>
+     * </ul>
      *
      * @param webContext the context describing the current request
-     * @param bucketName name of the bucket to show
-     * @param id         the name of the object to fetch
+     * @param bucketName the name of the bucket to consider
+     * @param idParts    the name of the object to fetch
      */
-    @Routed("/ui/:1/:2")
-    public void object(WebContext webContext, String bucketName, String id) {
+    @Routed("/ui/:1/**")
+    public void object(WebContext webContext, String bucketName, List<String> idParts) {
         try {
             Bucket bucket = storage.getBucket(bucketName);
             if (!bucket.exists()) {
-                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+                UserContext.message(Message.error("Bucket does not exist."));
+                webContext.respondWith().redirectTemporarily("/ui");
                 return;
             }
+
+            String id = String.join("/", idParts);
             StoredObject object = bucket.getObject(id);
             if (!object.exists()) {
-                webContext.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
+                UserContext.message(Message.error("Object does not exist."));
+                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
+
+            // handle /ui/[bucket]/[object]?delete
+            if (webContext.hasParameter("delete")) {
+                object.delete();
+
+                UserContext.message(Message.info("Object successfully deleted."));
+                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+                return;
+            }
+
             Response response = webContext.respondWith();
             for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
                 response.addHeader(entry.getKey().toString(), entry.getValue().toString());
@@ -290,27 +309,5 @@ public class NinjaController extends BasicController {
         } catch (Exception e) {
             webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
         }
-    }
-
-    /**
-     * Handles requests to /ui/[bucketName]/[object]/delete
-     * <p>
-     * This will delete the given object and list the remaining.
-     *
-     * @param webContext the context describing the current request
-     * @param bucketName name of the bucket which contains the object to delete
-     * @param id         name of the object to delete
-     */
-    @Routed("/ui/:1/:2/delete")
-    public void deleteObject(WebContext webContext, String bucketName, String id) {
-        Bucket bucket = storage.getBucket(bucketName);
-        if (bucket.exists()) {
-            StoredObject object = bucket.getObject(id);
-            if (object.exists()) {
-                object.delete();
-                UserContext.message(Message.info("Object successfully deleted."));
-            }
-        }
-        bucket(webContext, bucketName);
     }
 }

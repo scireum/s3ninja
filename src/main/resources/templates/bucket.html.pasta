@@ -51,4 +51,8 @@
             <w:pagination page="@page" baseUrl="@apply('/ui/%s', bucket.getName())"/>
         </div>
     </div>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta"/>
+    </i:block>
 </w:page>

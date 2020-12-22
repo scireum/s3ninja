@@ -138,21 +138,17 @@ public class NinjaController extends BasicController {
      */
     @Routed("/ui/:1")
     public void bucket(WebContext ctx, String bucketName) {
-        try {
-            Bucket bucket = storage.getBucket(bucketName);
-            if (!bucket.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                return;
-            }
-
-            Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
-            page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
-            page.withTotalItems(bucket.countObjects(page.getQuery()));
-
-            ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
-        } catch (Exception e) {
-            ctx.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+        Bucket bucket = storage.getBucket(bucketName);
+        if (!bucket.exists()) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+            return;
         }
+
+        Page<StoredObject> page = new Page<StoredObject>().bindToRequest(ctx);
+        page.withLimitedItemsSupplier(limit -> bucket.getObjects(page.getQuery(), limit));
+        page.withTotalItems(bucket.countObjects(page.getQuery()));
+
+        ctx.respondWith().template("/templates/bucket.html.pasta", bucket, page);
     }
 
     /**
@@ -167,25 +163,21 @@ public class NinjaController extends BasicController {
      */
     @Routed("/ui/:1/:2")
     public void object(WebContext ctx, String bucketName, String id) {
-        try {
-            Bucket bucket = storage.getBucket(bucketName);
-            if (!bucket.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
-                return;
-            }
-            StoredObject object = bucket.getObject(id);
-            if (!object.exists()) {
-                ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
-                return;
-            }
-            Response response = ctx.respondWith();
-            for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
-                response.addHeader(entry.getKey().toString(), entry.getValue().toString());
-            }
-            response.file(object.getFile());
-        } catch (Exception e) {
-            ctx.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+        Bucket bucket = storage.getBucket(bucketName);
+        if (!bucket.exists()) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Bucket does not exist");
+            return;
         }
+        StoredObject object = bucket.getObject(id);
+        if (!object.exists()) {
+            ctx.respondWith().error(HttpResponseStatus.NOT_FOUND, "Object does not exist");
+            return;
+        }
+        Response response = ctx.respondWith();
+        for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
+            response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+        }
+        response.file(object.getFile());
     }
 
     /**

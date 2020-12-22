@@ -145,68 +145,64 @@ public class NinjaController extends BasicController {
      */
     @Routed("/ui/:1")
     public void bucket(WebContext webContext, String bucketName) {
-        try {
-            Bucket bucket = storage.getBucket(bucketName);
+        Bucket bucket = storage.getBucket(bucketName);
 
-            // handle /ui/[bucket]?create
-            if (webContext.hasParameter("create")) {
-                if (bucket.exists()) {
-                    UserContext.message(Message.error("Bucket does already exist."));
-                    webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                    return;
-                }
-
-                bucket.create();
-
-                UserContext.message(Message.info("Bucket successfully created."));
+        // handle /ui/[bucket]?create
+        if (webContext.hasParameter("create")) {
+            if (bucket.exists()) {
+                UserContext.message(Message.error("Bucket does already exist."));
                 webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
 
-            // from this point on, make sure that the bucket exists
-            if (!bucket.exists()) {
-                UserContext.message(Message.error("Bucket does not exist."));
-                webContext.respondWith().redirectTemporarily("/ui");
-                return;
-            }
+            bucket.create();
 
-            // handle /ui/[bucket]?make-public
-            if (webContext.hasParameter("make-public")) {
-                bucket.makePublic();
-
-                UserContext.message(Message.info("ACLs successfully changed"));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            // handle /ui/[bucket]?make-private
-            if (webContext.hasParameter("make-private")) {
-                bucket.makePrivate();
-
-                UserContext.message(Message.info("ACLs successfully changed"));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            // handle /ui/[bucket]?delete
-            if (webContext.hasParameter("delete")) {
-                bucket.delete();
-
-                UserContext.message(Message.info("Bucket successfully deleted."));
-                webContext.respondWith().redirectTemporarily("/ui");
-                return;
-            }
-
-            // handle /ui/[bucket]?upload
-            if (webContext.hasParameter("upload")) {
-                uploadFile(webContext, bucket);
-                return;
-            }
-
-            objects(webContext, bucket);
-        } catch (Exception e) {
-            webContext.respondWith().error(HttpResponseStatus.BAD_REQUEST, Exceptions.handle(UserContext.LOG, e));
+            UserContext.message(Message.info("Bucket successfully created."));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
         }
+
+        // from this point on, make sure that the bucket exists
+        if (!bucket.exists()) {
+            UserContext.message(Message.error("Bucket does not exist."));
+            webContext.respondWith().redirectTemporarily("/ui");
+            return;
+        }
+
+        // handle /ui/[bucket]?make-public
+        if (webContext.hasParameter("make-public")) {
+            bucket.makePublic();
+
+            UserContext.message(Message.info("ACLs successfully changed"));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        // handle /ui/[bucket]?make-private
+        if (webContext.hasParameter("make-private")) {
+            bucket.makePrivate();
+
+            UserContext.message(Message.info("ACLs successfully changed"));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        // handle /ui/[bucket]?delete
+        if (webContext.hasParameter("delete")) {
+            bucket.delete();
+
+            UserContext.message(Message.info("Bucket successfully deleted."));
+            webContext.respondWith().redirectTemporarily("/ui");
+            return;
+        }
+
+        // handle /ui/[bucket]?upload
+        if (webContext.hasParameter("upload")) {
+            uploadFile(webContext, bucket);
+            return;
+        }
+
+        objects(webContext, bucket);
     }
 
     /**

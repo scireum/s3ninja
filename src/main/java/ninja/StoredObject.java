@@ -69,7 +69,7 @@ public class StoredObject {
     }
 
     /**
-     * Returns the last modified date of the object
+     * Returns the object's date of last modification.
      *
      * @return a string representation of the last modification date
      */
@@ -77,12 +77,17 @@ public class StoredObject {
         return NLS.toUserString(getLastModifiedInstant());
     }
 
+    /**
+     * Returns the object's date of last modification.
+     *
+     * @return the last modification date as {@link Instant}
+     */
     public Instant getLastModifiedInstant() {
         return Instant.ofEpochMilli(file.lastModified());
     }
 
     /**
-     * Deletes the object
+     * Deletes the object.
      */
     public void delete() {
         if (!file.delete()) {
@@ -96,7 +101,7 @@ public class StoredObject {
     }
 
     /**
-     * Returns the underlying file
+     * Returns the underlying file.
      *
      * @return the underlying file containing the stored contents
      */
@@ -105,9 +110,9 @@ public class StoredObject {
     }
 
     /**
-     * Determins if the object exists
+     * Determines if the object exists.
      *
-     * @return <tt>true</tt> if the object exists, <tt>false</tt> otherwise
+     * @return <b>true</b> if the object exists, <b>false</b> else
      */
     public boolean exists() {
         return file.exists();
@@ -117,10 +122,9 @@ public class StoredObject {
      * Returns all properties stored along with the object.
      * <p>
      * This is the Content-MD5, Content-Type and any x-amz-meta- header.
-     * </p>
      *
      * @return a set of name value pairs representing all properties stored for this object or an empty set if no
-     * properties could be read.
+     * properties could be read
      */
     public Properties getProperties() {
         Properties props = new Properties();

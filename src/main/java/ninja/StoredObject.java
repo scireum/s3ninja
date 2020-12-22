@@ -15,6 +15,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Properties;
@@ -41,6 +44,19 @@ public class StoredObject {
      */
     public String getName() {
         return file.getName();
+    }
+
+    /**
+     * Returns the encoded name of the object.
+     *
+     * @return the encoded name of the object
+     */
+    public String getEncodedName() {
+        try {
+            return URLEncoder.encode(getName(), StandardCharsets.UTF_8.toString());
+        } catch (UnsupportedEncodingException e) {
+            return getName();
+        }
     }
 
     /**

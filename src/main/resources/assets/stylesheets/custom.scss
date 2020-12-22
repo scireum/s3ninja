@@ -14,7 +14,7 @@ $linkColor:                     $primary-color;
  * Fixes the margin set by .help-block for checkboxes
  */
 .checkbox-help {
-  margin-top: 0px;
+  margin-top: 0;
 }
 
 /*
@@ -42,7 +42,7 @@ table td.align-center, table th.align-center, .align-center {
  * Removes the bottom margin of inline forms within wells
  */
 .well .form-inline {
-  margin: 0px;
+  margin: 0;
 }
 
 /*
@@ -77,7 +77,14 @@ img#ninja {
   max-height: 178px;
 }
 
-#create-bucket .input-group .input-group-addon:hover {
-  cursor: pointer;
-  background-color: #858689;
+#create-bucket .input-group {
+  .error {
+    border-color: $primary-color;
+    background-color: transparentize($primary-color, 0.9);
+  }
+
+  .input-group-addon:hover {
+    cursor: pointer;
+    background-color: #858689;
+  }
 }

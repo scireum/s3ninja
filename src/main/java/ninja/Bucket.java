@@ -94,6 +94,35 @@ public class Bucket {
     }
 
     /**
+     * Returns the underlying directory as {@link File}.
+     *
+     * @return a {@link File} representing the underlying directory
+     */
+    public File getFolder() {
+        return folder;
+    }
+
+    /**
+     * Determines if the bucket exists.
+     *
+     * @return <b>true</b> if the bucket exists, <b>false</b> else
+     */
+    public boolean exists() {
+        return folder.exists();
+    }
+
+    /**
+     * Creates the bucket.
+     * <p>
+     * If the underlying directory already exists, nothing happens.
+     *
+     * @return true if the folder for the bucket was created successfully if it was missing before.
+     */
+    public boolean create() {
+        return !folder.exists() && folder.mkdirs();
+    }
+
+    /**
      * Deletes the bucket and all of its contents.
      *
      * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
@@ -109,17 +138,6 @@ public class Bucket {
         }
         deleted = folder.delete() || deleted;
         return deleted;
-    }
-
-    /**
-     * Creates the bucket.
-     * <p>
-     * If the underlying directory already exists, nothing happens.
-     *
-     * @return true if the folder for the bucket was created successfully if it was missing before.
-     */
-    public boolean create() {
-        return !folder.exists() && folder.mkdirs();
     }
 
     /**
@@ -228,24 +246,6 @@ public class Bucket {
             }
         }
         publicAccessCache.put(getName(), true);
-    }
-
-    /**
-     * Returns the underlying directory as {@link File}.
-     *
-     * @return a {@link File} representing the underlying directory
-     */
-    public File getFolder() {
-        return folder;
-    }
-
-    /**
-     * Determines if the bucket exists.
-     *
-     * @return <b>true</b> if the bucket exists, <b>false</b> else
-     */
-    public boolean exists() {
-        return folder.exists();
     }
 
     /**

@@ -29,6 +29,7 @@ import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -58,7 +59,11 @@ public class Bucket {
      */
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
+    private static final int MOST_RECENT_VERSION = 2;
+
     private final File folder;
+
+    private final File versionMarker;
 
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
@@ -69,6 +74,13 @@ public class Bucket {
      */
     public Bucket(File folder) {
         this.folder = folder;
+
+        // check the version, and migrate the bucket if necessary
+        this.versionMarker = new File(folder, "$version");
+        int version = getVersion();
+        if (version < MOST_RECENT_VERSION) {
+            migrateBucket(version);
+        }
     }
 
     /**
@@ -116,10 +128,16 @@ public class Bucket {
      * <p>
      * If the underlying directory already exists, nothing happens.
      *
-     * @return true if the folder for the bucket was created successfully if it was missing before.
+     * @return <b>true</b> if the folder for the bucket was created successfully and if it was missing before
      */
     public boolean create() {
-        return !folder.exists() && folder.mkdirs();
+        if (folder.exists() || !folder.mkdirs()) {
+            return false;
+        }
+
+        // having successfully created the folder, write the version marker
+        setVersion(MOST_RECENT_VERSION);
+        return true;
     }
 
     /**
@@ -312,6 +330,57 @@ public class Bucket {
         return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
                 .getName()
                 .startsWith("__");
+    }
+
+    private int getVersion() {
+        // non-existent buckets always have the most recent version
+        if (!exists()) {
+            return MOST_RECENT_VERSION;
+        }
+
+        // return the minimal version if the bucket exists, but without a version marker
+        if (!versionMarker.exists()) {
+            return 1;
+        }
+
+        try {
+            // parse the version from the version marker file
+            return Integer.parseInt(Strings.join(Files.readAllLines(versionMarker.toPath()), "\n").trim());
+        } catch (IOException e) {
+            // on any error, assume the most recent version to bypass migration
+            Exceptions.ignore(e);
+            return MOST_RECENT_VERSION;
+        }
+    }
+
+    private void setVersion(int version) {
+        // non-existent buckets always have the most recent version
+        if (!exists()) {
+            return;
+        }
+
+        try {
+            // write the version into the version marker file
+            Files.write(versionMarker.toPath(), Collections.singletonList(String.valueOf(version)));
+        } catch (IOException e) {
+            Exceptions.ignore(e);
+        }
+    }
+
+    /**
+     * Migrates a bucket folder to the most recent version.
+     *
+     * @param fromVersion the version to migrate from.
+     */
+    private void migrateBucket(int fromVersion) {
+        if (fromVersion <= 1) {
+            // todo: migrate files
+        }
+
+        // further incremental updates go here one day
+
+        // write the most recent version marker
+        setVersion(MOST_RECENT_VERSION);
     }
 
     /**

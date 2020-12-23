@@ -225,20 +225,26 @@ public class Bucket {
     }
 
     /**
-     * Returns the child object with the given id.
+     * Returns the object with the given key.
+     * <p>
+     * The method never returns <b>null</b>, but {@link StoredObject#exists()} may return <b>false</b>.
+     * <p>
+     * Make sure that the key passes {@link StoredObject#isValidKey(String)} by meeting the naming restrictions
+     * documented there.
      *
-     * @param id the name of the requested child object. Must not contain .. / or \
-     * @return the object with the given id, might not exist, but is always non null
+     * @param key the key of the requested object
+     * @return the object with the given key
      */
-    public StoredObject getObject(String id) {
-        if (id.contains("..") || id.contains("/") || id.contains("\\")) {
+    @Nonnull
+    public StoredObject getObject(String key) {
+        if (!StoredObject.isValidKey(key)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid object name: %s. A object name must not contain '..' '/' or '\\'",
-                                    id)
+                                    "Invalid object key: %s. The key is empty.",
+                                    key)
                             .handle();
         }
-        return new StoredObject(new File(file, id));
+        return new StoredObject(new File(file, key));
     }
 
     /**

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
@@ -29,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -39,7 +41,24 @@ import java.util.stream.Stream;
  */
 public class Bucket {
 
+    /**
+     * Enforces the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official rules</a>
+     * for bucket names:
+     * <ul>
+     *     <li>Between 3 and 63 characters</li>
+     *     <li>Lowercase letters, numbers, dots, and hyphens</li>
+     *     <li>First and last letter a number or a letter</li>
+     * </ul>
+     */
+    private static final Pattern BUCKET_NAME_PATTERN = Pattern.compile("^[a-z\\d][a-z\\d\\-.]{1,61}[a-z\\d]$");
+
+    /**
+     * Matches IPv4 addresses roughly.
+     */
+    private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
+
     private final File file;
+
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
@@ -293,14 +312,8 @@ public class Bucket {
     /**
      * Checks whether the given string is valid for use as bucket name.
      * <p>
-     * Currently, the name must not be effectively empty, must not equal the single dot, and it must not contain:
-     * <ul>
-     *     <li><tt>/</tt> (forward slashes)</li>
-     *     <li><tt>\</tt> (backward slashes)</li>
-     *     <li><tt>..</tt> (two consecutive dots)</li>
-     * </ul>
-     * Note that the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official naming
-     * rules</a> are much more strict.
+     * See the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official naming
+     * rules</a> for all requirements.
      *
      * @param name the name to check
      * @return <b>true</b> if the name is valid as bucket name, <b>false</b> else
@@ -310,7 +323,27 @@ public class Bucket {
             return false;
         }
 
-        // todo: check full official naming rules
-        return !name.equals(".") && !name.contains("..") && !name.contains("/") && !name.contains("\\");
+        // test the majority of simple requirements via a regex
+        if (!BUCKET_NAME_PATTERN.matcher(name).matches()) {
+            return false;
+        }
+
+        // make sure that it does not start with "xn--"
+        if (name.startsWith("xn--")) {
+            return false;
+        }
+
+        try {
+            // make sure that the name is no valid IP address (the null check is pointless, it is just there to trigger
+            // actual conversion after the regex has matched; if the parsing fails, we end up in the catch clause)
+            if (IP_ADDRESS_PATTERN.matcher(name).matches() && InetAddress.getByName(name) != null) {
+                return false;
+            }
+        } catch (Exception e) {
+            // ignore this, we want the conversion to fail and thus to end up here
+        }
+
+        // reaching this point, the name is valid
+        return true;
     }
 }

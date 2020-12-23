@@ -123,14 +123,14 @@ public class Storage {
         if (!Bucket.isValidName(name)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid bucket name: %s. The name contains illegal characters or is effectively empty.",
+                                    "Bucket name \"%s\" does not adhere to the naming rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html]",
                                     name)
                             .handle();
         }
         if (Strings.areEqual(name, "ui")) {
             throw Exceptions.createHandled()
                     .withSystemErrorMessage(
-                            "Invalid bucket name: %s. The string 'ui' is reserved for internal use.",
+                            "Bucket name \"%s\" is reserved for internal use.",
                             name)
                     .handle();
         }

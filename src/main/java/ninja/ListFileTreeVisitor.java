@@ -60,7 +60,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         File file = path.toFile();
         String name = file.getName();
 
-        if (!file.isFile() || name.startsWith("__")) {
+        if (!file.isFile() || name.startsWith("$")) {
             return FileVisitResult.CONTINUE;
         }
         if (!markerReached) {

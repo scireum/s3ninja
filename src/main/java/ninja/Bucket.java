@@ -330,7 +330,7 @@ public class Bucket {
     private boolean isMatchingObject(@Nullable String query, File currentFile) {
         return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
                 .getName()
-                .startsWith("__");
+                .startsWith("$");
     }
 
     private int getVersion() {

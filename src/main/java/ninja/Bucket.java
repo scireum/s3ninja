@@ -249,7 +249,7 @@ public class Bucket {
      * @param limit the limit to apply
      * @return all files containing the query, restricted by the limit
      */
-    public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
+    public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
             return stream.sorted(Bucket::compareUtf8Binary)
                          .map(Path::toFile)
@@ -262,7 +262,7 @@ public class Bucket {
         }
     }
 
-    private boolean isMatchingObject(@Nonnull String query, File currentFile) {
+    private boolean isMatchingObject(@Nullable String query, File currentFile) {
         return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
                 .getName()
                 .startsWith("__");
@@ -274,7 +274,7 @@ public class Bucket {
      * @param query the query to filter for
      * @return the number of files in the bucket matching the query
      */
-    public int countObjects(@Nonnull String query) {
+    public int countObjects(@Nullable String query) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
             return Math.toIntExact(stream.map(Path::toFile)
                                          .filter(currentFile -> isMatchingObject(query, currentFile))

@@ -375,13 +375,35 @@ public class Bucket {
         if (fromVersion <= 1) {
             migratePublicMarkerVersion1To2();
 
-            // todo: migrate files and properties
+            for (File object : Objects.requireNonNull(folder.listFiles(this::filterObjects))) {
+                migrateObjectVersion1To2(object);
+            }
         }
 
         // further incremental updates go here one day
 
         // write the most recent version marker
         setVersion(MOST_RECENT_VERSION);
+    }
+
+    private boolean filterObjects(File file) {
+        // ignore directories
+        if (file.isDirectory()) {
+            return false;
+        }
+
+        // ignore legacy system files
+        if (file.getName().startsWith("__ninja_")) {
+            return false;
+        }
+
+        // ignore marker files
+        if (file.equals(publicMarker) || file.equals(versionMarker)) {
+            return false;
+        }
+
+        // ignore properties files
+        return !(file.getName().startsWith("$") && file.getName().endsWith(".properties"));
     }
 
     /**
@@ -396,6 +418,31 @@ public class Bucket {
                 Files.delete(legacyPublicMarker.toPath());
             }
         } catch (IOException e) {
+            throw Exceptions.handle(Storage.LOG, e);
+        }
+    }
+
+    private void migrateObjectVersion1To2(File legacyChild) {
+        File legacyProperties = new File(folder, "__ninja_" + legacyChild.getName() + ".properties");
+
+        try {
+            File child = new File(folder, URLEncoder.encode(legacyChild.getName(), StandardCharsets.UTF_8.name()));
+            File properties = new File(folder, "$" + child.getName() + ".properties");
+
+            if (!child.exists()) {
+                Files.move(legacyChild.toPath(), child.toPath());
+            } else if (!child.equals(legacyChild)) {
+                Files.delete(legacyChild.toPath());
+            }
+
+            if (legacyProperties.exists()) {
+                if (!properties.exists()) {
+                    Files.move(legacyProperties.toPath(), properties.toPath());
+                } else if (!properties.equals(legacyProperties)) {
+                    Files.delete(legacyProperties.toPath());
+                }
+            }
+        } catch (Exception e) {
             throw Exceptions.handle(Storage.LOG, e);
         }
     }

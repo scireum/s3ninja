@@ -8,9 +8,11 @@
 
 package ninja;
 
+import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.nls.NLS;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -157,5 +159,19 @@ public class StoredObject {
         try (FileOutputStream out = new FileOutputStream(getPropertiesFile())) {
             props.store(out, "");
         }
+    }
+
+    /**
+     * Checks whether the given string is valid for use as object key.
+     * <p>
+     * Currently, the key only must not be empty. All UTF-8 characters are valid, but names should be restricted to a
+     * subset. See the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html">official naming
+     * rules</a>.
+     *
+     * @param key the key to check
+     * @return <b>true</b> if the key is valid as object key, <b>false</b> else
+     */
+    public static boolean isValidKey(@Nullable String key) {
+        return Strings.isFilled(key);
     }
 }

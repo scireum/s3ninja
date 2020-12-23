@@ -65,6 +65,8 @@ public class Bucket {
 
     private final File versionMarker;
 
+    private final File publicMarker;
+
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
@@ -75,7 +77,10 @@ public class Bucket {
     public Bucket(File folder) {
         this.folder = folder;
 
-        // check the version, and migrate the bucket if necessary
+        // set the public marker file
+        this.publicMarker = new File(folder, "$public");
+
+        // as last step, check the version, and migrate the bucket if necessary
         this.versionMarker = new File(folder, "$version");
         int version = getVersion();
         if (version < MOST_RECENT_VERSION) {
@@ -232,19 +237,15 @@ public class Bucket {
      * @return <b>true</b> if the bucket is only privately accessible, <b>false</b> else
      */
     public boolean isPrivate() {
-        return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists()));
-    }
-
-    private File getPublicMarkerFile() {
-        return new File(folder, "__ninja_public");
+        return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> publicMarker.exists()));
     }
 
     /**
      * Marks the bucket as only privately accessible, i.e. non-public.
      */
     public void makePrivate() {
-        if (getPublicMarkerFile().exists()) {
-            if (getPublicMarkerFile().delete()) {
+        if (publicMarker.exists()) {
+            if (publicMarker.delete()) {
                 publicAccessCache.put(getName(), false);
             } else {
                 Storage.LOG.WARN("Failed to delete public marker for bucket %s - it remains public!", getName());
@@ -256,9 +257,9 @@ public class Bucket {
      * Marks the bucket as publicly accessible.
      */
     public void makePublic() {
-        if (!getPublicMarkerFile().exists()) {
+        if (!publicMarker.exists()) {
             try {
-                new FileOutputStream(getPublicMarkerFile()).close();
+                new FileOutputStream(publicMarker).close();
             } catch (IOException e) {
                 throw Exceptions.handle(Storage.LOG, e);
             }
@@ -347,9 +348,7 @@ public class Bucket {
             // parse the version from the version marker file
             return Integer.parseInt(Strings.join(Files.readAllLines(versionMarker.toPath()), "\n").trim());
         } catch (IOException e) {
-            // on any error, assume the most recent version to bypass migration
-            Exceptions.ignore(e);
-            return MOST_RECENT_VERSION;
+            throw Exceptions.handle(Storage.LOG, e);
         }
     }
 
@@ -363,7 +362,7 @@ public class Bucket {
             // write the version into the version marker file
             Files.write(versionMarker.toPath(), Collections.singletonList(String.valueOf(version)));
         } catch (IOException e) {
-            Exceptions.ignore(e);
+            throw Exceptions.handle(Storage.LOG, e);
         }
     }
 
@@ -374,7 +373,19 @@ public class Bucket {
      */
     private void migrateBucket(int fromVersion) {
         if (fromVersion <= 1) {
-            // todo: migrate files
+            try {
+                // migrate public marker
+                File legacyPublicMarker = new File(folder, "__ninja_public");
+                if (legacyPublicMarker.exists() && !publicMarker.exists()) {
+                    Files.move(legacyPublicMarker.toPath(), publicMarker.toPath());
+                } else if (legacyPublicMarker.exists()) {
+                    Files.delete(legacyPublicMarker.toPath());
+                }
+            } catch (IOException e) {
+                throw Exceptions.handle(Storage.LOG, e);
+            }
+
+            // todo: migrate files and properties
         }
 
         // further incremental updates go here one day

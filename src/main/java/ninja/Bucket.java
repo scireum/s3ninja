@@ -373,17 +373,7 @@ public class Bucket {
      */
     private void migrateBucket(int fromVersion) {
         if (fromVersion <= 1) {
-            try {
-                // migrate public marker
-                File legacyPublicMarker = new File(folder, "__ninja_public");
-                if (legacyPublicMarker.exists() && !publicMarker.exists()) {
-                    Files.move(legacyPublicMarker.toPath(), publicMarker.toPath());
-                } else if (legacyPublicMarker.exists()) {
-                    Files.delete(legacyPublicMarker.toPath());
-                }
-            } catch (IOException e) {
-                throw Exceptions.handle(Storage.LOG, e);
-            }
+            migratePublicMarkerVersion1To2();
 
             // todo: migrate files and properties
         }
@@ -392,6 +382,22 @@ public class Bucket {
 
         // write the most recent version marker
         setVersion(MOST_RECENT_VERSION);
+    }
+
+    /**
+     * Migrates a version 1 public marker file to version 2.
+     */
+    private void migratePublicMarkerVersion1To2() {
+        try {
+            File legacyPublicMarker = new File(folder, "__ninja_public");
+            if (legacyPublicMarker.exists() && !publicMarker.exists()) {
+                Files.move(legacyPublicMarker.toPath(), publicMarker.toPath());
+            } else if (legacyPublicMarker.exists()) {
+                Files.delete(legacyPublicMarker.toPath());
+            }
+        } catch (IOException e) {
+            throw Exceptions.handle(Storage.LOG, e);
+        }
     }
 
     /**

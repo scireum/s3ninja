@@ -121,6 +121,15 @@ public class StoredObject {
     }
 
     /**
+     * Returns the file used to store the properties and meta headers.
+     *
+     * @return the underlying file used to store the meta infos
+     */
+    public File getPropertiesFile() {
+        return new File(file.getParentFile(), "__ninja_" + file.getName() + ".properties");
+    }
+
+    /**
      * Returns all properties stored along with the object.
      * <p>
      * This is the Content-MD5, Content-Type and any x-amz-meta- header.
@@ -136,15 +145,6 @@ public class StoredObject {
             Exceptions.ignore(e);
         }
         return props;
-    }
-
-    /**
-     * Returns the file used to store the properties and meta headers.
-     *
-     * @return the underlying file used to store the meta infos
-     */
-    public File getPropertiesFile() {
-        return new File(file.getParentFile(), "__ninja_" + file.getName() + ".properties");
     }
 
     /**

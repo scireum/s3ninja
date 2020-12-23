@@ -169,7 +169,7 @@ public class Bucket {
     /**
      * Determines if the bucket is only privately accessible, i.e. non-public.
      *
-     * @return <b>true</b> if the bucket is privately accessible, <b>false</b> else
+     * @return <b>true</b> if the bucket is only privately accessible, <b>false</b> else
      */
     public boolean isPrivate() {
         return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists()));
@@ -248,12 +248,12 @@ public class Bucket {
     }
 
     /**
-     * Returns a number of files containing the given query, within the given indexing limits. Leave the query empty to
+     * Returns a number of files meeting the given query, within the given indexing limits. Leave the query empty to
      * get all files.
      *
      * @param query the query to filter for
      * @param limit the limit to apply
-     * @return all files containing the query, restricted by the limit
+     * @return all files meeting the query, restricted by the limit
      */
     public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {

@@ -166,7 +166,7 @@ public class StoredObject {
      * <p>
      * Currently, the key only must not be empty. All UTF-8 characters are valid, but names should be restricted to a
      * subset. See the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html">official naming
-     * rules</a>.
+     * recommendations</a>.
      *
      * @param key the key to check
      * @return <b>true</b> if the key is valid as object key, <b>false</b> else

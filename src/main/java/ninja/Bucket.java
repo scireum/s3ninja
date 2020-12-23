@@ -259,7 +259,7 @@ public class Bucket {
         if (!StoredObject.isValidKey(key)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid object key: %s. The key is empty.",
+                                    "Object key \"%s\" does not adhere to the rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html]",
                                     key)
                             .handle();
         }

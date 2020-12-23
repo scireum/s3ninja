@@ -123,7 +123,7 @@ public class Storage {
         if (!Bucket.isValidName(name)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Bucket name \"%s\" does not adhere to the naming rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html]",
+                                    "Bucket name \"%s\" does not adhere to the rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html]",
                                     name)
                             .handle();
         }

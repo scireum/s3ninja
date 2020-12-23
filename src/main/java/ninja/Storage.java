@@ -99,7 +99,7 @@ public class Storage {
     public List<Bucket> getBuckets() {
         List<Bucket> result = Lists.newArrayList();
         for (File file : Objects.requireNonNull(getBaseDir().listFiles())) {
-            if (file.isDirectory()) {
+            if (file.isDirectory() && Bucket.isValidName(file.getName())) {
                 result.add(new Bucket(file));
             }
         }

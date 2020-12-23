@@ -287,12 +287,6 @@ public class Bucket {
         }
     }
 
-    private boolean isMatchingObject(@Nullable String query, File currentFile) {
-        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
-                .getName()
-                .startsWith("__");
-    }
-
     /**
      * Count the files containing the query. Leave the query empty to count all files.
      *
@@ -307,6 +301,12 @@ public class Bucket {
         } catch (IOException e) {
             throw Exceptions.handle(e);
         }
+    }
+
+    private boolean isMatchingObject(@Nullable String query, File currentFile) {
+        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
+                .getName()
+                .startsWith("__");
     }
 
     /**

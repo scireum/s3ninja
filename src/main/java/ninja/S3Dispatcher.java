@@ -388,7 +388,7 @@ public class S3Dispatcher implements WebDispatcher {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate",
-                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFolder().lastModified())));
                 out.endObject();
             }
             out.endObject();

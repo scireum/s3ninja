@@ -58,17 +58,17 @@ public class Bucket {
      */
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
-    private final File file;
+    private final File folder;
 
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
      * Creates a new bucket based on the given directory.
      *
-     * @param file the directory which stores the contents of the bucket.
+     * @param folder the directory which stores the contents of the bucket.
      */
-    public Bucket(File file) {
-        this.file = file;
+    public Bucket(File folder) {
+        this.folder = folder;
     }
 
     /**
@@ -77,7 +77,7 @@ public class Bucket {
      * @return the name of the bucket
      */
     public String getName() {
-        return file.getName();
+        return folder.getName();
     }
 
     /**
@@ -99,15 +99,15 @@ public class Bucket {
      * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
      */
     public boolean delete() {
-        if (!file.exists()) {
+        if (!folder.exists()) {
             return true;
         }
 
         boolean deleted = false;
-        for (File child : Objects.requireNonNull(file.listFiles())) {
+        for (File child : Objects.requireNonNull(folder.listFiles())) {
             deleted = child.delete() || deleted;
         }
-        deleted = file.delete() || deleted;
+        deleted = folder.delete() || deleted;
         return deleted;
     }
 
@@ -119,7 +119,7 @@ public class Bucket {
      * @return true if the folder for the bucket was created successfully if it was missing before.
      */
     public boolean create() {
-        return !file.exists() && file.mkdirs();
+        return !folder.exists() && folder.mkdirs();
     }
 
     /**
@@ -139,7 +139,7 @@ public class Bucket {
         output.property("Marker", marker);
         output.property("Prefix", prefix);
         try {
-            walkFileTreeOurWay(file.toPath(), visitor);
+            walkFileTreeOurWay(folder.toPath(), visitor);
         } catch (IOException e) {
             Exceptions.handle(e);
         }
@@ -200,7 +200,7 @@ public class Bucket {
     }
 
     private File getPublicMarkerFile() {
-        return new File(file, "__ninja_public");
+        return new File(folder, "__ninja_public");
     }
 
     /**
@@ -235,8 +235,8 @@ public class Bucket {
      *
      * @return a {@link File} representing the underlying directory
      */
-    public File getFile() {
-        return file;
+    public File getFolder() {
+        return folder;
     }
 
     /**
@@ -245,7 +245,7 @@ public class Bucket {
      * @return <b>true</b> if the bucket exists, <b>false</b> else
      */
     public boolean exists() {
-        return file.exists();
+        return folder.exists();
     }
 
     /**
@@ -268,7 +268,7 @@ public class Bucket {
                                     key)
                             .handle();
         }
-        return new StoredObject(new File(file, key));
+        return new StoredObject(new File(folder, key));
     }
 
     /**
@@ -280,7 +280,7 @@ public class Bucket {
      * @return all files meeting the query, restricted by the limit
      */
     public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
-        try (Stream<Path> stream = Files.list(file.toPath())) {
+        try (Stream<Path> stream = Files.list(folder.toPath())) {
             return stream.sorted(Bucket::compareUtf8Binary)
                          .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
@@ -299,7 +299,7 @@ public class Bucket {
      * @return the number of files in the bucket matching the query
      */
     public int countObjects(@Nullable String query) {
-        try (Stream<Path> stream = Files.list(file.toPath())) {
+        try (Stream<Path> stream = Files.list(folder.toPath())) {
             return Math.toIntExact(stream.map(Path::toFile)
                                          .filter(currentFile -> isMatchingObject(query, currentFile))
                                          .count());

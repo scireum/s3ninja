@@ -172,7 +172,7 @@ public class Bucket {
      * @return <tt>true</tt> if the bucket is public accessible, <tt>false</tt> otherwise
      */
     public boolean isPrivate() {
-        return !publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists());
+        return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists()));
     }
 
     private File getPublicMarkerFile() {

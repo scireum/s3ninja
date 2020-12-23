@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -98,8 +99,12 @@ public class Bucket {
      * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
      */
     public boolean delete() {
+        if (!file.exists()) {
+            return true;
+        }
+
         boolean deleted = false;
-        for (File child : file.listFiles()) {
+        for (File child : Objects.requireNonNull(file.listFiles())) {
             deleted = child.delete() || deleted;
         }
         deleted = file.delete() || deleted;

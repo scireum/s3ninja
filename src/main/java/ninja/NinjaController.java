@@ -224,9 +224,8 @@ public class NinjaController extends BasicController {
             properties.put(HttpHeaderNames.CONTENT_TYPE.toString(),
                            webContext.getHeaderValue(HttpHeaderNames.CONTENT_TYPE)
                                      .asString(MimeHelper.guessMimeType(name)));
-            String md5 = Hasher.md5().hashFile(object.getFile()).toBase64String();
-            properties.put("Content-MD5", md5);
-            object.storeProperties(properties);
+            properties.put("Content-MD5", Hasher.md5().hashFile(object.getFile()).toBase64String());
+            object.setProperties(properties);
 
             webContext.respondWith()
                       .json()
@@ -298,8 +297,8 @@ public class NinjaController extends BasicController {
         }
 
         Response response = webContext.respondWith();
-        for (Map.Entry<Object, Object> entry : object.getProperties().entrySet()) {
-            response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+        for (Map.Entry<String, String> entry : object.getProperties().entrySet()) {
+            response.addHeader(entry.getKey(), entry.getValue());
         }
         response.file(object.getFile());
     }

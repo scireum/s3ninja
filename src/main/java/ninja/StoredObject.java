@@ -8,6 +8,7 @@
 
 package ninja;
 
+import com.google.common.collect.Maps;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.nls.NLS;
@@ -130,30 +131,39 @@ public class StoredObject {
     }
 
     /**
-     * Returns all properties stored along with the object.
+     * Returns all meta information stored along with the object.
      * <p>
-     * This is the Content-MD5, Content-Type and any x-amz-meta- header.
+     * This is the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-meta-*</tt> header.
+     * <p>
+     * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
-     * @return a set of name value pairs representing all properties stored for this object or an empty set if no
+     * @return a set of name value pairs representing all properties stored for this object, or an empty set if no
      * properties could be read
      */
-    public Properties getProperties() {
+    public Map<String, String> getProperties() {
+        // read properties object from disk
         Properties props = new Properties();
         try (FileInputStream in = new FileInputStream(getPropertiesFile())) {
             props.load(in);
         } catch (IOException e) {
             Exceptions.ignore(e);
         }
-        return props;
+
+        // convert the properties object to a string-to-string-map
+        Map<String, String> map = Maps.newTreeMap();
+        props.forEach((key, value) -> map.put(String.valueOf(key), String.valueOf(value)));
+        return map;
     }
 
     /**
-     * Stores the given meta infos for the stored object.
+     * Stores the given meta information for this object.
+     * <p>
+     * Internally, the map is transformed to a {@link Properties} object and stored to disk.
      *
-     * @param properties properties to store
+     * @param properties the properties to store
      * @throws IOException in case of an IO error
      */
-    public void storeProperties(Map<String, String> properties) throws IOException {
+    public void setProperties(Map<String, String> properties) throws IOException {
         Properties props = new Properties();
         properties.forEach(props::setProperty);
         try (FileOutputStream out = new FileOutputStream(getPropertiesFile())) {

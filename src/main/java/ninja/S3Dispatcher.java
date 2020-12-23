@@ -641,10 +641,10 @@ public class S3Dispatcher implements WebDispatcher {
                               Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
-
         String etag = BaseEncoding.base16().encode(hash).toLowerCase();
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
-        object.storeProperties(properties);
+        object.setProperties(properties);
+
         Response response = ctx.respondWith();
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).status(HttpResponseStatus.OK);
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
@@ -735,26 +735,26 @@ public class S3Dispatcher implements WebDispatcher {
             signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;
         }
+
         Response response = ctx.respondWith();
-        Properties properties = object.getProperties();
-        for (Map.Entry<Object, Object> entry : properties.entrySet()) {
-            response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+        Map<String, String> properties = object.getProperties();
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            response.addHeader(entry.getKey(), entry.getValue());
         }
         for (Map.Entry<String, String> entry : getOverridenHeaders(ctx).entrySet()) {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
+        // check for the ETAG, set it if necessary, and add it to the response
+        String etag = properties.get(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
             etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
-            Map<String, String> data = new HashMap<>();
-            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
-            data.put(HTTP_HEADER_NAME_ETAG, etag);
-            object.storeProperties(data);
+            properties.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.setProperties(properties);
         }
-
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag.toLowerCase()));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
+
         if (sendFile) {
             response.file(object.getFile());
         } else {
@@ -919,12 +919,10 @@ public class S3Dispatcher implements WebDispatcher {
 
             String etag = Hasher.md5().hashFile(object.getFile()).toHexString();
 
-            // Update the ETAG of the underlying object...
-            Properties properties = object.getProperties();
-            Map<String, String> data = new HashMap<>();
-            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
-            data.put(HTTP_HEADER_NAME_ETAG, etag);
-            object.storeProperties(data);
+            // update ETAG of the underlying object
+            Map<String, String> properties = object.getProperties();
+            properties.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.setProperties(properties);
 
             XMLStructuredOutput out = ctx.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");

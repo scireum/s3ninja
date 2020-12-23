@@ -115,25 +115,25 @@ public class Storage {
      * Make sure that the name passes {@link Bucket#isValidName(String)} by meeting the naming restrictions documented
      * there.
      *
-     * @param bucket the name of the bucket to fetch
-     * @return the bucket with the given id
+     * @param name the name of the bucket to fetch
+     * @return the bucket with the given name
      */
-    public @Nonnull Bucket getBucket(@Nonnull String bucket) {
-        if (!Bucket.isValidName(bucket)) {
+    public @Nonnull Bucket getBucket(@Nonnull String name) {
+        if (!Bucket.isValidName(name)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
                                     "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",
-                                    bucket)
+                                    name)
                             .handle();
         }
-        if (Strings.areEqual(bucket, "ui")) {
+        if (Strings.areEqual(name, "ui")) {
             throw Exceptions.createHandled()
                     .withSystemErrorMessage(
                             "Invalid bucket name: %s. The string 'ui' is reserved for internal use.",
-                            bucket)
+                            name)
                     .handle();
         }
-        return new Bucket(new File(getBaseDir(), bucket));
+        return new Bucket(new File(getBaseDir(), name));
     }
 
     /**

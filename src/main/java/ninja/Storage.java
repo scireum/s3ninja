@@ -118,11 +118,12 @@ public class Storage {
      * @param name the name of the bucket to fetch
      * @return the bucket with the given name
      */
-    public @Nonnull Bucket getBucket(@Nonnull String name) {
+    @Nonnull
+    public Bucket getBucket(String name) {
         if (!Bucket.isValidName(name)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",
+                                    "Invalid bucket name: %s. The name contains illegal characters or is effectively empty.",
                                     name)
                             .handle();
         }

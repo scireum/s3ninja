@@ -127,6 +127,9 @@ public class Storage {
                                     name)
                             .handle();
         }
+
+        // following the current rules, "ui" is no valid bucket name after all; however, should Amazon change the rules,
+        // this check may apply again
         if (Strings.areEqual(name, "ui")) {
             throw Exceptions.createHandled()
                     .withSystemErrorMessage(
@@ -134,6 +137,7 @@ public class Storage {
                             name)
                     .handle();
         }
+
         return new Bucket(new File(getBaseDir(), name));
     }
 

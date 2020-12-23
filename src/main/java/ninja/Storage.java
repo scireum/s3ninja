@@ -157,7 +157,7 @@ public class Storage {
     /**
      * Determines if buckets should be automatically created.
      *
-     * @return <tt>true</tt> if buckets can be auto-created upon the first request
+     * @return <b>true</b> if buckets can be auto-created upon the first request, <b>false</b> else
      */
     public boolean isAutocreateBuckets() {
         return autocreateBuckets;

@@ -167,9 +167,9 @@ public class Bucket {
     }
 
     /**
-     * Determines if the bucket is private or public accessible
+     * Determines if the bucket is only privately accessible, i.e. non-public.
      *
-     * @return <tt>true</tt> if the bucket is public accessible, <tt>false</tt> otherwise
+     * @return <b>true</b> if the bucket is privately accessible, <b>false</b> else
      */
     public boolean isPrivate() {
         return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists()));
@@ -180,7 +180,7 @@ public class Bucket {
     }
 
     /**
-     * Marks the bucket as private accessible.
+     * Marks the bucket as only privately accessible, i.e. non-public.
      */
     public void makePrivate() {
         if (getPublicMarkerFile().exists()) {
@@ -193,7 +193,7 @@ public class Bucket {
     }
 
     /**
-     * Marks the bucket as public accessible.
+     * Marks the bucket as publicly accessible.
      */
     public void makePublic() {
         if (!getPublicMarkerFile().exists()) {
@@ -207,9 +207,9 @@ public class Bucket {
     }
 
     /**
-     * Returns the underlying directory as File.
+     * Returns the underlying directory as {@link File}.
      *
-     * @return a <tt>File</tt> representing the underlying directory
+     * @return a {@link File} representing the underlying directory
      */
     public File getFile() {
         return file;
@@ -218,7 +218,7 @@ public class Bucket {
     /**
      * Determines if the bucket exists.
      *
-     * @return <tt>true</tt> if the bucket exists, <tt>false</tt> otherwise
+     * @return <b>true</b> if the bucket exists, <b>false</b> else
      */
     public boolean exists() {
         return file.exists();
@@ -242,12 +242,12 @@ public class Bucket {
     }
 
     /**
-     * Get <tt>size</tt> number of files, starting at <tt>start</tt>. Only get files containing the query. Leave the
-     * query empty to get all files.
+     * Returns a number of files containing the given query, within the given indexing limits. Leave the query empty to
+     * get all files.
      *
      * @param query the query to filter for
      * @param limit the limit to apply
-     * @return all files which contain the query
+     * @return all files containing the query, restricted by the limit
      */
     public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
         try (Stream<Path> stream = Files.list(file.toPath())) {
@@ -297,7 +297,7 @@ public class Bucket {
      * rules</a> are much more strict.
      *
      * @param name the name to check
-     * @return <b>true</b> if the name is valid as bucket name
+     * @return <b>true</b> if the name is valid as bucket name, <b>false</b> else
      */
     public static boolean isValidName(@Nullable String name) {
         if (name == null || Strings.isEmpty(name.trim())) {

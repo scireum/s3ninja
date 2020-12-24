@@ -110,7 +110,16 @@ public class StoredObject {
      * @return a string representation of the byte-size of the object
      */
     public String getSize() {
-        return NLS.formatSize(file.length());
+        return NLS.formatSize(getSizeBytes());
+    }
+
+    /**
+     * Returns the size of the object in bytes.
+     *
+     * @return the byte-size of the object
+     */
+    public long getSizeBytes() {
+        return file.length();
     }
 
     /**

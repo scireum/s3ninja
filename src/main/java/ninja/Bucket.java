@@ -426,7 +426,7 @@ public class Bucket {
         File legacyProperties = new File(folder, "__ninja_" + legacyChild.getName() + ".properties");
 
         try {
-            File child = new File(folder, URLEncoder.encode(legacyChild.getName(), StandardCharsets.UTF_8.name()));
+            File child = new File(folder, StoredObject.encodeKey(legacyChild.getName()));
             File properties = new File(folder, "$" + child.getName() + ".properties");
 
             if (!child.exists()) {

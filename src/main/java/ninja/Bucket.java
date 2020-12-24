@@ -384,8 +384,13 @@ public class Bucket {
     }
 
     private boolean filterObjects(File file) {
-        // ignore directories
-        if (file.isDirectory()) {
+        // ignore directories and other strange stuff
+        if (!file.isFile()) {
+            return false;
+        }
+
+        // ignore files not residing in our own folder
+        if (!folder.equals(file.getParentFile())) {
             return false;
         }
 

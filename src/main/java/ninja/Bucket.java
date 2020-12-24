@@ -191,14 +191,14 @@ public class Bucket {
      * @param visitor the visitor processing the files.
      * @throws IOException forwarded from nested I/O operations.
      */
-    private static void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
+    private void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
         if (!path.toFile().isDirectory()) {
             throw new IOException("Directory expected.");
         }
 
         try (Stream<Path> children = Files.list(path)) {
-            children.sorted(Bucket::compareUtf8Binary)
-                    .filter(p -> p.toFile().isFile())
+            children.filter(p -> filterObjects(p.toFile()))
+                    .sorted(Bucket::compareUtf8Binary)
                     .forEach(p -> {
                 try {
                     BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
@@ -297,7 +297,8 @@ public class Bucket {
      */
     public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
         try (Stream<Path> stream = Files.list(folder.toPath())) {
-            return stream.sorted(Bucket::compareUtf8Binary)
+            return stream.filter(p -> filterObjects(p.toFile()))
+                         .sorted(Bucket::compareUtf8Binary)
                          .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())

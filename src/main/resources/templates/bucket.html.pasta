@@ -36,7 +36,7 @@
                 <i:for type="ninja.StoredObject" var="obj" items="page.getItems()">
                     <tr>
                         <td>
-                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedName()?noAuth=true">@obj.getName()</a><br/>
+                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedName()">@obj.getName()</a><br/>
                             <span class="muted">@obj.getSize()</span>
                             <span class="muted pull-right">@obj.getLastModified()</span>
                         </td>

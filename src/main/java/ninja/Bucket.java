@@ -211,8 +211,8 @@ public class Bucket {
     }
 
     private static int compareUtf8Binary(Path p1, Path p2) {
-        String s1 = p1.getFileName().toString();
-        String s2 = p2.getFileName().toString();
+        String s1 = StoredObject.decodeKey(p1.getFileName().toString());
+        String s2 = StoredObject.decodeKey(p2.getFileName().toString());
 
         byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
         byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);

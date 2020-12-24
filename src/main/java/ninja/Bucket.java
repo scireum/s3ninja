@@ -103,11 +103,7 @@ public class Bucket {
      * @return the encoded name of the bucket
      */
     public String getEncodedName() {
-        try {
-            return URLEncoder.encode(getName(), StandardCharsets.UTF_8.toString());
-        } catch (UnsupportedEncodingException e) {
-            return getName();
-        }
+        return Strings.urlEncode(getName());
     }
 
     /**

@@ -6,7 +6,6 @@
  * http://www.scireum.de - info@scireum.de
  */
 
-
 import com.amazonaws.ClientConfiguration
 import com.amazonaws.auth.AWSCredentials
 import com.amazonaws.auth.BasicAWSCredentials

@@ -20,6 +20,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
@@ -38,6 +39,30 @@ public class StoredObject {
      */
     public StoredObject(File file) {
         this.file = file;
+    }
+
+    /**
+     * Encodes an object key for use as file name.
+     *
+     * @param key the key to encode
+     * @return the encoded key
+     */
+    public static String encodeKey(String key) {
+        return Strings.urlEncode(key).replace("+", "%20");
+    }
+
+    /**
+     * Decodes an encoded object key.
+     *
+     * @param key the key to decode
+     * @return the decoded key
+     */
+    public static String decodeKey(String key) {
+        try {
+            return URLDecoder.decode(key, StandardCharsets.UTF_8.name());
+        } catch (Exception e) {
+            throw Exceptions.handle(Storage.LOG, e);
+        }
     }
 
     /**

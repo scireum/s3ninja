@@ -451,33 +451,32 @@ public class S3Dispatcher implements WebDispatcher {
      * any data.
      *
      * @param ctx        the context describing the current request
-     * @param bucketName name of the bucket which contains the object (must exist)
-     * @param objectId   name of the object of interest
+     * @param bucketName the name of the bucket which contains the object (must exist)
+     * @param key        the key of the object of interest
      * @throws IOException in case of IO errors and there like
      */
-    private void readObject(WebContext ctx, String bucketName, String objectId) throws IOException {
+    private void readObject(WebContext ctx, String bucketName, String key) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, id)) {
+        if (!checkObjectRequest(ctx, bucket, key)) {
             return;
         }
 
         HttpMethod method = ctx.getRequest().method();
         if (HEAD == method) {
-            getObject(ctx, bucket, id, false);
+            getObject(ctx, bucket, key, false);
         } else if (GET == method) {
             if (Strings.isFilled(uploadId)) {
-                getPartList(ctx, bucket, id, uploadId);
+                getPartList(ctx, bucket, key, uploadId);
             } else {
-                getObject(ctx, bucket, id, true);
+                getObject(ctx, bucket, key, true);
             }
         } else if (DELETE == method) {
             if (Strings.isFilled(uploadId)) {
                 abortMultipartUpload(ctx, uploadId);
             } else {
-                deleteObject(ctx, bucket, id);
+                deleteObject(ctx, bucket, key);
             }
         } else {
             throw new IllegalArgumentException(ctx.getRequest().method().name());
@@ -488,18 +487,17 @@ public class S3Dispatcher implements WebDispatcher {
      * Dispatching method handling all object specific calls which write / provide data.
      *
      * @param ctx        the context describing the current request
-     * @param bucketName name of the bucket which contains the object (must exist)
-     * @param objectId   name of the object of interest
+     * @param bucketName the name of the bucket which contains the object (must exist)
+     * @param key        the key of the object of interest
      * @param in         the data to process
      * @throws IOException in case of IO errors and there like
      */
-    private void writeObject(WebContext ctx, String bucketName, String objectId, InputStreamHandler in)
+    private void writeObject(WebContext ctx, String bucketName, String key, InputStreamHandler in)
             throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, id)) {
+        if (!checkObjectRequest(ctx, bucket, key)) {
             return;
         }
 
@@ -507,17 +505,17 @@ public class S3Dispatcher implements WebDispatcher {
         if (PUT == method) {
             Value copy = ctx.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
-                copyObject(ctx, bucket, id, copy.asString());
+                copyObject(ctx, bucket, key, copy.asString());
             } else if (ctx.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
                 multiObject(ctx, uploadId, ctx.get("partNumber").asString(), in);
             } else {
-                putObject(ctx, bucket, id, in);
+                putObject(ctx, bucket, key, in);
             }
         } else if (POST == method) {
             if (ctx.hasParameter("uploads")) {
-                startMultipartUpload(ctx, bucket, id);
+                startMultipartUpload(ctx, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
-                completeMultipartUpload(ctx, bucket, id, uploadId, in);
+                completeMultipartUpload(ctx, bucket, key, uploadId, in);
             }
         } else {
             throw new IllegalArgumentException(ctx.getRequest().method().name());

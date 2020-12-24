@@ -283,7 +283,8 @@ public class Bucket {
                                     key)
                             .handle();
         }
-        return new StoredObject(new File(folder, key));
+
+        return new StoredObject(folder, key);
     }
 
     /**

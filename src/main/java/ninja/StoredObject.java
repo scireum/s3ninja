@@ -18,8 +18,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -30,15 +28,38 @@ import java.util.Properties;
  * Represents a stored object.
  */
 public class StoredObject {
+
     private final File file;
 
+    private final String name;
+
+    private final String encodedName;
+
     /**
-     * Creates a new StoredObject based on a file.
+     * Creates a new object from the given file.
      *
      * @param file the contents of the object.
      */
     public StoredObject(File file) {
         this.file = file;
+        this.encodedName = file.getName();
+        this.name = decodeKey(this.encodedName);
+
+        if (!Strings.areEqual(this.encodedName, encodeKey(this.name))) {
+            throw Exceptions.createHandled()
+                            .withSystemErrorMessage("File name \"%s\" is not properly encoded.", name)
+                            .handle();
+        }
+    }
+
+    /**
+     * Creates a new object within the given bucket folder and the given key.
+     *
+     * @param folder the bucket's folder
+     * @param key the object's key
+     */
+    public StoredObject(File folder, String key) {
+        this(new File(folder, encodeKey(key)));
     }
 
     /**
@@ -71,7 +92,7 @@ public class StoredObject {
      * @return the name of the object
      */
     public String getName() {
-        return file.getName();
+        return name;
     }
 
     /**
@@ -80,11 +101,7 @@ public class StoredObject {
      * @return the encoded name of the object
      */
     public String getEncodedName() {
-        try {
-            return URLEncoder.encode(getName(), StandardCharsets.UTF_8.toString());
-        } catch (UnsupportedEncodingException e) {
-            return getName();
-        }
+        return encodedName;
     }
 
     /**

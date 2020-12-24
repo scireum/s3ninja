@@ -404,7 +404,7 @@ public class Bucket {
     }
 
     /**
-     * Migrates a version 1 public marker file to version 2.
+     * Migrates the legacy public marker file <tt>__ninja_public</tt> to <tt>$public</tt>.
      */
     private void migratePublicMarkerVersion1To2() {
         try {
@@ -419,17 +419,25 @@ public class Bucket {
         }
     }
 
-    private void migrateObjectVersion1To2(File legacyChild) {
-        File legacyProperties = new File(folder, "__ninja_" + legacyChild.getName() + ".properties");
+    /**
+     * Migrates a legacy object along with its properties.
+     * <p>
+     * The legacy file name is considered as-is and URL-encoded for general UTF-8 support. The properties file is
+     * prefixed with <tt>$</tt>, avoiding name clashes with other object files (where <tt>$</tt> would be encoded).
+     *
+     * @param legacyObject the legacy object to migrate
+     */
+    private void migrateObjectVersion1To2(File legacyObject) {
+        File legacyProperties = new File(folder, "__ninja_" + legacyObject.getName() + ".properties");
 
         try {
-            File child = new File(folder, StoredObject.encodeKey(legacyChild.getName()));
-            File properties = new File(folder, "$" + child.getName() + ".properties");
+            File object = new File(folder, StoredObject.encodeKey(legacyObject.getName()));
+            File properties = new File(folder, "$" + object.getName() + ".properties");
 
-            if (!child.exists()) {
-                Files.move(legacyChild.toPath(), child.toPath());
-            } else if (!child.equals(legacyChild)) {
-                Files.delete(legacyChild.toPath());
+            if (!object.exists()) {
+                Files.move(legacyObject.toPath(), object.toPath());
+            } else if (!object.equals(legacyObject)) {
+                Files.delete(legacyObject.toPath());
             }
 
             if (legacyProperties.exists()) {

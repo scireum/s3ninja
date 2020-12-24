@@ -31,9 +31,9 @@ public class StoredObject {
 
     private final File file;
 
-    private final String name;
+    private final String key;
 
-    private final String encodedName;
+    private final String encodedKey;
 
     /**
      * Creates a new object from the given file.
@@ -42,12 +42,12 @@ public class StoredObject {
      */
     public StoredObject(File file) {
         this.file = file;
-        this.encodedName = file.getName();
-        this.name = decodeKey(this.encodedName);
+        this.encodedKey = file.getName();
+        this.key = decodeKey(this.encodedKey);
 
-        if (!Strings.areEqual(this.encodedName, encodeKey(this.name))) {
+        if (!Strings.areEqual(this.encodedKey, encodeKey(this.key))) {
             throw Exceptions.createHandled()
-                            .withSystemErrorMessage("File name \"%s\" is not properly encoded.", name)
+                            .withSystemErrorMessage("File name \"%s\" is not properly encoded.", key)
                             .handle();
         }
     }
@@ -91,8 +91,8 @@ public class StoredObject {
      *
      * @return the name of the object
      */
-    public String getName() {
-        return name;
+    public String getKey() {
+        return key;
     }
 
     /**
@@ -100,8 +100,8 @@ public class StoredObject {
      *
      * @return the encoded name of the object
      */
-    public String getEncodedName() {
-        return encodedName;
+    public String getEncodedKey() {
+        return encodedKey;
     }
 
     /**
@@ -136,12 +136,12 @@ public class StoredObject {
      */
     public void delete() {
         if (!file.delete()) {
-            Storage.LOG.WARN("Failed to delete data file for object %s (%s).", getName(), file.getAbsolutePath());
+            Storage.LOG.WARN("Failed to delete data file for object %s (%s).", getKey(), file.getAbsolutePath());
         }
         if (!getPropertiesFile().delete()) {
             Storage.LOG.WARN("Failed to delete properties file for object %s (%s).",
-                    getName(),
-                    getPropertiesFile().getAbsolutePath());
+                             getKey(),
+                             getPropertiesFile().getAbsolutePath());
         }
     }
 

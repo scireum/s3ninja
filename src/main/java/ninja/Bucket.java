@@ -178,7 +178,7 @@ public class Bucket {
         try {
             walkFileTreeOurWay(folder.toPath(), visitor);
         } catch (IOException e) {
-            Exceptions.handle(e);
+            throw Exceptions.handle(e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
@@ -204,7 +204,7 @@ public class Bucket {
                     BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
                     visitor.visitFile(p, attrs);
                 } catch (IOException e) {
-                    Exceptions.handle(e);
+                    throw Exceptions.handle(e);
                 }
             });
         }

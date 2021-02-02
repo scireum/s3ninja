@@ -1,13 +1,12 @@
-FROM scireum/sirius-runtime:9
+FROM hub.scireum.com/scireum/sirius-runtime:25
 
 RUN mkdir /home/sirius/data && \
     mkdir /home/sirius/multipart && \
     mkdir /home/sirius/logs
 
-ADD target/release-dir /home/sirius/
-
 USER root
-RUN chown sirius:sirius -R /home/sirius
+ADD --chown=sirius:sirius target/release-dir /home/sirius/
+
 USER sirius
 
 VOLUME /home/sirius/data

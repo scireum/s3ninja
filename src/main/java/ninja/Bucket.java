@@ -21,9 +21,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -59,13 +57,15 @@ public class Bucket {
      */
     private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
-    private static final int MOST_RECENT_VERSION = 2;
+    private static final int MOST_RECENT_VERSION = BucketMigrator.MOST_RECENT_VERSION;
 
-    private final File folder;
+    protected int version;
 
-    private final File versionMarker;
+    protected final File folder;
 
-    private final File publicMarker;
+    protected final File versionMarker;
+
+    protected final File publicMarker;
 
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
@@ -82,9 +82,9 @@ public class Bucket {
 
         // as last step, check the version, and migrate the bucket if necessary
         this.versionMarker = new File(folder, "$version");
-        int version = getVersion();
-        if (version < MOST_RECENT_VERSION) {
-            migrateBucket(version);
+        this.version = parseVersion();
+        if (this.version < MOST_RECENT_VERSION) {
+            BucketMigrator.migrateBucket(this);
         }
     }
 
@@ -137,7 +137,7 @@ public class Bucket {
         }
 
         // having successfully created the folder, write the version marker
-        setVersion(MOST_RECENT_VERSION);
+        writeVersion();
         return true;
     }
 
@@ -331,7 +331,7 @@ public class Bucket {
                 .startsWith("$");
     }
 
-    private int getVersion() {
+    private int parseVersion() {
         // non-existent buckets always have the most recent version
         if (!exists()) {
             return MOST_RECENT_VERSION;
@@ -350,7 +350,11 @@ public class Bucket {
         }
     }
 
-    private void setVersion(int version) {
+    protected void writeVersion() {
+        if (version < MOST_RECENT_VERSION) {
+            throw Exceptions.handle(Storage.LOG, new IllegalStateException("Bucket is of outdated version."));
+        }
+
         // non-existent buckets always have the most recent version
         if (!exists()) {
             return;
@@ -364,27 +368,7 @@ public class Bucket {
         }
     }
 
-    /**
-     * Migrates a bucket folder to the most recent version.
-     *
-     * @param fromVersion the version to migrate from.
-     */
-    private void migrateBucket(int fromVersion) {
-        if (fromVersion <= 1) {
-            migratePublicMarkerVersion1To2();
-
-            for (File object : Objects.requireNonNull(folder.listFiles(this::filterObjects))) {
-                migrateObjectVersion1To2(object);
-            }
-        }
-
-        // further incremental updates go here one day
-
-        // write the most recent version marker
-        setVersion(MOST_RECENT_VERSION);
-    }
-
-    private boolean filterObjects(File file) {
+    protected boolean filterObjects(File file) {
         // ignore directories and other strange stuff
         if (!file.isFile()) {
             return false;
@@ -407,55 +391,6 @@ public class Bucket {
 
         // ignore properties files
         return !(file.getName().startsWith("$") && file.getName().endsWith(".properties"));
-    }
-
-    /**
-     * Migrates the legacy public marker file <tt>__ninja_public</tt> to <tt>$public</tt>.
-     */
-    private void migratePublicMarkerVersion1To2() {
-        try {
-            File legacyPublicMarker = new File(folder, "__ninja_public");
-            if (legacyPublicMarker.exists() && !publicMarker.exists()) {
-                Files.move(legacyPublicMarker.toPath(), publicMarker.toPath());
-            } else if (legacyPublicMarker.exists()) {
-                Files.delete(legacyPublicMarker.toPath());
-            }
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
-        }
-    }
-
-    /**
-     * Migrates a legacy object along with its properties.
-     * <p>
-     * The legacy file name is considered as-is and URL-encoded for general UTF-8 support. The properties file is
-     * prefixed with <tt>$</tt>, avoiding name clashes with other object files (where <tt>$</tt> would be encoded).
-     *
-     * @param legacyObject the legacy object to migrate
-     */
-    private void migrateObjectVersion1To2(File legacyObject) {
-        File legacyProperties = new File(folder, "__ninja_" + legacyObject.getName() + ".properties");
-
-        try {
-            File object = new File(folder, StoredObject.encodeKey(legacyObject.getName()));
-            File properties = new File(folder, "$" + object.getName() + ".properties");
-
-            if (!object.exists()) {
-                Files.move(legacyObject.toPath(), object.toPath());
-            } else if (!object.equals(legacyObject)) {
-                Files.delete(legacyObject.toPath());
-            }
-
-            if (legacyProperties.exists()) {
-                if (!properties.exists()) {
-                    Files.move(legacyProperties.toPath(), properties.toPath());
-                } else if (!properties.equals(legacyProperties)) {
-                    Files.delete(legacyProperties.toPath());
-                }
-            }
-        } catch (Exception e) {
-            throw Exceptions.handle(Storage.LOG, e);
-        }
     }
 
     /**

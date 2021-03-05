@@ -59,13 +59,13 @@ public class Bucket {
 
     private static final int MOST_RECENT_VERSION = BucketMigrator.MOST_RECENT_VERSION;
 
-    protected int version;
+    private int version;
 
-    protected final File folder;
+    private final File folder;
 
-    protected final File versionMarker;
+    private final File versionMarker;
 
-    protected final File publicMarker;
+    private final File publicMarker;
 
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
@@ -113,6 +113,14 @@ public class Bucket {
      */
     public File getFolder() {
         return folder;
+    }
+
+    protected File getVersionMarker() {
+        return versionMarker;
+    }
+
+    protected File getPublicMarker() {
+        return publicMarker;
     }
 
     /**
@@ -329,6 +337,14 @@ public class Bucket {
         return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
                 .getName()
                 .startsWith("$");
+    }
+
+    protected int getVersion() {
+        return version;
+    }
+
+    protected void setVersion(int version) {
+        this.version = version;
     }
 
     private int parseVersion() {

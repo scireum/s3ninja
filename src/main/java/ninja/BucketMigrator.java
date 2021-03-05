@@ -31,14 +31,14 @@ public class BucketMigrator {
      * @param bucket the bucket to migrate
      */
     protected static void migrateBucket(Bucket bucket) {
-        if (bucket.version <= 1) {
+        if (bucket.getVersion() <= 1) {
             migrateBucketVersion1To2(bucket);
         }
 
         // further incremental updates go here one day
 
         // write the most recent version marker
-        bucket.version = MOST_RECENT_VERSION;
+        bucket.setVersion(MOST_RECENT_VERSION);
         bucket.writeVersion();
     }
 
@@ -50,7 +50,7 @@ public class BucketMigrator {
     private static void migrateBucketVersion1To2(Bucket bucket) {
         migratePublicMarkerVersion1To2(bucket);
 
-        for (File object : Objects.requireNonNull(bucket.folder.listFiles(bucket::filterObjects))) {
+        for (File object : Objects.requireNonNull(bucket.getFolder().listFiles(bucket::filterObjects))) {
             migrateObjectVersion1To2(bucket, object);
         }
     }
@@ -62,9 +62,9 @@ public class BucketMigrator {
      */
     private static void migratePublicMarkerVersion1To2(Bucket bucket) {
         try {
-            File legacyPublicMarker = new File(bucket.folder, "__ninja_public");
-            if (legacyPublicMarker.exists() && !bucket.publicMarker.exists()) {
-                Files.move(legacyPublicMarker.toPath(), bucket.publicMarker.toPath());
+            File legacyPublicMarker = new File(bucket.getFolder(), "__ninja_public");
+            if (legacyPublicMarker.exists() && !bucket.getPublicMarker().exists()) {
+                Files.move(legacyPublicMarker.toPath(), bucket.getPublicMarker().toPath());
             } else if (legacyPublicMarker.exists()) {
                 Files.delete(legacyPublicMarker.toPath());
             }
@@ -83,11 +83,11 @@ public class BucketMigrator {
      * @param legacyObject the legacy object to migrate
      */
     private static void migrateObjectVersion1To2(Bucket bucket, File legacyObject) {
-        File legacyProperties = new File(bucket.folder, "__ninja_" + legacyObject.getName() + ".properties");
+        File legacyProperties = new File(bucket.getFolder(), "__ninja_" + legacyObject.getName() + ".properties");
 
         try {
-            File object = new File(bucket.folder, StoredObject.encodeKey(legacyObject.getName()));
-            File properties = new File(bucket.folder, "$" + object.getName() + ".properties");
+            File object = new File(bucket.getFolder(), StoredObject.encodeKey(legacyObject.getName()));
+            File properties = new File(bucket.getFolder(), "$" + object.getName() + ".properties");
 
             if (!object.exists()) {
                 Files.move(legacyObject.toPath(), object.toPath());

@@ -8,6 +8,7 @@
 
 package ninja.queries;
 
+import ninja.Bucket;
 import sirius.web.http.WebContext;
 
 import javax.annotation.Nonnull;
@@ -27,7 +28,7 @@ public interface S3QuerySynthesizer {
      * @param query the query string.
      */
     void processQuery(@Nonnull WebContext ctx,
-                      @Nullable String bucket,
+                      @Nullable Bucket bucket,
                       @Nullable String key,
                       @Nonnull String query);
 }

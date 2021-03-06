@@ -16,7 +16,6 @@ import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
 import com.google.common.io.Files
-import groovy.test.GroovyAssert
 import sirius.kernel.BaseSpecification
 
 import java.time.Instant
@@ -58,10 +57,11 @@ abstract class BaseAWSSpec extends BaseSpecification {
         if (client.doesBucketExist("does-not-exist")) {
             client.deleteBucket("does-not-exist")
         }
+        and:
+        client.deleteBucket("does-not-exist")
         then:
-        GroovyAssert.shouldFail AmazonS3Exception, {
-           client.deleteBucket("does-not-exist")
-        }
+        AmazonS3Exception e = thrown()
+        e.statusCode == 404
         !client.doesBucketExist("does-not-exist")
         !client.doesBucketExistV2("does-not-exist")
     }

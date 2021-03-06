@@ -128,6 +128,33 @@ abstract class BaseAWSSpec extends BaseSpecification {
         downloadedData == "Test"
     }
 
+    def "PUT and then LIST work as expected"() {
+        given:
+        def client = getClient()
+        when:
+        if (client.doesBucketExist("test")) {
+            client.deleteBucket("test")
+        }
+        client.createBucket("test")
+        and:
+        client.putObject(
+                "test",
+                "Eins",
+                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                "test",
+                "Zwei",
+                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        then:
+        def listing = client.listObjects("test")
+        def summaries = listing.getObjectSummaries()
+        summaries.size() == 2
+        summaries.get(0).getKey() == "Eins"
+        summaries.get(1).getKey() == "Zwei"
+    }
+
     def "PUT and then DELETE work as expected"() {
         given:
         def client = getClient()

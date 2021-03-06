@@ -16,6 +16,7 @@ import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
 import com.google.common.io.Files
+import groovy.test.GroovyAssert
 import sirius.kernel.BaseSpecification
 
 import java.time.Instant
@@ -48,6 +49,21 @@ abstract class BaseAWSSpec extends BaseSpecification {
         then:
         client.doesBucketExist("test")
         client.doesBucketExistV2("test")
+    }
+
+    def "DELETE of non-existing bucket as expected"() {
+        given:
+        def client = getClient()
+        when:
+        if (client.doesBucketExist("does-not-exist")) {
+            client.deleteBucket("does-not-exist")
+        }
+        then:
+        GroovyAssert.shouldFail AmazonS3Exception, {
+           client.deleteBucket("does-not-exist")
+        }
+        !client.doesBucketExist("does-not-exist")
+        !client.doesBucketExistV2("does-not-exist")
     }
 
     def "PUT and then DELETE bucket as expected"() {

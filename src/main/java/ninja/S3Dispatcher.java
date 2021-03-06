@@ -443,9 +443,13 @@ public class S3Dispatcher implements WebDispatcher {
                 signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
         } else if (DELETE == method) {
-            bucket.delete();
-            signalObjectSuccess(ctx);
-            ctx.respondWith().status(HttpResponseStatus.OK);
+            if (!bucket.exists()) {
+                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
+            } else {
+                bucket.delete();
+                signalObjectSuccess(ctx);
+                ctx.respondWith().status(HttpResponseStatus.OK);
+            }
         } else if (PUT == method) {
             bucket.create();
             signalObjectSuccess(ctx);

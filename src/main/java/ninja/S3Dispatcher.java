@@ -309,6 +309,7 @@ public class S3Dispatcher implements WebDispatcher {
                                              request.key,
                                              S3ErrorCode.NoSuchBucket,
                                              ERROR_BUCKET_DOES_NOT_EXIST);
+            return;
         }
 
         S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);

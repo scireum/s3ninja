@@ -50,6 +50,22 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.doesBucketExistV2("test")
     }
 
+    def "DELETE of non-existing bucket as expected"() {
+        given:
+        def client = getClient()
+        when:
+        if (client.doesBucketExist("does-not-exist")) {
+            client.deleteBucket("does-not-exist")
+        }
+        and:
+        client.deleteBucket("does-not-exist")
+        then:
+        AmazonS3Exception e = thrown()
+        e.statusCode == 404
+        !client.doesBucketExist("does-not-exist")
+        !client.doesBucketExistV2("does-not-exist")
+    }
+
     def "PUT and then DELETE bucket as expected"() {
         given:
         def client = getClient()

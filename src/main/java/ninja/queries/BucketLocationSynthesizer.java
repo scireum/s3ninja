@@ -8,6 +8,7 @@
 
 package ninja.queries;
 
+import ninja.Bucket;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.WebContext;
@@ -24,7 +25,7 @@ public class BucketLocationSynthesizer implements S3QuerySynthesizer {
 
     @Override
     public void processQuery(@Nonnull WebContext ctx,
-                             @Nullable String bucket,
+                             @Nullable Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
         XMLStructuredOutput xml = ctx.respondWith().xml();

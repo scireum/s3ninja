@@ -8,6 +8,7 @@
 
 package ninja.queries;
 
+import ninja.Bucket;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import sirius.kernel.di.std.Part;
@@ -29,11 +30,11 @@ public class BucketLifecycleSynthesizer implements S3QuerySynthesizer {
 
     @Override
     public void processQuery(@Nonnull WebContext ctx,
-                             @Nullable String bucket,
+                             @Nullable Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
         errorSynthesizer.synthesiseError(ctx,
-                                         bucket,
+                                         bucket.getName(),
                                          key,
                                          S3ErrorCode.NoSuchLifecycleConfiguration,
                                          "There is no lifecycle configuration.");

@@ -302,9 +302,19 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private void forwardQueryToSynthesizer(WebContext ctx, S3Request request) {
+        Bucket bucket = storage.getBucket(request.bucket);
+        if (!bucket.exists()) {
+            errorSynthesizer.synthesiseError(ctx,
+                                             bucket.getName(),
+                                             request.key,
+                                             S3ErrorCode.NoSuchBucket,
+                                             ERROR_BUCKET_DOES_NOT_EXIST);
+            return;
+        }
+
         S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
         if (synthesizer != null) {
-            synthesizer.processQuery(ctx, request.bucket, request.key, request.query);
+            synthesizer.processQuery(ctx, bucket, request.key, request.query);
         } else {
             Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
             errorSynthesizer.synthesiseError(ctx,

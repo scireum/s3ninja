@@ -388,7 +388,7 @@ public class S3Dispatcher implements WebDispatcher {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate",
-                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFile().lastModified())));
+                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFolder().lastModified())));
                 out.endObject();
             }
             out.endObject();
@@ -451,33 +451,32 @@ public class S3Dispatcher implements WebDispatcher {
      * any data.
      *
      * @param ctx        the context describing the current request
-     * @param bucketName name of the bucket which contains the object (must exist)
-     * @param objectId   name of the object of interest
+     * @param bucketName the name of the bucket which contains the object (must exist)
+     * @param key        the key of the object of interest
      * @throws IOException in case of IO errors and there like
      */
-    private void readObject(WebContext ctx, String bucketName, String objectId) throws IOException {
+    private void readObject(WebContext ctx, String bucketName, String key) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, id)) {
+        if (!checkObjectRequest(ctx, bucket, key)) {
             return;
         }
 
         HttpMethod method = ctx.getRequest().method();
         if (HEAD == method) {
-            getObject(ctx, bucket, id, false);
+            getObject(ctx, bucket, key, false);
         } else if (GET == method) {
             if (Strings.isFilled(uploadId)) {
-                getPartList(ctx, bucket, id, uploadId);
+                getPartList(ctx, bucket, key, uploadId);
             } else {
-                getObject(ctx, bucket, id, true);
+                getObject(ctx, bucket, key, true);
             }
         } else if (DELETE == method) {
             if (Strings.isFilled(uploadId)) {
                 abortMultipartUpload(ctx, uploadId);
             } else {
-                deleteObject(ctx, bucket, id);
+                deleteObject(ctx, bucket, key);
             }
         } else {
             throw new IllegalArgumentException(ctx.getRequest().method().name());
@@ -488,18 +487,17 @@ public class S3Dispatcher implements WebDispatcher {
      * Dispatching method handling all object specific calls which write / provide data.
      *
      * @param ctx        the context describing the current request
-     * @param bucketName name of the bucket which contains the object (must exist)
-     * @param objectId   name of the object of interest
+     * @param bucketName the name of the bucket which contains the object (must exist)
+     * @param key        the key of the object of interest
      * @param in         the data to process
      * @throws IOException in case of IO errors and there like
      */
-    private void writeObject(WebContext ctx, String bucketName, String objectId, InputStreamHandler in)
+    private void writeObject(WebContext ctx, String bucketName, String key, InputStreamHandler in)
             throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String id = objectId.replace('/', '_');
         String uploadId = ctx.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, id)) {
+        if (!checkObjectRequest(ctx, bucket, key)) {
             return;
         }
 
@@ -507,17 +505,17 @@ public class S3Dispatcher implements WebDispatcher {
         if (PUT == method) {
             Value copy = ctx.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
-                copyObject(ctx, bucket, id, copy.asString());
+                copyObject(ctx, bucket, key, copy.asString());
             } else if (ctx.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
                 multiObject(ctx, uploadId, ctx.get("partNumber").asString(), in);
             } else {
-                putObject(ctx, bucket, id, in);
+                putObject(ctx, bucket, key, in);
             }
         } else if (POST == method) {
             if (ctx.hasParameter("uploads")) {
-                startMultipartUpload(ctx, bucket, id);
+                startMultipartUpload(ctx, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
-                completeMultipartUpload(ctx, bucket, id, uploadId, in);
+                completeMultipartUpload(ctx, bucket, key, uploadId, in);
             }
         } else {
             throw new IllegalArgumentException(ctx.getRequest().method().name());
@@ -641,10 +639,10 @@ public class S3Dispatcher implements WebDispatcher {
                               Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
-
         String etag = BaseEncoding.base16().encode(hash).toLowerCase();
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
-        object.storeProperties(properties);
+        object.setProperties(properties);
+
         Response response = ctx.respondWith();
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).status(HttpResponseStatus.OK);
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
@@ -735,26 +733,26 @@ public class S3Dispatcher implements WebDispatcher {
             signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;
         }
+
         Response response = ctx.respondWith();
-        Properties properties = object.getProperties();
-        for (Map.Entry<Object, Object> entry : properties.entrySet()) {
-            response.addHeader(entry.getKey().toString(), entry.getValue().toString());
+        Map<String, String> properties = object.getProperties();
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            response.addHeader(entry.getKey(), entry.getValue());
         }
         for (Map.Entry<String, String> entry : getOverridenHeaders(ctx).entrySet()) {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
-        String etag = properties.getProperty(HTTP_HEADER_NAME_ETAG);
+        // check for the ETAG, set it if necessary, and add it to the response
+        String etag = properties.get(HTTP_HEADER_NAME_ETAG);
         if (Strings.isEmpty(etag)) {
             etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
-            Map<String, String> data = new HashMap<>();
-            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
-            data.put(HTTP_HEADER_NAME_ETAG, etag);
-            object.storeProperties(data);
+            properties.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.setProperties(properties);
         }
-
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag.toLowerCase()));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
+
         if (sendFile) {
             response.file(object.getFile());
         } else {
@@ -919,12 +917,10 @@ public class S3Dispatcher implements WebDispatcher {
 
             String etag = Hasher.md5().hashFile(object.getFile()).toHexString();
 
-            // Update the ETAG of the underlying object...
-            Properties properties = object.getProperties();
-            Map<String, String> data = new HashMap<>();
-            properties.forEach((key, value) -> data.put(key.toString(), String.valueOf(value)));
-            data.put(HTTP_HEADER_NAME_ETAG, etag);
-            object.storeProperties(data);
+            // update ETAG of the underlying object
+            Map<String, String> properties = object.getProperties();
+            properties.put(HTTP_HEADER_NAME_ETAG, etag);
+            object.setProperties(properties);
 
             XMLStructuredOutput out = ctx.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");

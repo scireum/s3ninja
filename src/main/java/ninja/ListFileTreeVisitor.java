@@ -49,9 +49,6 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         objectCount = new Counter();
         useLimit = limit > 0;
         usePrefix = Strings.isFilled(prefix);
-        if (usePrefix) {
-            this.prefix = prefix.replace('/', '_');
-        }
         markerReached = Strings.isEmpty(marker);
     }
 
@@ -60,7 +57,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
         File file = path.toFile();
         String name = file.getName();
 
-        if (!file.isFile() || name.startsWith("__")) {
+        if (!file.isFile() || name.startsWith("$")) {
             return FileVisitResult.CONTINUE;
         }
         if (!markerReached) {
@@ -73,10 +70,10 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
                 long numObjects = objectCount.inc();
                 if (numObjects <= limit) {
                     output.beginObject("Contents");
-                    output.property("Key", file.getName());
+                    output.property("Key", object.getKey());
                     output.property("LastModified",
                                     S3Dispatcher.ISO8601_INSTANT.format(object.getLastModifiedInstant()));
-                    output.property("Size", file.length());
+                    output.property("Size", object.getSizeBytes());
                     output.property("StorageClass", "STANDARD");
                     output.property("ETag", getETag(file));
                     output.endObject();

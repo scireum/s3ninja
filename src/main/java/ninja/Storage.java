@@ -17,8 +17,10 @@ import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
 import sirius.kernel.nls.NLS;
 
+import javax.annotation.Nonnull;
 import java.io.File;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Storage service which takes care of organizing buckets on disk.
@@ -96,8 +98,8 @@ public class Storage {
      */
     public List<Bucket> getBuckets() {
         List<Bucket> result = Lists.newArrayList();
-        for (File file : getBaseDir().listFiles()) {
-            if (file.isDirectory()) {
+        for (File file : Objects.requireNonNull(getBaseDir().listFiles())) {
+            if (file.isDirectory() && Bucket.isValidName(file.getName())) {
                 result.add(new Bucket(file));
             }
         }
@@ -106,27 +108,37 @@ public class Storage {
     }
 
     /**
-     * Returns a bucket with the given name
+     * Returns a bucket with the given name.
+     * <p>
+     * The method never returns <b>null</b>, but {@link Bucket#exists()} may return <b>false</b>.
+     * <p>
+     * Make sure that the name passes {@link Bucket#isValidName(String)} by meeting the naming restrictions documented
+     * there.
      *
-     * @param bucket the name of the bucket to fetch. Must not contain .. or / or \
-     * @return the bucket with the given id. Might not exist, but will never be <tt>null</tt>
+     * @param name the name of the bucket to fetch
+     * @return the bucket with the given name
      */
-    public Bucket getBucket(String bucket) {
-        if (bucket.contains("..") || bucket.contains("/") || bucket.contains("\\")) {
+    @Nonnull
+    public Bucket getBucket(String name) {
+        if (!Bucket.isValidName(name)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid bucket name: %s. A bucket name must not contain '..' '/' or '\\'",
-                                    bucket)
+                                    "Bucket name \"%s\" does not adhere to the rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html]",
+                                    name)
                             .handle();
         }
-        if (Strings.areEqual(bucket, "ui")) {
+
+        // following the current rules, "ui" is no valid bucket name after all; however, should Amazon change the rules,
+        // this check may apply again
+        if (Strings.areEqual(name, "ui")) {
             throw Exceptions.createHandled()
                     .withSystemErrorMessage(
-                            "Invalid bucket name: %s. The string 'ui' is reserved for internal use.",
-                            bucket)
+                            "Bucket name \"%s\" is reserved for internal use.",
+                            name)
                     .handle();
         }
-        return new Bucket(new File(getBaseDir(), bucket));
+
+        return new Bucket(new File(getBaseDir(), name));
     }
 
     /**
@@ -150,7 +162,7 @@ public class Storage {
     /**
      * Determines if buckets should be automatically created.
      *
-     * @return <tt>true</tt> if buckets can be auto-created upon the first request
+     * @return <b>true</b> if buckets can be auto-created upon the first request, <b>false</b> else
      */
     public boolean isAutocreateBuckets() {
         return autocreateBuckets;

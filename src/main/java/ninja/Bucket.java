@@ -21,14 +21,16 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -39,16 +41,51 @@ import java.util.stream.Stream;
  */
 public class Bucket {
 
-    private final File file;
+    /**
+     * Enforces the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official rules</a>
+     * for bucket names:
+     * <ul>
+     *     <li>Between 3 and 63 characters</li>
+     *     <li>Lowercase letters, numbers, dots, and hyphens</li>
+     *     <li>First and last letter a number or a letter</li>
+     * </ul>
+     */
+    private static final Pattern BUCKET_NAME_PATTERN = Pattern.compile("^[a-z\\d][a-z\\d\\-.]{1,61}[a-z\\d]$");
+
+    /**
+     * Matches IPv4 addresses roughly.
+     */
+    private static final Pattern IP_ADDRESS_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
+
+    private static final int MOST_RECENT_VERSION = BucketMigrator.MOST_RECENT_VERSION;
+
+    private int version;
+
+    private final File folder;
+
+    private final File versionMarker;
+
+    private final File publicMarker;
+
     private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
 
     /**
      * Creates a new bucket based on the given directory.
      *
-     * @param file the directory which stores the contents of the bucket.
+     * @param folder the directory which stores the contents of the bucket.
      */
-    public Bucket(File file) {
-        this.file = file;
+    public Bucket(File folder) {
+        this.folder = folder;
+
+        // set the public marker file
+        this.publicMarker = new File(folder, "$public");
+
+        // as last step, check the version, and migrate the bucket if necessary
+        this.versionMarker = new File(folder, "$version");
+        this.version = parseVersion();
+        if (this.version < MOST_RECENT_VERSION) {
+            BucketMigrator.migrateBucket(this);
+        }
     }
 
     /**
@@ -57,7 +94,7 @@ public class Bucket {
      * @return the name of the bucket
      */
     public String getName() {
-        return file.getName();
+        return folder.getName();
     }
 
     /**
@@ -66,11 +103,50 @@ public class Bucket {
      * @return the encoded name of the bucket
      */
     public String getEncodedName() {
-        try {
-            return URLEncoder.encode(getName(), StandardCharsets.UTF_8.toString());
-        } catch (UnsupportedEncodingException e) {
-            return getName();
+        return Strings.urlEncode(getName());
+    }
+
+    /**
+     * Returns the underlying directory as {@link File}.
+     *
+     * @return a {@link File} representing the underlying directory
+     */
+    public File getFolder() {
+        return folder;
+    }
+
+    protected File getVersionMarker() {
+        return versionMarker;
+    }
+
+    protected File getPublicMarker() {
+        return publicMarker;
+    }
+
+    /**
+     * Determines if the bucket exists.
+     *
+     * @return <b>true</b> if the bucket exists, <b>false</b> else
+     */
+    public boolean exists() {
+        return folder.exists();
+    }
+
+    /**
+     * Creates the bucket.
+     * <p>
+     * If the underlying directory already exists, nothing happens.
+     *
+     * @return <b>true</b> if the folder for the bucket was created successfully and if it was missing before
+     */
+    public boolean create() {
+        if (folder.exists() || !folder.mkdirs()) {
+            return false;
         }
+
+        // having successfully created the folder, write the version marker
+        writeVersion();
+        return true;
     }
 
     /**
@@ -79,23 +155,16 @@ public class Bucket {
      * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
      */
     public boolean delete() {
+        if (!folder.exists()) {
+            return true;
+        }
+
         boolean deleted = false;
-        for (File child : file.listFiles()) {
+        for (File child : Objects.requireNonNull(folder.listFiles())) {
             deleted = child.delete() || deleted;
         }
-        deleted = file.delete() || deleted;
+        deleted = folder.delete() || deleted;
         return deleted;
-    }
-
-    /**
-     * Creates the bucket.
-     * <p>
-     * If the underlying directory already exists, nothing happens.
-     *
-     * @return true if the folder for the bucket was created successfully if it was missing before.
-     */
-    public boolean create() {
-        return !file.exists() && file.mkdirs();
     }
 
     /**
@@ -115,9 +184,9 @@ public class Bucket {
         output.property("Marker", marker);
         output.property("Prefix", prefix);
         try {
-            walkFileTreeOurWay(file.toPath(), visitor);
+            walkFileTreeOurWay(folder.toPath(), visitor);
         } catch (IOException e) {
-            Exceptions.handle(e);
+            throw Exceptions.handle(e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
@@ -130,28 +199,28 @@ public class Bucket {
      * @param visitor the visitor processing the files.
      * @throws IOException forwarded from nested I/O operations.
      */
-    private static void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
+    private void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
         if (!path.toFile().isDirectory()) {
             throw new IOException("Directory expected.");
         }
 
         try (Stream<Path> children = Files.list(path)) {
-            children.sorted(Bucket::compareUtf8Binary)
-                    .filter(p -> p.toFile().isFile())
+            children.filter(p -> filterObjects(p.toFile()))
+                    .sorted(Bucket::compareUtf8Binary)
                     .forEach(p -> {
                 try {
                     BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
                     visitor.visitFile(p, attrs);
                 } catch (IOException e) {
-                    Exceptions.handle(e);
+                    throw Exceptions.handle(e);
                 }
             });
         }
     }
 
     private static int compareUtf8Binary(Path p1, Path p2) {
-        String s1 = p1.getFileName().toString();
-        String s2 = p2.getFileName().toString();
+        String s1 = StoredObject.decodeKey(p1.getFileName().toString());
+        String s2 = StoredObject.decodeKey(p2.getFileName().toString());
 
         byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
         byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
@@ -167,24 +236,20 @@ public class Bucket {
     }
 
     /**
-     * Determines if the bucket is private or public accessible
+     * Determines if the bucket is only privately accessible, i.e. non-public.
      *
-     * @return <tt>true</tt> if the bucket is public accessible, <tt>false</tt> otherwise
+     * @return <b>true</b> if the bucket is only privately accessible, <b>false</b> else
      */
     public boolean isPrivate() {
-        return !publicAccessCache.get(getName(), key -> getPublicMarkerFile().exists());
-    }
-
-    private File getPublicMarkerFile() {
-        return new File(file, "__ninja_public");
+        return !Boolean.TRUE.equals(publicAccessCache.get(getName(), key -> publicMarker.exists()));
     }
 
     /**
-     * Marks the bucket as private accessible.
+     * Marks the bucket as only privately accessible, i.e. non-public.
      */
     public void makePrivate() {
-        if (getPublicMarkerFile().exists()) {
-            if (getPublicMarkerFile().delete()) {
+        if (publicMarker.exists()) {
+            if (publicMarker.delete()) {
                 publicAccessCache.put(getName(), false);
             } else {
                 Storage.LOG.WARN("Failed to delete public marker for bucket %s - it remains public!", getName());
@@ -193,12 +258,12 @@ public class Bucket {
     }
 
     /**
-     * Marks the bucket as public accessible.
+     * Marks the bucket as publicly accessible.
      */
     public void makePublic() {
-        if (!getPublicMarkerFile().exists()) {
+        if (!publicMarker.exists()) {
             try {
-                new FileOutputStream(getPublicMarkerFile()).close();
+                new FileOutputStream(publicMarker).close();
             } catch (IOException e) {
                 throw Exceptions.handle(Storage.LOG, e);
             }
@@ -207,51 +272,41 @@ public class Bucket {
     }
 
     /**
-     * Returns the underlying directory as File.
+     * Returns the object with the given key.
+     * <p>
+     * The method never returns <b>null</b>, but {@link StoredObject#exists()} may return <b>false</b>.
+     * <p>
+     * Make sure that the key passes {@link StoredObject#isValidKey(String)} by meeting the naming restrictions
+     * documented there.
      *
-     * @return a <tt>File</tt> representing the underlying directory
+     * @param key the key of the requested object
+     * @return the object with the given key
      */
-    public File getFile() {
-        return file;
-    }
-
-    /**
-     * Determines if the bucket exists.
-     *
-     * @return <tt>true</tt> if the bucket exists, <tt>false</tt> otherwise
-     */
-    public boolean exists() {
-        return file.exists();
-    }
-
-    /**
-     * Returns the child object with the given id.
-     *
-     * @param id the name of the requested child object. Must not contain .. / or \
-     * @return the object with the given id, might not exist, but is always non null
-     */
-    public StoredObject getObject(String id) {
-        if (id.contains("..") || id.contains("/") || id.contains("\\")) {
+    @Nonnull
+    public StoredObject getObject(String key) {
+        if (!StoredObject.isValidKey(key)) {
             throw Exceptions.createHandled()
                             .withSystemErrorMessage(
-                                    "Invalid object name: %s. A object name must not contain '..' '/' or '\\'",
-                                    id)
+                                    "Object key \"%s\" does not adhere to the rules. [https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html]",
+                                    key)
                             .handle();
         }
-        return new StoredObject(new File(file, id));
+
+        return new StoredObject(folder, key);
     }
 
     /**
-     * Get <tt>size</tt> number of files, starting at <tt>start</tt>. Only get files containing the query. Leave the
-     * query empty to get all files.
+     * Returns a number of files meeting the given query, within the given indexing limits. Leave the query empty to
+     * get all files.
      *
      * @param query the query to filter for
      * @param limit the limit to apply
-     * @return all files which contain the query
+     * @return all files meeting the query, restricted by the limit
      */
-    public List<StoredObject> getObjects(@Nonnull String query, Limit limit) {
-        try (Stream<Path> stream = Files.list(file.toPath())) {
-            return stream.sorted(Bucket::compareUtf8Binary)
+    public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
+        try (Stream<Path> stream = Files.list(folder.toPath())) {
+            return stream.filter(p -> filterObjects(p.toFile()))
+                         .sorted(Bucket::compareUtf8Binary)
                          .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())
@@ -262,25 +317,133 @@ public class Bucket {
         }
     }
 
-    private boolean isMatchingObject(@Nonnull String query, File currentFile) {
-        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
-                .getName()
-                .startsWith("__");
-    }
-
     /**
      * Count the files containing the query. Leave the query empty to count all files.
      *
      * @param query the query to filter for
      * @return the number of files in the bucket matching the query
      */
-    public int countObjects(@Nonnull String query) {
-        try (Stream<Path> stream = Files.list(file.toPath())) {
+    public int countObjects(@Nullable String query) {
+        try (Stream<Path> stream = Files.list(folder.toPath())) {
             return Math.toIntExact(stream.map(Path::toFile)
                                          .filter(currentFile -> isMatchingObject(query, currentFile))
                                          .count());
         } catch (IOException e) {
             throw Exceptions.handle(e);
         }
+    }
+
+    private boolean isMatchingObject(@Nullable String query, File currentFile) {
+        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
+                .getName()
+                .startsWith("$");
+    }
+
+    protected int getVersion() {
+        return version;
+    }
+
+    protected void setVersion(int version) {
+        this.version = version;
+    }
+
+    private int parseVersion() {
+        // non-existent buckets always have the most recent version
+        if (!exists()) {
+            return MOST_RECENT_VERSION;
+        }
+
+        // return the minimal version if the bucket exists, but without a version marker
+        if (!versionMarker.exists()) {
+            return 1;
+        }
+
+        try {
+            // parse the version from the version marker file
+            return Integer.parseInt(Strings.join(Files.readAllLines(versionMarker.toPath()), "\n").trim());
+        } catch (IOException e) {
+            throw Exceptions.handle(Storage.LOG, e);
+        }
+    }
+
+    protected void writeVersion() {
+        if (version < MOST_RECENT_VERSION) {
+            throw Exceptions.handle(Storage.LOG, new IllegalStateException("Bucket is of outdated version."));
+        }
+
+        // non-existent buckets always have the most recent version
+        if (!exists()) {
+            return;
+        }
+
+        try {
+            // write the version into the version marker file
+            Files.write(versionMarker.toPath(), Collections.singletonList(String.valueOf(version)));
+        } catch (IOException e) {
+            throw Exceptions.handle(Storage.LOG, e);
+        }
+    }
+
+    protected boolean filterObjects(File file) {
+        // ignore directories and other strange stuff
+        if (!file.isFile()) {
+            return false;
+        }
+
+        // ignore files not residing in our own folder
+        if (!folder.equals(file.getParentFile())) {
+            return false;
+        }
+
+        // ignore legacy system files
+        if (file.getName().startsWith("__ninja_")) {
+            return false;
+        }
+
+        // ignore marker files
+        if (file.equals(publicMarker) || file.equals(versionMarker)) {
+            return false;
+        }
+
+        // ignore properties files
+        return !(file.getName().startsWith("$") && file.getName().endsWith(".properties"));
+    }
+
+    /**
+     * Checks whether the given string is valid for use as bucket name.
+     * <p>
+     * See the <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html">official naming
+     * rules</a> for all requirements.
+     *
+     * @param name the name to check
+     * @return <b>true</b> if the name is valid as bucket name, <b>false</b> else
+     */
+    public static boolean isValidName(@Nullable String name) {
+        if (name == null || Strings.isEmpty(name.trim())) {
+            return false;
+        }
+
+        // test the majority of simple requirements via a regex
+        if (!BUCKET_NAME_PATTERN.matcher(name).matches()) {
+            return false;
+        }
+
+        // make sure that it does not start with "xn--"
+        if (name.startsWith("xn--")) {
+            return false;
+        }
+
+        try {
+            // make sure that the name is no valid IP address (the null check is pointless, it is just there to trigger
+            // actual conversion after the regex has matched; if the parsing fails, we end up in the catch clause)
+            if (IP_ADDRESS_PATTERN.matcher(name).matches() && InetAddress.getByName(name) != null) {
+                return false;
+            }
+        } catch (Exception e) {
+            // ignore this, we want the conversion to fail and thus to end up here
+        }
+
+        // reaching this point, the name is valid
+        return true;
     }
 }

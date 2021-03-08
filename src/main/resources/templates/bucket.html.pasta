@@ -36,12 +36,12 @@
                 <i:for type="ninja.StoredObject" var="obj" items="page.getItems()">
                     <tr>
                         <td>
-                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedName()?noAuth=true">@obj.getName()</a><br/>
+                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedKey()">@obj.getKey()</a><br/>
                             <span class="muted">@obj.getSize()</span>
                             <span class="muted pull-right">@obj.getLastModified()</span>
                         </td>
                         <td class="align-center col-md-2">
-                            <w:deleteLink url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedName())"/>
+                            <w:deleteLink url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
                         </td>
                     </tr>
                 </i:for>

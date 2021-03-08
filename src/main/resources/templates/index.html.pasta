@@ -49,12 +49,10 @@
                                 }
 
                                 // make sure we have a proper name
+                                // https://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
                                 const name = textfield.value;
                                 if (!name || name.trim() !== name
-                                          || name.indexOf('/') >= 0
-                                          || name.indexOf('\\') >= 0
-                                          || name.indexOf('..') >= 0
-                                          || name === '.') {
+                                          || !/^[a-z\d][a-z\d\-.]{1,61}[a-z\d]$/.test(name)) {
                                     reject(name);
                                 }
 

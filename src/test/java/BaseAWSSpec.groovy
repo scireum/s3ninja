@@ -5,6 +5,7 @@
  * Copyright by scireum GmbH
  * http://www.scireum.de - info@scireum.de
  */
+
 import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception

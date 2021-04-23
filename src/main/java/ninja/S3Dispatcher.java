@@ -67,7 +67,6 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import static io.netty.handler.codec.http.HttpMethod.*;
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
@@ -212,7 +211,9 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext ctx) {
-        if (aws4HashCalculator.supports(ctx) && ctx.getRequest().method() == PUT && ctx.getHeader("x-amz-decoded-content-length") != null) {
+        if (aws4HashCalculator.supports(ctx)
+            && HttpMethod.PUT.equals(ctx.getRequest().method())
+            && ctx.getHeader("x-amz-decoded-content-length") != null) {
             return new SignedChunkHandler();
         } else {
             return new InputStreamHandler();
@@ -366,7 +367,7 @@ public class S3Dispatcher implements WebDispatcher {
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext ctx, String bucket, String key, S3ErrorCode errorCode, String message) {
-        if (ctx.getRequest().method() == HEAD) {
+        if (HttpMethod.HEAD.equals(ctx.getRequest().method())) {
             ctx.respondWith().status(errorCode.getHttpStatusCode());
         } else {
             errorSynthesizer.synthesiseError(ctx, bucket, key, errorCode, message);
@@ -395,7 +396,7 @@ public class S3Dispatcher implements WebDispatcher {
     private void listBuckets(WebContext ctx) {
         HttpMethod method = ctx.getRequest().method();
 
-        if (GET == method) {
+        if (HttpMethod.GET.equals(method)) {
             List<Bucket> buckets = storage.getBuckets();
             Response response = ctx.respondWith();
 
@@ -444,20 +445,20 @@ public class S3Dispatcher implements WebDispatcher {
 
         HttpMethod method = ctx.getRequest().method();
 
-        if (HEAD == method) {
+        if (HttpMethod.HEAD.equals(method)) {
             if (bucket.exists()) {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
             } else {
                 signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
-        } else if (GET == method) {
+        } else if (HttpMethod.GET.equals(method)) {
             if (bucket.exists()) {
                 listObjects(ctx, bucket);
             } else {
                 signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
-        } else if (DELETE == method) {
+        } else if (HttpMethod.DELETE.equals(method)) {
             if (!bucket.exists()) {
                 signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             } else {
@@ -465,7 +466,7 @@ public class S3Dispatcher implements WebDispatcher {
                 signalObjectSuccess(ctx);
                 ctx.respondWith().status(HttpResponseStatus.OK);
             }
-        } else if (PUT == method) {
+        } else if (HttpMethod.PUT.equals(method)) {
             bucket.create();
             signalObjectSuccess(ctx);
             ctx.respondWith().status(HttpResponseStatus.OK);
@@ -492,15 +493,15 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         HttpMethod method = ctx.getRequest().method();
-        if (HEAD == method) {
+        if (HttpMethod.HEAD.equals(method)) {
             getObject(ctx, bucket, key, false);
-        } else if (GET == method) {
+        } else if (HttpMethod.GET.equals(method)) {
             if (Strings.isFilled(uploadId)) {
                 getPartList(ctx, bucket, key, uploadId);
             } else {
                 getObject(ctx, bucket, key, true);
             }
-        } else if (DELETE == method) {
+        } else if (HttpMethod.DELETE.equals(method)) {
             if (Strings.isFilled(uploadId)) {
                 abortMultipartUpload(ctx, uploadId);
             } else {
@@ -530,7 +531,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         HttpMethod method = ctx.getRequest().method();
-        if (PUT == method) {
+        if (HttpMethod.PUT.equals(method)) {
             Value copy = ctx.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
                 copyObject(ctx, bucket, key, copy.asString());
@@ -539,7 +540,7 @@ public class S3Dispatcher implements WebDispatcher {
             } else {
                 putObject(ctx, bucket, key, in);
             }
-        } else if (POST == method) {
+        } else if (HttpMethod.POST.equals(method)) {
             if (ctx.hasParameter("uploads")) {
                 startMultipartUpload(ctx, bucket, key);
             } else if (Strings.isFilled(uploadId)) {

@@ -56,7 +56,7 @@ public class StoredObject {
      * Creates a new object within the given bucket folder and the given key.
      *
      * @param folder the bucket's folder
-     * @param key the object's key
+     * @param key    the object's key
      */
     public StoredObject(File folder, String key) {
         this(new File(folder, encodeKey(key)));

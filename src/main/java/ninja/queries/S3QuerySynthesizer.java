@@ -27,8 +27,7 @@ public interface S3QuerySynthesizer {
      * @param key the requested object's key, potentially <b>null</b>.
      * @param query the query string.
      */
-    void processQuery(@Nonnull WebContext ctx,
-                      @Nullable Bucket bucket,
+    void processQuery(@Nonnull WebContext ctx, @Nullable Bucket bucket,
                       @Nullable String key,
                       @Nonnull String query);
 }

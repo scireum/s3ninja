@@ -79,7 +79,7 @@ public class BucketMigrator {
      * The legacy file name is considered as-is and URL-encoded for general UTF-8 support. The properties file is
      * prefixed with <tt>$</tt>, avoiding name clashes with other object files (where <tt>$</tt> would be encoded).
      *
-     * @param bucket the bucket to migrate
+     * @param bucket       the bucket to migrate
      * @param legacyObject the legacy object to migrate
      */
     private static void migrateObjectVersion1To2(Bucket bucket, File legacyObject) {

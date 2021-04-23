@@ -67,7 +67,8 @@ public class Bucket {
 
     private final File publicMarker;
 
-    private static final Cache<String, Boolean> publicAccessCache = CacheManager.createLocalCache("public-bucket-access");
+    private static final Cache<String, Boolean> publicAccessCache =
+            CacheManager.createLocalCache("public-bucket-access");
 
     /**
      * Creates a new bucket based on the given directory.
@@ -195,7 +196,7 @@ public class Bucket {
     /**
      * Very simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
      *
-     * @param path the start path.
+     * @param path    the start path.
      * @param visitor the visitor processing the files.
      * @throws IOException forwarded from nested I/O operations.
      */
@@ -205,9 +206,7 @@ public class Bucket {
         }
 
         try (Stream<Path> children = Files.list(path)) {
-            children.filter(p -> filterObjects(p.toFile()))
-                    .sorted(Bucket::compareUtf8Binary)
-                    .forEach(p -> {
+            children.filter(p -> filterObjects(p.toFile())).sorted(Bucket::compareUtf8Binary).forEach(p -> {
                 try {
                     BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
                     visitor.visitFile(p, attrs);

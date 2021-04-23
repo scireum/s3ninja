@@ -285,7 +285,9 @@ public class S3Dispatcher implements WebDispatcher {
         // we treat the first parameter without value as query string
         Iterator<String> parameterIterator = ctx.getParameterNames().iterator();
         String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
-        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(ctx.getParameter(firstParameter)) ? firstParameter : null;
+        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(ctx.getParameter(firstParameter)) ?
+                       firstParameter :
+                       null;
 
         // chop off potential port from host
         Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
@@ -521,8 +523,7 @@ public class S3Dispatcher implements WebDispatcher {
      * @param in         the data to process
      * @throws IOException in case of IO errors and there like
      */
-    private void writeObject(WebContext ctx, String bucketName, String key, InputStreamHandler in)
-            throws IOException {
+    private void writeObject(WebContext ctx, String bucketName, String key, InputStreamHandler in) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
         String uploadId = ctx.get("uploadId").asString();
 
@@ -581,7 +582,9 @@ public class S3Dispatcher implements WebDispatcher {
                                                  bucket.getName(),
                                                  key,
                                                  S3ErrorCode.BadDigest,
-                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
+                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)",
+                                                               expectedHash,
+                                                               hash));
                 log.log(ctx.getRequest().method().name(),
                         ctx.getRequestedURI(),
                         APILog.Result.REJECTED,
@@ -834,7 +837,8 @@ public class S3Dispatcher implements WebDispatcher {
     private void storePropertiesInUploadDir(Map<String, String> properties, String uploadId) {
         Properties props = new Properties();
         properties.forEach(props::setProperty);
-        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
+        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId),
+                                                                       TEMPORARY_PROPERTIES_FILENAME))) {
             props.store(propsOut, "");
         } catch (IOException e) {
             Exceptions.handle(e);
@@ -960,11 +964,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.endOutput();
         } catch (IOException e) {
             Exceptions.ignore(e);
-            errorSynthesizer.synthesiseError(ctx,
-                                             null,
-                                             null,
-                                             S3ErrorCode.InternalError,
-                                             "Could not build response");
+            errorSynthesizer.synthesiseError(ctx, null, null, S3ErrorCode.InternalError, "Could not build response");
         }
     }
 

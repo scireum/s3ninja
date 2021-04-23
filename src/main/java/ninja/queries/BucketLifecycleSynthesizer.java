@@ -29,11 +29,11 @@ public class BucketLifecycleSynthesizer implements S3QuerySynthesizer {
     private S3ErrorSynthesizer errorSynthesizer;
 
     @Override
-    public void processQuery(@Nonnull WebContext ctx,
+    public void processQuery(@Nonnull WebContext webContext,
                              @Nullable Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
-        errorSynthesizer.synthesiseError(ctx,
+        errorSynthesizer.synthesiseError(webContext,
                                          bucket.getName(),
                                          key,
                                          S3ErrorCode.NoSuchLifecycleConfiguration,

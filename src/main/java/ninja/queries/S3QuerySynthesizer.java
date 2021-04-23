@@ -22,12 +22,12 @@ public interface S3QuerySynthesizer {
     /**
      * Synthesizes a response for the given query.
      *
-     * @param ctx the request to process.
-     * @param bucket the requested bucket, potentially <b>null</b>.
-     * @param key the requested object's key, potentially <b>null</b>.
-     * @param query the query string.
+     * @param webContext the request to process.
+     * @param bucket     the requested bucket, potentially <b>null</b>.
+     * @param key        the requested object's key, potentially <b>null</b>.
+     * @param query      the query string.
      */
-    void processQuery(@Nonnull WebContext ctx,
+    void processQuery(@Nonnull WebContext webContext,
                       @Nullable Bucket bucket,
                       @Nullable String key,
                       @Nonnull String query);

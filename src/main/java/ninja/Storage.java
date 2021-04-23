@@ -132,10 +132,8 @@ public class Storage {
         // this check may apply again
         if (Strings.areEqual(name, "ui")) {
             throw Exceptions.createHandled()
-                    .withSystemErrorMessage(
-                            "Bucket name \"%s\" is reserved for internal use.",
-                            name)
-                    .handle();
+                            .withSystemErrorMessage("Bucket name \"%s\" is reserved for internal use.", name)
+                            .handle();
         }
 
         return new Bucket(new File(getBaseDir(), name));

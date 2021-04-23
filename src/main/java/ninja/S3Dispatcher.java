@@ -20,7 +20,11 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
 import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.*;
+import sirius.kernel.commons.Callback;
+import sirius.kernel.commons.Hasher;
+import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
+import sirius.kernel.commons.Value;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
@@ -49,11 +53,20 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.*;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import static io.netty.handler.codec.http.HttpMethod.*;
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
 
@@ -171,15 +184,15 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Override
-    public Callback<WebContext> preparePreDispatch(WebContext ctx) {
-        S3Request request = parseRequest(ctx);
+    public Callback<WebContext> preparePreDispatch(WebContext webContext) {
+        S3Request request = parseRequest(webContext);
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return null;
         }
 
         if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
-            forwardQueryToSynthesizer(ctx, request);
+            forwardQueryToSynthesizer(webContext, request);
             return null;
         }
 
@@ -192,13 +205,15 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
-        InputStreamHandler handler = createInputStreamHandler(ctx);
-        ctx.setContentHandler(handler);
+        InputStreamHandler handler = createInputStreamHandler(webContext);
+        webContext.setContentHandler(handler);
         return req -> writeObject(req, request.bucket, request.key, handler);
     }
 
-    private InputStreamHandler createInputStreamHandler(WebContext ctx) {
-        if (aws4HashCalculator.supports(ctx) && ctx.getRequest().method() == PUT && ctx.getHeader("x-amz-decoded-content-length") != null) {
+    private InputStreamHandler createInputStreamHandler(WebContext webContext) {
+        if (aws4HashCalculator.supports(webContext)
+            && HttpMethod.PUT.equals(webContext.getRequest().method())
+            && webContext.getHeader("x-amz-decoded-content-length") != null) {
             return new SignedChunkHandler();
         } else {
             return new InputStreamHandler();
@@ -206,25 +221,25 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Override
-    public DispatchDecision dispatch(WebContext ctx) throws Exception {
-        S3Request request = parseRequest(ctx);
+    public DispatchDecision dispatch(WebContext webContext) throws Exception {
+        S3Request request = parseRequest(webContext);
 
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return DispatchDecision.CONTINUE;
         }
 
         if (Strings.isFilled(request.query)) {
-            forwardQueryToSynthesizer(ctx, request);
+            forwardQueryToSynthesizer(webContext, request);
             return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.bucket)) {
-            listBuckets(ctx);
+            listBuckets(webContext);
             return DispatchDecision.DONE;
         }
 
         if (Strings.isEmpty(request.key)) {
-            bucket(ctx, request.bucket);
+            bucket(webContext, request.bucket);
             return DispatchDecision.DONE;
         }
 
@@ -233,7 +248,7 @@ public class S3Dispatcher implements WebDispatcher {
             return DispatchDecision.CONTINUE;
         }
 
-        readObject(ctx, request.bucket, request.key);
+        readObject(webContext, request.bucket, request.key);
         return DispatchDecision.DONE;
     }
 
@@ -243,11 +258,11 @@ public class S3Dispatcher implements WebDispatcher {
      * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
      * also the first "/" and only return the effective URI to process.
      *
-     * @param ctx the current request
+     * @param webContext the current request
      * @return the effective URI to process
      */
-    public static String getEffectiveURI(WebContext ctx) {
-        String uri = ctx.getRequestedURI();
+    public static String getEffectiveURI(WebContext webContext) {
+        String uri = webContext.getRequestedURI();
         if (uri.startsWith("/s3")) {
             uri = uri.substring(3);
         }
@@ -261,19 +276,21 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Parses a S3 request from the given HTTP request.
      *
-     * @param ctx the HTTP request to parse.
+     * @param webContext the HTTP request to parse.
      * @return a structured {@link S3Request}.
      */
-    private static S3Request parseRequest(WebContext ctx) {
-        String uri = getEffectiveURI(ctx);
+    private static S3Request parseRequest(WebContext webContext) {
+        String uri = getEffectiveURI(webContext);
 
         // we treat the first parameter without value as query string
-        Iterator<String> parameterIterator = ctx.getParameterNames().iterator();
+        Iterator<String> parameterIterator = webContext.getParameterNames().iterator();
         String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
-        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(ctx.getParameter(firstParameter)) ? firstParameter : null;
+        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(webContext.getParameter(firstParameter)) ?
+                       firstParameter :
+                       null;
 
         // chop off potential port from host
-        Tuple<String, String> hostAndPort = Strings.split(ctx.getHeader("Host"), ":");
+        Tuple<String, String> hostAndPort = Strings.split(webContext.getHeader("Host"), ":");
         String host = hostAndPort.getFirst();
 
         // check whether the host contains a subdomain by matching against the list of local domains
@@ -301,10 +318,10 @@ public class S3Dispatcher implements WebDispatcher {
         return request;
     }
 
-    private void forwardQueryToSynthesizer(WebContext ctx, S3Request request) {
+    private void forwardQueryToSynthesizer(WebContext webContext, S3Request request) {
         Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists()) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
                                              request.key,
                                              S3ErrorCode.NoSuchBucket,
@@ -314,10 +331,10 @@ public class S3Dispatcher implements WebDispatcher {
 
         S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
         if (synthesizer != null) {
-            synthesizer.processQuery(ctx, bucket, request.key, request.query);
+            synthesizer.processQuery(webContext, bucket, request.key, request.query);
         } else {
             Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              request.bucket,
                                              request.key,
                                              S3ErrorCode.InvalidRequest,
@@ -328,10 +345,10 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
-    private String getAuthHash(WebContext ctx) {
-        Value authorizationHeaderValue = ctx.getHeaderValue(HttpHeaderNames.AUTHORIZATION);
+    private String getAuthHash(WebContext webContext) {
+        Value authorizationHeaderValue = webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION);
         if (!authorizationHeaderValue.isFilled()) {
-            return ctx.get("Signature").asString(ctx.get("X-Amz-Signature").asString());
+            return webContext.get("Signature").asString(webContext.get("X-Amz-Signature").asString());
         }
         String authentication =
                 Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
@@ -351,14 +368,18 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Writes an API error to the log
      */
-    private void signalObjectError(WebContext ctx, String bucket, String key, S3ErrorCode errorCode, String message) {
-        if (ctx.getRequest().method() == HEAD) {
-            ctx.respondWith().status(errorCode.getHttpStatusCode());
+    private void signalObjectError(WebContext webContext,
+                                   String bucket,
+                                   String key,
+                                   S3ErrorCode errorCode,
+                                   String message) {
+        if (HttpMethod.HEAD.equals(webContext.getRequest().method())) {
+            webContext.respondWith().status(errorCode.getHttpStatusCode());
         } else {
-            errorSynthesizer.synthesiseError(ctx, bucket, key, errorCode, message);
+            errorSynthesizer.synthesiseError(webContext, bucket, key, errorCode, message);
         }
-        log.log(ctx.getRequest().method().name(),
-                message + " - " + ctx.getRequestedURI(),
+        log.log(webContext.getRequest().method().name(),
+                message + " - " + webContext.getRequestedURI(),
                 APILog.Result.ERROR,
                 CallContext.getCurrent().getWatch());
     }
@@ -366,9 +387,9 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Writes an API success entry to the log
      */
-    private void signalObjectSuccess(WebContext ctx) {
-        log.log(ctx.getRequest().method().name(),
-                ctx.getRequestedURI(),
+    private void signalObjectSuccess(WebContext webContext) {
+        log.log(webContext.getRequest().method().name(),
+                webContext.getRequestedURI(),
                 APILog.Result.OK,
                 CallContext.getCurrent().getWatch());
     }
@@ -376,21 +397,21 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * GET a list of all buckets
      *
-     * @param ctx the context describing the current request
+     * @param webContext the context describing the current request
      */
-    private void listBuckets(WebContext ctx) {
-        HttpMethod method = ctx.getRequest().method();
+    private void listBuckets(WebContext webContext) {
+        HttpMethod method = webContext.getRequest().method();
 
-        if (GET == method) {
+        if (HttpMethod.GET.equals(method)) {
             List<Bucket> buckets = storage.getBuckets();
-            Response response = ctx.respondWith();
+            Response response = webContext.respondWith();
 
             response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
                             Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-            out.property("hint", "Goto: " + ctx.getBaseURL() + "/ui to visit the admin UI");
+            out.property("hint", "Goto: " + webContext.getBaseURL() + "/ui to visit the admin UI");
             outputOwnerInfo(out, "Owner");
 
             out.beginObject("Buckets");
@@ -404,7 +425,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.endObject();
             out.endOutput();
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().method().name());
+            throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
     }
 
@@ -418,45 +439,45 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Dispatching method handling bucket specific calls without content (HEAD, DELETE, GET and PUT)
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName name of the bucket of interest
      */
-    private void bucket(WebContext ctx, String bucketName) {
+    private void bucket(WebContext webContext, String bucketName) {
         Bucket bucket = storage.getBucket(bucketName);
 
-        if (!objectCheckAuth(ctx, bucket, null)) {
+        if (!objectCheckAuth(webContext, bucket, null)) {
             return;
         }
 
-        HttpMethod method = ctx.getRequest().method();
+        HttpMethod method = webContext.getRequest().method();
 
-        if (HEAD == method) {
+        if (HttpMethod.HEAD.equals(method)) {
             if (bucket.exists()) {
-                signalObjectSuccess(ctx);
-                ctx.respondWith().status(HttpResponseStatus.OK);
+                signalObjectSuccess(webContext);
+                webContext.respondWith().status(HttpResponseStatus.OK);
             } else {
-                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(webContext, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
-        } else if (GET == method) {
+        } else if (HttpMethod.GET.equals(method)) {
             if (bucket.exists()) {
-                listObjects(ctx, bucket);
+                listObjects(webContext, bucket);
             } else {
-                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(webContext, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             }
-        } else if (DELETE == method) {
+        } else if (HttpMethod.DELETE.equals(method)) {
             if (!bucket.exists()) {
-                signalObjectError(ctx, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(webContext, bucketName, null, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
             } else {
                 bucket.delete();
-                signalObjectSuccess(ctx);
-                ctx.respondWith().status(HttpResponseStatus.OK);
+                signalObjectSuccess(webContext);
+                webContext.respondWith().status(HttpResponseStatus.OK);
             }
-        } else if (PUT == method) {
+        } else if (HttpMethod.PUT.equals(method)) {
             bucket.create();
-            signalObjectSuccess(ctx);
-            ctx.respondWith().status(HttpResponseStatus.OK);
+            signalObjectSuccess(webContext);
+            webContext.respondWith().status(HttpResponseStatus.OK);
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().method().name());
+            throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
     }
 
@@ -464,84 +485,84 @@ public class S3Dispatcher implements WebDispatcher {
      * Dispatching method handling all object specific calls which either read or delete the object but do not provide
      * any data.
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName the name of the bucket which contains the object (must exist)
      * @param key        the key of the object of interest
      * @throws IOException in case of IO errors and there like
      */
-    private void readObject(WebContext ctx, String bucketName, String key) throws IOException {
+    private void readObject(WebContext webContext, String bucketName, String key) throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String uploadId = ctx.get("uploadId").asString();
+        String uploadId = webContext.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, key)) {
+        if (!checkObjectRequest(webContext, bucket, key)) {
             return;
         }
 
-        HttpMethod method = ctx.getRequest().method();
-        if (HEAD == method) {
-            getObject(ctx, bucket, key, false);
-        } else if (GET == method) {
+        HttpMethod method = webContext.getRequest().method();
+        if (HttpMethod.HEAD.equals(method)) {
+            getObject(webContext, bucket, key, false);
+        } else if (HttpMethod.GET.equals(method)) {
             if (Strings.isFilled(uploadId)) {
-                getPartList(ctx, bucket, key, uploadId);
+                getPartList(webContext, bucket, key, uploadId);
             } else {
-                getObject(ctx, bucket, key, true);
+                getObject(webContext, bucket, key, true);
             }
-        } else if (DELETE == method) {
+        } else if (HttpMethod.DELETE.equals(method)) {
             if (Strings.isFilled(uploadId)) {
-                abortMultipartUpload(ctx, uploadId);
+                abortMultipartUpload(webContext, uploadId);
             } else {
-                deleteObject(ctx, bucket, key);
+                deleteObject(webContext, bucket, key);
             }
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().method().name());
+            throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
     }
 
     /**
      * Dispatching method handling all object specific calls which write / provide data.
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param bucketName the name of the bucket which contains the object (must exist)
      * @param key        the key of the object of interest
      * @param in         the data to process
      * @throws IOException in case of IO errors and there like
      */
-    private void writeObject(WebContext ctx, String bucketName, String key, InputStreamHandler in)
+    private void writeObject(WebContext webContext, String bucketName, String key, InputStreamHandler in)
             throws IOException {
         Bucket bucket = storage.getBucket(bucketName);
-        String uploadId = ctx.get("uploadId").asString();
+        String uploadId = webContext.get("uploadId").asString();
 
-        if (!checkObjectRequest(ctx, bucket, key)) {
+        if (!checkObjectRequest(webContext, bucket, key)) {
             return;
         }
 
-        HttpMethod method = ctx.getRequest().method();
-        if (PUT == method) {
-            Value copy = ctx.getHeaderValue("x-amz-copy-source");
+        HttpMethod method = webContext.getRequest().method();
+        if (HttpMethod.PUT.equals(method)) {
+            Value copy = webContext.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
-                copyObject(ctx, bucket, key, copy.asString());
-            } else if (ctx.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
-                multiObject(ctx, uploadId, ctx.get("partNumber").asString(), in);
+                copyObject(webContext, bucket, key, copy.asString());
+            } else if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
+                multiObject(webContext, uploadId, webContext.get("partNumber").asString(), in);
             } else {
-                putObject(ctx, bucket, key, in);
+                putObject(webContext, bucket, key, in);
             }
-        } else if (POST == method) {
-            if (ctx.hasParameter("uploads")) {
-                startMultipartUpload(ctx, bucket, key);
+        } else if (HttpMethod.POST.equals(method)) {
+            if (webContext.hasParameter("uploads")) {
+                startMultipartUpload(webContext, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
-                completeMultipartUpload(ctx, bucket, key, uploadId, in);
+                completeMultipartUpload(webContext, bucket, key, uploadId, in);
             }
         } else {
-            throw new IllegalArgumentException(ctx.getRequest().method().name());
+            throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
     }
 
-    private boolean checkObjectRequest(WebContext ctx, Bucket bucket, String id) {
+    private boolean checkObjectRequest(WebContext webContext, Bucket bucket, String id) {
         if (Strings.isEmpty(id)) {
-            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Please provide an object id.");
+            signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Please provide an object id.");
             return false;
         }
-        if (!objectCheckAuth(ctx, bucket, id)) {
+        if (!objectCheckAuth(webContext, bucket, id)) {
             return false;
         }
 
@@ -549,39 +570,45 @@ public class S3Dispatcher implements WebDispatcher {
             if (storage.isAutocreateBuckets()) {
                 bucket.create();
             } else {
-                signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchBucket, ERROR_BUCKET_DOES_NOT_EXIST);
+                signalObjectError(webContext,
+                                  bucket.getName(),
+                                  id,
+                                  S3ErrorCode.NoSuchBucket,
+                                  ERROR_BUCKET_DOES_NOT_EXIST);
                 return false;
             }
         }
         return true;
     }
 
-    private boolean objectCheckAuth(WebContext ctx, Bucket bucket, String key) {
-        String hash = getAuthHash(ctx);
+    private boolean objectCheckAuth(WebContext webContext, Bucket bucket, String key) {
+        String hash = getAuthHash(webContext);
         if (Strings.isFilled(hash)) {
-            String expectedHash = hashCalculator.computeHash(ctx, "");
-            String alternativeHash = hashCalculator.computeHash(ctx, "/s3");
+            String expectedHash = hashCalculator.computeHash(webContext, "");
+            String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
-                errorSynthesizer.synthesiseError(ctx,
+                errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
                                                  key,
                                                  S3ErrorCode.BadDigest,
-                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
-                log.log(ctx.getRequest().method().name(),
-                        ctx.getRequestedURI(),
+                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)",
+                                                               expectedHash,
+                                                               hash));
+                log.log(webContext.getRequest().method().name(),
+                        webContext.getRequestedURI(),
                         APILog.Result.REJECTED,
                         CallContext.getCurrent().getWatch());
                 return false;
             }
         }
-        if (bucket.isPrivate() && !ctx.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
-            errorSynthesizer.synthesiseError(ctx,
+        if (bucket.isPrivate() && !webContext.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
+            errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
                                              key,
                                              S3ErrorCode.AccessDenied,
                                              "Authentication required");
-            log.log(ctx.getRequest().method().name(),
-                    ctx.getRequestedURI(),
+            log.log(webContext.getRequest().method().name(),
+                    webContext.getRequestedURI(),
                     APILog.Result.REJECTED,
                     CallContext.getCurrent().getWatch());
             return false;
@@ -593,15 +620,15 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles GET /bucket
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket of which the contents should be listed
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket of which the contents should be listed
      */
-    private void listObjects(WebContext ctx, Bucket bucket) {
-        int maxKeys = ctx.get("max-keys").asInt(1000);
-        String marker = ctx.get("marker").asString();
-        String prefix = ctx.get("prefix").asString();
+    private void listObjects(WebContext webContext, Bucket bucket) {
+        int maxKeys = webContext.get("max-keys").asInt(1000);
+        String marker = webContext.get("marker").asString();
+        String prefix = webContext.get("prefix").asString();
 
-        Response response = ctx.respondWith();
+        Response response = webContext.respondWith();
         response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
         bucket.outputObjects(response.xml(), maxKeys, marker, prefix);
@@ -610,43 +637,43 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles DELETE /bucket/id
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to delete
-     * @param id     name of the object to delete
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to delete
+     * @param id         name of the object to delete
      */
-    private void deleteObject(final WebContext ctx, final Bucket bucket, final String id) {
+    private void deleteObject(final WebContext webContext, final Bucket bucket, final String id) {
         StoredObject object = bucket.getObject(id);
         object.delete();
 
-        ctx.respondWith().status(HttpResponseStatus.OK);
-        signalObjectSuccess(ctx);
+        webContext.respondWith().status(HttpResponseStatus.OK);
+        signalObjectSuccess(webContext);
     }
 
     /**
      * Handles PUT /bucket/id
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to upload
-     * @param id     name of the object to upload
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to upload
+     * @param id         name of the object to upload
      */
-    private void putObject(WebContext ctx, Bucket bucket, String id, InputStreamHandler inputStream)
+    private void putObject(WebContext webContext, Bucket bucket, String id, InputStreamHandler inputStream)
             throws IOException {
         StoredObject object = bucket.getObject(id);
         if (inputStream == null) {
-            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.IncompleteBody, "No content posted");
+            signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.IncompleteBody, "No content posted");
             return;
         }
         try (FileOutputStream out = new FileOutputStream(object.getFile())) {
             ByteStreams.copy(inputStream, out);
         }
 
-        Map<String, String> properties = parseUploadProperties(ctx);
+        Map<String, String> properties = parseUploadProperties(webContext);
         byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
         String md5 = BaseEncoding.base64().encode(hash);
         String contentMd5 = properties.get("Content-MD5");
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
-            signalObjectError(ctx,
+            signalObjectError(webContext,
                               bucket.getName(),
                               id,
                               S3ErrorCode.BadDigest,
@@ -657,19 +684,19 @@ public class S3Dispatcher implements WebDispatcher {
         properties.put(HTTP_HEADER_NAME_ETAG, etag);
         object.setProperties(properties);
 
-        Response response = ctx.respondWith();
+        Response response = webContext.respondWith();
         response.addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).status(HttpResponseStatus.OK);
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG);
-        signalObjectSuccess(ctx);
+        signalObjectSuccess(webContext);
     }
 
-    private Map<String, String> parseUploadProperties(WebContext ctx) {
+    private Map<String, String> parseUploadProperties(WebContext webContext) {
         Map<String, String> properties = Maps.newTreeMap();
-        for (String name : ctx.getRequest().headers().names()) {
+        for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
             if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
                     nameLower) || "x-amz-acl".equals(nameLower)) {
-                properties.put(name, ctx.getHeader(name));
+                properties.put(name, webContext.getHeader(name));
             }
         }
         return properties;
@@ -682,14 +709,14 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles GET /bucket/id with an <tt>x-amz-copy-source</tt> header.
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to use as destination
-     * @param id     name of the object to use as destination
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to use as destination
+     * @param id         name of the object to use as destination
      */
-    private void copyObject(WebContext ctx, Bucket bucket, String id, String copy) throws IOException {
+    private void copyObject(WebContext webContext, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!copy.contains(PATH_DELIMITER)) {
-            signalObjectError(ctx,
+            signalObjectError(webContext,
                               null,
                               null,
                               S3ErrorCode.InvalidRequest,
@@ -700,7 +727,7 @@ public class S3Dispatcher implements WebDispatcher {
         String srcId = copy.substring(copy.lastIndexOf(PATH_DELIMITER) + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {
-            signalObjectError(ctx,
+            signalObjectError(webContext,
                               srcBucketName,
                               srcId,
                               S3ErrorCode.NoSuchBucket,
@@ -709,7 +736,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
         StoredObject src = srcBucket.getObject(srcId);
         if (!src.exists()) {
-            signalObjectError(ctx,
+            signalObjectError(webContext,
                               srcBucketName,
                               srcId,
                               S3ErrorCode.NoSuchKey,
@@ -722,7 +749,8 @@ public class S3Dispatcher implements WebDispatcher {
         }
         String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
 
-        XMLStructuredOutput structuredOutput = ctx.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
+        XMLStructuredOutput structuredOutput =
+                webContext.respondWith().addHeader(HTTP_HEADER_NAME_ETAG, etag(etag)).xml();
         structuredOutput.beginOutput("CopyObjectResult");
         structuredOutput.beginObject("LastModified");
         structuredOutput.text(ISO8601_INSTANT.format(object.getLastModifiedInstant()));
@@ -731,29 +759,29 @@ public class S3Dispatcher implements WebDispatcher {
         structuredOutput.text(etag(etag));
         structuredOutput.endObject();
         structuredOutput.endOutput();
-        signalObjectSuccess(ctx);
+        signalObjectSuccess(webContext);
     }
 
     /**
      * Handles GET /bucket/id
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to download
-     * @param id     name of the object to use as download
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to download
+     * @param id         name of the object to use as download
      */
-    private void getObject(WebContext ctx, Bucket bucket, String id, boolean sendFile) throws IOException {
+    private void getObject(WebContext webContext, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
-            signalObjectError(ctx, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
+            signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;
         }
 
-        Response response = ctx.respondWith();
+        Response response = webContext.respondWith();
         Map<String, String> properties = object.getProperties();
         for (Map.Entry<String, String> entry : properties.entrySet()) {
             response.addHeader(entry.getKey(), entry.getValue());
         }
-        for (Map.Entry<String, String> entry : getOverridenHeaders(ctx).entrySet()) {
+        for (Map.Entry<String, String> entry : getOverridenHeaders(webContext).entrySet()) {
             response.setHeader(entry.getKey(), entry.getValue());
         }
 
@@ -777,26 +805,26 @@ public class S3Dispatcher implements WebDispatcher {
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
-        signalObjectSuccess(ctx);
+        signalObjectSuccess(webContext);
     }
 
     /**
      * Handles POST /bucket/id?uploads
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to upload
-     * @param id     name of the object to upload
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to upload
+     * @param id         name of the object to upload
      */
-    private void startMultipartUpload(WebContext ctx, Bucket bucket, String id) {
-        Response response = ctx.respondWith();
+    private void startMultipartUpload(WebContext webContext, Bucket bucket, String id) {
+        Response response = webContext.respondWith();
 
         Map<String, String> properties = Maps.newTreeMap();
-        for (String name : ctx.getRequest().headers().names()) {
+        for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
             if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
                     nameLower) || "x-amz-acl".equals(nameLower)) {
-                properties.put(name, ctx.getHeader(name));
-                response.addHeader(name, ctx.getHeader(name));
+                properties.put(name, webContext.getHeader(name));
+                response.addHeader(name, webContext.getHeader(name));
             }
         }
         response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
@@ -819,7 +847,8 @@ public class S3Dispatcher implements WebDispatcher {
     private void storePropertiesInUploadDir(Map<String, String> properties, String uploadId) {
         Properties props = new Properties();
         properties.forEach(props::setProperty);
-        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME))) {
+        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId),
+                                                                       TEMPORARY_PROPERTIES_FILENAME))) {
             props.store(propsOut, "");
         } catch (IOException e) {
             Exceptions.handle(e);
@@ -829,14 +858,14 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles PUT /bucket/id?uploadId=X&partNumber=Y
      *
-     * @param ctx        the context describing the current request
+     * @param webContext the context describing the current request
      * @param uploadId   the multipart upload this part belongs to
      * @param partNumber the number of this part in the complete upload
      * @param part       input stream with the content of this part
      */
-    private void multiObject(WebContext ctx, String uploadId, String partNumber, InputStreamHandler part) {
+    private void multiObject(WebContext webContext, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.NoSuchUpload,
@@ -855,12 +884,12 @@ public class S3Dispatcher implements WebDispatcher {
             part.close();
 
             String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(partFile).toHash()).toLowerCase();
-            ctx.respondWith()
-               .setHeader(HTTP_HEADER_NAME_ETAG, etag)
-               .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
-               .status(HttpResponseStatus.OK);
+            webContext.respondWith()
+                      .setHeader(HTTP_HEADER_NAME_ETAG, etag)
+                      .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
+                      .status(HttpResponseStatus.OK);
         } catch (IOException e) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.InternalError,
@@ -871,19 +900,19 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles POST /bucket/id?uploadId=X
      *
-     * @param ctx      the context describing the current request
-     * @param bucket   the bucket containing the object to upload
-     * @param id       name of the object to upload
-     * @param uploadId the multipart upload that should be completed
-     * @param in       input stream with xml listing uploaded parts
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to upload
+     * @param id         name of the object to upload
+     * @param uploadId   the multipart upload that should be completed
+     * @param in         input stream with xml listing uploaded parts
      */
-    private void completeMultipartUpload(WebContext ctx,
+    private void completeMultipartUpload(WebContext webContext,
                                          Bucket bucket,
                                          String id,
                                          final String uploadId,
                                          InputStreamHandler in) {
         if (!multipartUploads.remove(uploadId)) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.NoSuchUpload,
@@ -914,7 +943,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         file.deleteOnExit();
         if (!file.exists()) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.NoSuchUpload,
@@ -936,7 +965,7 @@ public class S3Dispatcher implements WebDispatcher {
             properties.put(HTTP_HEADER_NAME_ETAG, etag);
             object.setProperties(properties);
 
-            XMLStructuredOutput out = ctx.respondWith().xml();
+            XMLStructuredOutput out = webContext.respondWith().xml();
             out.beginOutput("CompleteMultipartUploadResult");
             out.property("Location", "");
             out.property(RESPONSE_BUCKET, bucket.getName());
@@ -945,7 +974,7 @@ public class S3Dispatcher implements WebDispatcher {
             out.endOutput();
         } catch (IOException e) {
             Exceptions.ignore(e);
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.InternalError,
@@ -995,12 +1024,12 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles DELETE /bucket/id?uploadId=X
      *
-     * @param ctx      the context describing the current request
-     * @param uploadId the multipart upload that should be cancelled
+     * @param webContext the context describing the current request
+     * @param uploadId   the multipart upload that should be cancelled
      */
-    private void abortMultipartUpload(WebContext ctx, String uploadId) {
+    private void abortMultipartUpload(WebContext webContext, String uploadId) {
         multipartUploads.remove(uploadId);
-        ctx.respondWith().status(HttpResponseStatus.OK);
+        webContext.respondWith().status(HttpResponseStatus.OK);
         delete(getUploadDir(uploadId));
     }
 
@@ -1015,13 +1044,13 @@ public class S3Dispatcher implements WebDispatcher {
     /**
      * Handles GET /bucket/id?uploadId=uploadId
      *
-     * @param ctx    the context describing the current request
-     * @param bucket the bucket containing the object to download
-     * @param id     name of the object to use as download
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to download
+     * @param id         name of the object to use as download
      */
-    private void getPartList(WebContext ctx, Bucket bucket, String id, String uploadId) {
+    private void getPartList(WebContext webContext, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
-            errorSynthesizer.synthesiseError(ctx,
+            errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.NoSuchUpload,
@@ -1029,7 +1058,7 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        Response response = ctx.respondWith();
+        Response response = webContext.respondWith();
 
         response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
@@ -1043,8 +1072,8 @@ public class S3Dispatcher implements WebDispatcher {
         outputOwnerInfo(out, "Owner");
 
         File uploadDir = getUploadDir(uploadId);
-        int marker = ctx.get("part-number-marker").asInt(0);
-        int maxParts = ctx.get("max-parts").asInt(0);
+        int marker = webContext.get("part-number-marker").asInt(0);
+        int maxParts = webContext.get("max-parts").asInt(0);
 
         FileFilter filter = file -> !Strings.areEqual(file.getName(), TEMPORARY_PROPERTIES_FILENAME);
         File[] parts = Objects.requireNonNull(uploadDir.listFiles(filter));
@@ -1074,11 +1103,11 @@ public class S3Dispatcher implements WebDispatcher {
         out.endOutput();
     }
 
-    private Map<String, String> getOverridenHeaders(WebContext ctx) {
+    private Map<String, String> getOverridenHeaders(WebContext webContext) {
         Map<String, String> overrides = Maps.newTreeMap();
         for (Map.Entry<String, String> entry : headerOverrides.entrySet()) {
             String header = entry.getValue();
-            String value = ctx.getParameter(entry.getKey());
+            String value = webContext.getParameter(entry.getKey());
             if (value != null) {
                 overrides.put(header, value);
             }

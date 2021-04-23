@@ -23,11 +23,11 @@ import javax.annotation.Nullable;
 public class BucketAclSynthesizer implements S3QuerySynthesizer {
 
     @Override
-    public void processQuery(@Nonnull WebContext ctx,
+    public void processQuery(@Nonnull WebContext webContext,
                              @Nullable Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
-        XMLStructuredOutput xml = ctx.respondWith().xml();
+        XMLStructuredOutput xml = webContext.respondWith().xml();
         xml.beginOutput("GetBucketAclOutput");
         xml.endOutput();
     }

@@ -36,23 +36,23 @@ public class AwsHashCalculator {
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx        the current request to fetch parameters from
+     * @param webContext the current request to fetch parameters from
      * @param pathPrefix the path prefix to append to the current uri
      * @return the computes hash value
      */
-    public String computeHash(WebContext ctx, String pathPrefix) {
+    public String computeHash(WebContext webContext, String pathPrefix) {
         try {
-            return doComputeHash(ctx, pathPrefix);
+            return doComputeHash(webContext, pathPrefix);
         } catch (Exception e) {
             throw Exceptions.handle(UserContext.LOG, e);
         }
     }
 
-    private String doComputeHash(final WebContext ctx, final String pathPrefix) throws Exception {
-        if (aws4HashCalculator.supports(ctx)) {
-            return aws4HashCalculator.computeHash(ctx, pathPrefix);
+    private String doComputeHash(final WebContext webContext, final String pathPrefix) throws Exception {
+        if (aws4HashCalculator.supports(webContext)) {
+            return aws4HashCalculator.computeHash(webContext, pathPrefix);
         } else {
-            return legacyHashCalculator.computeHash(ctx, pathPrefix);
+            return legacyHashCalculator.computeHash(webContext, pathPrefix);
         }
     }
 }

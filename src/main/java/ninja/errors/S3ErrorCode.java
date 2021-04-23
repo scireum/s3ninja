@@ -15,16 +15,11 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * along with their respective {@linkplain HttpResponseStatus HTTP response codes}.
  */
 public enum S3ErrorCode {
-    AccessDenied(HttpResponseStatus.FORBIDDEN),
-    BadDigest(HttpResponseStatus.BAD_REQUEST),
-    IncompleteBody(HttpResponseStatus.BAD_REQUEST),
-    InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
-    InvalidDigest(HttpResponseStatus.BAD_REQUEST),
-    InvalidRequest(HttpResponseStatus.BAD_REQUEST),
-    NoSuchBucket(HttpResponseStatus.NOT_FOUND),
-    NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),
-    NoSuchKey(HttpResponseStatus.NOT_FOUND),
-    NoSuchLifecycleConfiguration(HttpResponseStatus.NOT_FOUND),
+    AccessDenied(HttpResponseStatus.FORBIDDEN), BadDigest(HttpResponseStatus.BAD_REQUEST),
+    IncompleteBody(HttpResponseStatus.BAD_REQUEST), InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
+    InvalidDigest(HttpResponseStatus.BAD_REQUEST), InvalidRequest(HttpResponseStatus.BAD_REQUEST),
+    NoSuchBucket(HttpResponseStatus.NOT_FOUND), NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),
+    NoSuchKey(HttpResponseStatus.NOT_FOUND), NoSuchLifecycleConfiguration(HttpResponseStatus.NOT_FOUND),
     NoSuchUpload(HttpResponseStatus.NOT_FOUND);
 
     private final HttpResponseStatus httpStatusCode;

@@ -62,27 +62,27 @@ public class AwsLegacyHashCalculator {
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx        the current request to fetch parameters from
+     * @param webContext the current request to fetch parameters from
      * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(WebContext) effective URI}
      *                   of the request
      * @return the computes hash value
      * @throws Exception when hashing fails
      */
-    public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
-        StringBuilder stringToSign = new StringBuilder(ctx.getRequest().method().name());
+    public String computeHash(WebContext webContext, String pathPrefix) throws Exception {
+        StringBuilder stringToSign = new StringBuilder(webContext.getRequest().method().name());
         stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
+        stringToSign.append(webContext.getHeaderValue("Content-MD5").asString(""));
         stringToSign.append("\n");
-        stringToSign.append(ctx.getHeaderValue("Content-Type").asString(""));
+        stringToSign.append(webContext.getHeaderValue("Content-Type").asString(""));
         stringToSign.append("\n");
 
-        String date = ctx.get("Expires").asString(ctx.getHeaderValue("Date").asString(""));
-        if (ctx.getHeaderValue("x-amz-date").isNull()) {
+        String date = webContext.get("Expires").asString(webContext.getHeaderValue("Date").asString(""));
+        if (webContext.getHeaderValue("x-amz-date").isNull()) {
             stringToSign.append(date);
         }
         stringToSign.append("\n");
 
-        HttpHeaders requestHeaders = ctx.getRequest().headers();
+        HttpHeaders requestHeaders = webContext.getRequest().headers();
         List<String> headers = requestHeaders.names()
                                              .stream()
                                              .filter(this::relevantAmazonHeader)
@@ -95,14 +95,14 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append('/').append(S3Dispatcher.getEffectiveURI(ctx));
+        stringToSign.append(pathPrefix).append('/').append(S3Dispatcher.getEffectiveURI(webContext));
 
         char separator = '?';
-        for (String parameterName : ctx.getParameterNames().stream().sorted().collect(Collectors.toList())) {
+        for (String parameterName : webContext.getParameterNames().stream().sorted().collect(Collectors.toList())) {
             // Skip parameters that aren't part of the canonical signed string
             if (SIGNED_PARAMETERS.contains(parameterName)) {
                 stringToSign.append(separator).append(parameterName);
-                String parameterValue = ctx.get(parameterName).asString();
+                String parameterValue = webContext.get(parameterName).asString();
                 if (Strings.isFilled(parameterValue)) {
                     stringToSign.append("=").append(parameterValue);
                 }

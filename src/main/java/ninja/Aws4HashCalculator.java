@@ -48,29 +48,29 @@ public class Aws4HashCalculator {
     /**
      * Determines if the given request contains an AWS4 auth token.
      *
-     * @param ctx the request to check
+     * @param webContext the request to check
      * @return <tt>true</tt> if the request contains an AWS4 auth token, <tt>false</tt>  otherwise.
      */
-    public boolean supports(final WebContext ctx) {
-        return AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString("")).matches()
-               || X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString("")).matches();
+    public boolean supports(final WebContext webContext) {
+        return AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue("Authorization").asString("")).matches()
+               || X_AMZ_CREDENTIAL_PATTERN.matcher(webContext.get("X-Amz-Credential").asString("")).matches();
     }
 
     /**
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
-     * @param ctx        the current request to fetch parameters from
+     * @param webContext the current request to fetch parameters from
      * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(WebContext) effective URI}
      *                   of the request
      * @return the computes hash value
      * @throws Exception when hashing fails
      */
-    public String computeHash(WebContext ctx, String pathPrefix) throws Exception {
-        Matcher matcher = AWS_AUTH4_PATTERN.matcher(ctx.getHeaderValue("Authorization").asString(""));
+    public String computeHash(WebContext webContext, String pathPrefix) throws Exception {
+        Matcher matcher = AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue("Authorization").asString(""));
 
         if (!matcher.matches()) {
             // If the header doesn't match, let's try an URL parameter as we might be processing a presigned URL
-            matcher = X_AMZ_CREDENTIAL_PATTERN.matcher(ctx.get("X-Amz-Credential").asString(""));
+            matcher = X_AMZ_CREDENTIAL_PATTERN.matcher(webContext.get("X-Amz-Credential").asString(""));
             if (!matcher.matches()) {
                 throw new IllegalArgumentException("Unknown AWS4 auth pattern");
             }
@@ -83,24 +83,27 @@ public class Aws4HashCalculator {
 
         // For header based requests, the signed headers are in the "Credentials" header, for presigned URLs
         // an extra parameter is given...
-        String signedHeaders = matcher.groupCount() == 7 ? matcher.group(6) : ctx.get("X-Amz-SignedHeaders").asString();
+        String signedHeaders =
+                matcher.groupCount() == 7 ? matcher.group(6) : webContext.get("X-Amz-SignedHeaders").asString();
 
         byte[] dateKey = hmacSHA256(("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8), date);
         byte[] dateRegionKey = hmacSHA256(dateKey, region);
         byte[] dateRegionServiceKey = hmacSHA256(dateRegionKey, service);
         byte[] signingKey = hmacSHA256(dateRegionServiceKey, serviceType);
 
-        byte[] signedData = hmacSHA256(signingKey, buildStringToSign(ctx, signedHeaders, region, service, serviceType));
+        byte[] signedData =
+                hmacSHA256(signingKey, buildStringToSign(webContext, signedHeaders, region, service, serviceType));
         return BaseEncoding.base16().lowerCase().encode(signedData);
     }
 
-    private String buildStringToSign(final WebContext ctx,
+    private String buildStringToSign(final WebContext webContext,
                                      String signedHeaders,
                                      String region,
                                      String service,
                                      String serviceType) {
-        final StringBuilder canonicalRequest = buildCanonicalRequest(ctx, signedHeaders);
-        final String amazonDateHeader = ctx.getHeaderValue("x-amz-date").asString(ctx.get("X-Amz-Date").asString());
+        final StringBuilder canonicalRequest = buildCanonicalRequest(webContext, signedHeaders);
+        final String amazonDateHeader =
+                webContext.getHeaderValue("x-amz-date").asString(webContext.get("X-Amz-Date").asString());
         return "AWS4-HMAC-SHA256\n"
                + amazonDateHeader
                + "\n"
@@ -115,30 +118,30 @@ public class Aws4HashCalculator {
                + hashedCanonicalRequest(canonicalRequest);
     }
 
-    private StringBuilder buildCanonicalRequest(final WebContext ctx, final String signedHeaders) {
-        StringBuilder canonicalRequest = new StringBuilder(ctx.getRequest().method().name());
+    private StringBuilder buildCanonicalRequest(final WebContext webContext, final String signedHeaders) {
+        StringBuilder canonicalRequest = new StringBuilder(webContext.getRequest().method().name());
         canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getRawRequestedURI());
+        canonicalRequest.append(webContext.getRawRequestedURI());
         canonicalRequest.append("\n");
 
-        appendCanonicalQueryString(ctx, canonicalRequest);
+        appendCanonicalQueryString(webContext, canonicalRequest);
 
         for (String name : signedHeaders.split(";")) {
             canonicalRequest.append(name.trim());
             canonicalRequest.append(":");
-            canonicalRequest.append(Strings.join(ctx.getRequest().headers().getAll(name), ",").trim());
+            canonicalRequest.append(Strings.join(webContext.getRequest().headers().getAll(name), ",").trim());
             canonicalRequest.append("\n");
         }
         canonicalRequest.append("\n");
         canonicalRequest.append(signedHeaders);
         canonicalRequest.append("\n");
-        canonicalRequest.append(ctx.getHeaderValue("x-amz-content-sha256").asString("UNSIGNED-PAYLOAD"));
+        canonicalRequest.append(webContext.getHeaderValue("x-amz-content-sha256").asString("UNSIGNED-PAYLOAD"));
 
         return canonicalRequest;
     }
 
-    private void appendCanonicalQueryString(WebContext ctx, StringBuilder canonicalRequest) {
-        QueryStringDecoder qsd = new QueryStringDecoder(ctx.getRequest().uri(), StandardCharsets.UTF_8);
+    private void appendCanonicalQueryString(WebContext webContext, StringBuilder canonicalRequest) {
+        QueryStringDecoder qsd = new QueryStringDecoder(webContext.getRequest().uri(), StandardCharsets.UTF_8);
 
         List<Tuple<String, List<String>>> queryString = Tuple.fromMap(qsd.parameters());
         queryString.sort(Comparator.comparing(Tuple::getFirst));

@@ -178,7 +178,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
     def "MultipartUpload and then GET work as expected"() {
         when:
         def bucketName = "test"
-        def key = "test"
+        def key = "key/with/slashes"
         def client = getClient()
         def transfer = TransferManagerBuilder.standard().
                 withS3Client(client).
@@ -207,7 +207,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
     def "MultipartUpload and then DELETE work as expected"() {
         when:
         def bucketName = "test"
-        def key = "test"
+        def key = "key/with/slashes"
         def client = getClient()
         def transfer = TransferManagerBuilder.standard().
                 withS3Client(client).

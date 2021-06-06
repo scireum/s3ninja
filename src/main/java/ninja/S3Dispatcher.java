@@ -270,7 +270,7 @@ public class S3Dispatcher implements WebDispatcher {
             uri = uri.substring(1);
         }
 
-        return uri;
+        return Strings.urlEncode(uri).replace("+", "%20").replace("%2F", "/");
     }
 
     /**

@@ -25,7 +25,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     def DEFAULT_BUCKET_NAME = "test"
 
-    def DEFAULT_KEY = "key/with/slashes"
+    def DEFAULT_KEY = "key/with/slashes and spaces 😇"
 
     abstract AmazonS3Client getClient()
 

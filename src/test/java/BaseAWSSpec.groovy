@@ -23,66 +23,77 @@ import java.time.temporal.ChronoUnit
 
 abstract class BaseAWSSpec extends BaseSpecification {
 
+    def DEFAULT_BUCKET_NAME = "test"
+
+    def DEFAULT_KEY = "key/with/slashes"
+
     abstract AmazonS3Client getClient()
 
     def "HEAD of non-existing bucket as expected"() {
         given:
+        def bucketName = "does-not-exist"
         def client = getClient()
         when:
-        if (client.doesBucketExist("does-not-exist")) {
-            client.deleteBucket("does-not-exist")
+        if (client.doesBucketExist(bucketName)) {
+            client.deleteBucket(bucketName)
         }
         then:
-        !client.doesBucketExist("does-not-exist")
-        !client.doesBucketExistV2("does-not-exist")
+        !client.doesBucketExist(bucketName)
+        !client.doesBucketExistV2(bucketName)
     }
 
     def "PUT and then HEAD bucket as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
         def client = getClient()
         when:
-        if (client.doesBucketExist("test")) {
-            client.deleteBucket("test")
+        if (client.doesBucketExist(bucketName)) {
+            client.deleteBucket(bucketName)
         }
-        client.createBucket("test")
+        client.createBucket(bucketName)
         then:
-        client.doesBucketExist("test")
-        client.doesBucketExistV2("test")
+        client.doesBucketExist(bucketName)
+        client.doesBucketExistV2(bucketName)
     }
 
     def "DELETE of non-existing bucket as expected"() {
         given:
+        def bucketName = "does-not-exist"
         def client = getClient()
         when:
-        if (client.doesBucketExist("does-not-exist")) {
-            client.deleteBucket("does-not-exist")
+        if (client.doesBucketExist(bucketName)) {
+            client.deleteBucket(bucketName)
         }
         and:
-        client.deleteBucket("does-not-exist")
+        client.deleteBucket(bucketName)
         then:
         AmazonS3Exception e = thrown()
         e.statusCode == 404
-        !client.doesBucketExist("does-not-exist")
-        !client.doesBucketExistV2("does-not-exist")
+        !client.doesBucketExist(bucketName)
+        !client.doesBucketExistV2(bucketName)
     }
 
     def "PUT and then DELETE bucket as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
         def client = getClient()
         when:
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
-        client.deleteBucket("test")
+        client.deleteBucket(bucketName)
         then:
-        !client.doesBucketExist("test")
+        !client.doesBucketExist(bucketName)
     }
 
     def "PUT and then GET file work using TransferManager"() {
-        when:
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        when:
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
         and:
         File file = File.createTempFile("test", "")
@@ -92,33 +103,35 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         and:
         def tm = TransferManagerBuilder.standard().withS3Client(client).build()
-        tm.upload("test", "test", file).waitForUploadResult()
+        tm.upload(bucketName, key, file).waitForUploadResult()
         and:
         File download = File.createTempFile("s3-test", "")
         download.deleteOnExit()
-        tm.download("test", "test", download).waitForCompletion()
+        tm.download(bucketName, key, download).waitForCompletion()
         then:
         Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
     }
 
     def "PUT and then GET work as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
         when:
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
         and:
         client.putObject(
-                "test",
-                "test",
+                bucketName,
+                key,
                 new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
         def content = new String(
-                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
                 Charsets.UTF_8)
         and:
-        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
         String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
@@ -130,56 +143,62 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     def "PUT and then LIST work as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key1 = DEFAULT_KEY + "/Eins"
+        def key2 = DEFAULT_KEY + "/Zwei"
         def client = getClient()
         when:
-        if (client.doesBucketExist("test")) {
-            client.deleteBucket("test")
+        if (client.doesBucketExist(bucketName)) {
+            client.deleteBucket(bucketName)
         }
-        client.createBucket("test")
+        client.createBucket(bucketName)
         and:
         client.putObject(
-                "test",
-                "Eins",
+                bucketName,
+                key1,
                 new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
         client.putObject(
-                "test",
-                "Zwei",
+                bucketName,
+                key2,
                 new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
         then:
-        def listing = client.listObjects("test")
+        def listing = client.listObjects(bucketName)
         def summaries = listing.getObjectSummaries()
         summaries.size() == 2
-        summaries.get(0).getKey() == "Eins"
-        summaries.get(1).getKey() == "Zwei"
+        summaries.get(0).getKey() == key1
+        summaries.get(1).getKey() == key2
     }
 
     def "PUT and then DELETE work as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
         when:
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
         and:
         client.putObject(
-                "test",
-                "test",
+                bucketName,
+                key,
                 new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
-        client.deleteBucket("test")
-        client.getObject("test", "test")
+        client.deleteBucket(bucketName)
+        client.getObject(bucketName, key)
         then:
         AmazonS3Exception e = thrown()
         e.statusCode == 404
     }
 
     def "MultipartUpload and then GET work as expected"() {
-        when:
-        def bucketName = "test"
-        def key = "key/with/slashes"
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
+        when:
         def transfer = TransferManagerBuilder.standard().
                 withS3Client(client).
                 withMultipartUploadThreshold(1).
@@ -205,10 +224,11 @@ abstract class BaseAWSSpec extends BaseSpecification {
     }
 
     def "MultipartUpload and then DELETE work as expected"() {
-        when:
-        def bucketName = "test"
-        def key = "key/with/slashes"
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
+        when:
         def transfer = TransferManagerBuilder.standard().
                 withS3Client(client).
                 withMultipartUploadThreshold(1).
@@ -232,15 +252,17 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     def "PUT on presigned URL without signed chunks works as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
         when:
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
         and:
         def content = "NotSigned"
         and:
-        GeneratePresignedUrlRequest putRequest = new GeneratePresignedUrlRequest("test", "test", HttpMethod.PUT)
+        GeneratePresignedUrlRequest putRequest = new GeneratePresignedUrlRequest(bucketName, key, HttpMethod.PUT)
         HttpURLConnection hc = new URL(getClient().generatePresignedUrl(putRequest).toString()).openConnection()
         hc.setDoOutput(true)
         hc.setRequestMethod("PUT")
@@ -252,7 +274,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         hc.getResponseCode()
         and:
-        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
         String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
@@ -263,22 +285,24 @@ abstract class BaseAWSSpec extends BaseSpecification {
     // reported in https://github.com/scireum/s3ninja/issues/153
     def "PUT and then GET on presigned URL with ResponseHeaderOverrides works as expected"() {
         given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key = DEFAULT_KEY
         def client = getClient()
         when:
-        if (!client.doesBucketExist("test")) {
-            client.createBucket("test")
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
         }
         and:
         client.putObject(
-                "test",
-                "test",
+                bucketName,
+                key,
                 new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
         def content = new String(
-                ByteStreams.toByteArray(client.getObject("test", "test").getObjectContent()),
+                ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
                 Charsets.UTF_8)
         and:
-        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest("test", "test")
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
                 .withExpiration(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
                 .withResponseHeaders(
                         new ResponseHeaderOverrides()

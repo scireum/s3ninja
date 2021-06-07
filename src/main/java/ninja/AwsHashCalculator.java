@@ -19,8 +19,8 @@ import java.util.regex.Pattern;
 /**
  * Class in charge of generating the appropriate hash for the given request and path prefix by
  * delegating the computation to either {@link Aws4HashCalculator} or {@link
- * AwsLegacyHashCalculator} depending of whether or not  Aws4HashCalculator supports the request
- * or not
+ * AwsLegacyHashCalculator} depending of whether or not {@code Aws4HashCalculator} supports the
+ * request or not.
  */
 @Register(classes = AwsHashCalculator.class)
 public class AwsHashCalculator {

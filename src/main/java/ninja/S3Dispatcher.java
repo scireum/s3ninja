@@ -270,7 +270,7 @@ public class S3Dispatcher implements WebDispatcher {
             uri = uri.substring(1);
         }
 
-        return uri;
+        return Strings.urlEncode(uri).replace("+", "%20").replace("%2F", "/");
     }
 
     /**
@@ -994,7 +994,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private File combineParts(String id, String uploadId, List<File> parts) {
-        File file = new File(getUploadDir(uploadId), id);
+        File file = new File(getUploadDir(uploadId), StoredObject.encodeKey(id));
 
         try {
             if (!file.createNewFile()) {

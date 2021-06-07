@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.scireum</groupId>
         <artifactId>sirius-parent</artifactId>
-        <version>7.0.1</version>
+        <version>8.0.1</version>
     </parent>
     <artifactId>s3ninja</artifactId>
     <version>DEVELOPMENT-SNAPSHOT</version>
@@ -16,8 +16,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>ga-1.0.1</sirius.kernel>
-        <sirius.web>ga-1.1.0</sirius.web>
+        <sirius.kernel>dev-23.0.0</sirius.kernel>
+        <sirius.web>dev-35.0.0</sirius.web>
     </properties>
 
     <repositories>
@@ -55,7 +55,7 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-            <version>1.11.921</version>
+            <version>1.11.1034</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

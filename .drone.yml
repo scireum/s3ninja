@@ -59,6 +59,7 @@ steps:
     settings:
       repo: scireum/s3-ninja
       tags:
+        - latest
         - "${DRONE_TAG}"
     environment:
       DOCKER_PASSWORD:

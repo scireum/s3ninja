@@ -258,11 +258,10 @@ public class S3Dispatcher implements WebDispatcher {
      * As we have to support legacy URIs which have an <tt>/s3</tt> prefix, we cut this here, and
      * also the first "/" and only return the effective URI to process.
      *
-     * @param webContext the current request
+     * @param uri the requested URI
      * @return the effective URI to process
      */
-    public static String getEffectiveURI(WebContext webContext) {
-        String uri = webContext.getRequestedURI();
+    public static String getEffectiveURI(String uri) {
         if (uri.startsWith("/s3")) {
             uri = uri.substring(3);
         }
@@ -270,7 +269,7 @@ public class S3Dispatcher implements WebDispatcher {
             uri = uri.substring(1);
         }
 
-        return Strings.urlEncode(uri).replace("+", "%20").replace("%2F", "/");
+        return uri;
     }
 
     /**
@@ -280,7 +279,7 @@ public class S3Dispatcher implements WebDispatcher {
      * @return a structured {@link S3Request}.
      */
     private static S3Request parseRequest(WebContext webContext) {
-        String uri = getEffectiveURI(webContext);
+        String uri = getEffectiveURI(webContext.getRequestedURI());
 
         // we treat the first parameter without value as query string
         Iterator<String> parameterIterator = webContext.getParameterNames().iterator();

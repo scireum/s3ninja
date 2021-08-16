@@ -171,6 +171,43 @@ abstract class BaseAWSSpec extends BaseSpecification {
         summaries.get(1).getKey() == key2
     }
 
+    // reported in https://github.com/scireum/s3ninja/issues/180
+    def "PUT and then LIST with prefix work as expected"() {
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key1 = DEFAULT_KEY + "/Eins"
+        def key2 = DEFAULT_KEY + "/Zwei"
+        def key3 = "a/key/with a different/prefix/Drei"
+        def client = getClient()
+        when:
+        if (client.doesBucketExist(bucketName)) {
+            client.deleteBucket(bucketName)
+        }
+        client.createBucket(bucketName)
+        and:
+        client.putObject(
+                bucketName,
+                key1,
+                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key2,
+                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key3,
+                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        then:
+        def listing = client.listObjects(bucketName, DEFAULT_KEY + '/')
+        def summaries = listing.getObjectSummaries()
+        summaries.size() == 2
+        summaries.get(0).getKey() == key1
+        summaries.get(1).getKey() == key2
+    }
+
     def "PUT and then DELETE work as expected"() {
         given:
         def bucketName = DEFAULT_BUCKET_NAME

@@ -118,7 +118,7 @@ public class NinjaController extends BasicController {
         try {
             buckets = storage.getBuckets();
         } catch (HandledException e) {
-            UserContext.message(Message.error(e.getMessage()));
+            UserContext.message(Message.error().withTextMessage(e.getMessage()));
         }
         webContext.respondWith()
                   .template("/templates/index.html.pasta",
@@ -151,21 +151,21 @@ public class NinjaController extends BasicController {
         // handle /ui/[bucket]?create
         if (webContext.hasParameter("create")) {
             if (bucket.exists()) {
-                UserContext.message(Message.error("Bucket does already exist."));
+                UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
                 webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
                 return;
             }
 
             bucket.create();
 
-            UserContext.message(Message.info("Bucket successfully created."));
+            UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
             return;
         }
 
         // from this point on, make sure that the bucket exists
         if (!bucket.exists()) {
-            UserContext.message(Message.error("Bucket does not exist."));
+            UserContext.message(Message.error().withTextMessage("Bucket does not exist."));
             webContext.respondWith().redirectTemporarily("/ui");
             return;
         }
@@ -174,7 +174,7 @@ public class NinjaController extends BasicController {
         if (webContext.hasParameter("make-public")) {
             bucket.makePublic();
 
-            UserContext.message(Message.info("ACLs successfully changed"));
+            UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
             return;
         }
@@ -183,7 +183,7 @@ public class NinjaController extends BasicController {
         if (webContext.hasParameter("make-private")) {
             bucket.makePrivate();
 
-            UserContext.message(Message.info("ACLs successfully changed"));
+            UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
             return;
         }
@@ -192,7 +192,7 @@ public class NinjaController extends BasicController {
         if (webContext.hasParameter("delete")) {
             bucket.delete();
 
-            UserContext.message(Message.info("Bucket successfully deleted."));
+            UserContext.message(Message.info().withTextMessage("Bucket successfully deleted."));
             webContext.respondWith().redirectTemporarily("/ui");
             return;
         }
@@ -274,7 +274,7 @@ public class NinjaController extends BasicController {
     public void object(WebContext webContext, String bucketName, List<String> idParts) {
         Bucket bucket = storage.getBucket(bucketName);
         if (!bucket.exists()) {
-            UserContext.message(Message.error("Bucket does not exist."));
+            UserContext.message(Message.error().withTextMessage("Bucket does not exist."));
             webContext.respondWith().redirectTemporarily("/ui");
             return;
         }
@@ -282,7 +282,7 @@ public class NinjaController extends BasicController {
         String id = String.join("/", idParts);
         StoredObject object = bucket.getObject(id);
         if (!object.exists()) {
-            UserContext.message(Message.error("Object does not exist."));
+            UserContext.message(Message.error().withTextMessage("Object does not exist."));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
             return;
         }
@@ -291,7 +291,7 @@ public class NinjaController extends BasicController {
         if (webContext.hasParameter("delete")) {
             object.delete();
 
-            UserContext.message(Message.info("Object successfully deleted."));
+            UserContext.message(Message.info().withTextMessage("Object successfully deleted."));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
             return;
         }

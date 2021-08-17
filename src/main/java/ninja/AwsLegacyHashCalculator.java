@@ -63,7 +63,7 @@ public class AwsLegacyHashCalculator {
      * Computes the authentication hash as specified by the AWS SDK for verification purposes.
      *
      * @param webContext the current request to fetch parameters from
-     * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(WebContext) effective URI}
+     * @param pathPrefix the path prefix to preped to the {@link S3Dispatcher#getEffectiveURI(String) effective URI}
      *                   of the request
      * @return the computes hash value
      * @throws Exception when hashing fails
@@ -95,7 +95,7 @@ public class AwsLegacyHashCalculator {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append('/').append(S3Dispatcher.getEffectiveURI(webContext));
+        stringToSign.append(pathPrefix).append('/').append(S3Dispatcher.getEffectiveURI(webContext.getRawRequestedURI()));
 
         char separator = '?';
         for (String parameterName : webContext.getParameterNames().stream().sorted().collect(Collectors.toList())) {

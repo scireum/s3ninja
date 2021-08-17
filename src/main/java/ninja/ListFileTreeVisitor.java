@@ -55,9 +55,9 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
     @Override
     public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
         File file = path.toFile();
-        String name = file.getName();
+        String name = StoredObject.decodeKey(file.getName());
 
-        if (!file.isFile() || name.startsWith("$")) {
+        if (!file.isFile() || file.getName().startsWith("$")) {
             return FileVisitResult.CONTINUE;
         }
         if (!markerReached) {

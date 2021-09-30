@@ -589,10 +589,11 @@ public class S3Dispatcher implements WebDispatcher {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
                                                  key,
-                                                 S3ErrorCode.BadDigest,
-                                                 Strings.apply("Invalid Hash (Expected: %s, Found: %s)",
-                                                               expectedHash,
-                                                               hash));
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 Strings.apply(
+                                                         "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
+                                                         expectedHash,
+                                                         hash));
                 log.log(webContext.getRequest().method().name(),
                         webContext.getRequestedURI(),
                         APILog.Result.REJECTED,

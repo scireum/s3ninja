@@ -20,7 +20,7 @@ public enum S3ErrorCode {
     InvalidDigest(HttpResponseStatus.BAD_REQUEST), InvalidRequest(HttpResponseStatus.BAD_REQUEST),
     NoSuchBucket(HttpResponseStatus.NOT_FOUND), NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),
     NoSuchKey(HttpResponseStatus.NOT_FOUND), NoSuchLifecycleConfiguration(HttpResponseStatus.NOT_FOUND),
-    NoSuchUpload(HttpResponseStatus.NOT_FOUND);
+    NoSuchUpload(HttpResponseStatus.NOT_FOUND), SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN);
 
     private final HttpResponseStatus httpStatusCode;
 

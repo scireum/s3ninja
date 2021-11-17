@@ -645,7 +645,7 @@ public class S3Dispatcher implements WebDispatcher {
         StoredObject object = bucket.getObject(id);
         object.delete();
 
-        webContext.respondWith().status(HttpResponseStatus.OK);
+        webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
         signalObjectSuccess(webContext);
     }
 

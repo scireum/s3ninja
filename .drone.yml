@@ -63,7 +63,7 @@ steps:
         - linux/arm64
       tags:
         - scireum/s3-ninja:latest
-        - scireum/s3-ninja:"${DRONE_TAG}"
+        - scireum/s3-ninja:${DRONE_TAG}
     environment:
       DOCKER_PASSWORD:
         from_secret: docker_password

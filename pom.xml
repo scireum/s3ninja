@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.scireum</groupId>
         <artifactId>sirius-parent</artifactId>
-        <version>8.0.2</version>
+        <version>9.0.0</version>
     </parent>
     <artifactId>s3ninja</artifactId>
     <version>DEVELOPMENT-SNAPSHOT</version>
@@ -16,8 +16,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>dev-23.13.1</sirius.kernel>
-        <sirius.web>dev-42.5.1</sirius.web>
+        <sirius.kernel>dev-28.0.0</sirius.kernel>
+        <sirius.web>dev-44.0.0</sirius.web>
     </properties>
 
     <repositories>

@@ -643,6 +643,7 @@ public class S3Dispatcher implements WebDispatcher {
                         id,
                         S3ErrorCode.InternalError,
                         Strings.apply("Error while marking file as deleted"));
+                return;
             }
         }
 

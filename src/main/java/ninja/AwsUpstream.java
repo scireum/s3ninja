@@ -79,16 +79,20 @@ public class AwsUpstream {
      * Getter for the client instance to connect to the upstream instance.
      * Creates an instance if needed.
      *
-     * @return optional with client instance to upstream instance, if configured
+     * @return client instance to upstream instance
+     * @throws IllegalStateException if called when not configured
      */
-    public Optional<AmazonS3> getClient() {
-        if (client == null && isConfigured()) {
+    public AmazonS3 getClient() throws IllegalStateException {
+        if (client == null) {
             client = createAWSClient();
         }
-        return Optional.ofNullable(client);
+        return client;
     }
 
-    private AmazonS3 createAWSClient() {
+    private AmazonS3 createAWSClient() throws IllegalStateException {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Use of not configured instance");
+        }
         AWSStaticCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(new BasicAWSCredentials(s3AccessKey, s3SecretKey));
         AwsClientBuilder.EndpointConfiguration endpointConfiguration = new AwsClientBuilder
                 .EndpointConfiguration(s3EndPoint, Optional.ofNullable(s3SigningRegion).orElse("EU"));
@@ -107,16 +111,13 @@ public class AwsUpstream {
      * Creates the url used to tunnel request to upstream instance.
      * <br><b>Important: If you do not request the content, the connection must use the method "HEAD"*</b>
      *
-     * @param bucket from which an object is fetched
-     * @param object which should be fetched
+     * @param bucket      from which an object is fetched
+     * @param object      which should be fetched
      * @param requestFile signalized if the content is needed or not
      * @return an url which can be used to perform the matching request.
+     * @throws IllegalStateException if called when not configured
      */
-    public Optional<URL> generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) {
-        if (!isConfigured()) {
-            return Optional.empty();
-        }
-
+    public URL generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) throws IllegalStateException {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket.getName(), object.getKey());
         if (requestFile) {
             request.setMethod(HttpMethod.GET);
@@ -124,7 +125,7 @@ public class AwsUpstream {
             request.setMethod(HttpMethod.HEAD);
         }
 
-        return getClient().map(c -> c.generatePresignedUrl(request));
+        return getClient().generatePresignedUrl(request);
     }
 
     public void setS3SecretKey(String s3SecretKey) {

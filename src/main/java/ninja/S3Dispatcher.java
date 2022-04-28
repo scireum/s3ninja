@@ -634,7 +634,7 @@ public class S3Dispatcher implements WebDispatcher {
         object.delete();
 
         // If it exists online, we mark it locally as "deleted"
-        if (awsUpstream.getClient().map(c -> c.doesObjectExist(bucket.getName(), id)).orElse(false)) {
+        if (awsUpstream.isConfigured() && awsUpstream.getClient().doesObjectExist(bucket.getName(), id)) {
             try {
                 object.markDeleted();
             } catch (IOException e) {
@@ -774,12 +774,10 @@ public class S3Dispatcher implements WebDispatcher {
     private void getObject(WebContext webContext, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
         if (!object.exists() && !object.isMarkedDeleted() && awsUpstream.isConfigured()) {
-            Optional<URL> fetchURL = awsUpstream.generateGetObjectURL(bucket, object, sendFile);
-            if (fetchURL.isPresent()) {
-                Consumer<BoundRequestBuilder> requestTuner = brb -> brb.setMethod(sendFile ? "GET" : "HEAD");
-                webContext.enableTiming(null).respondWith().tunnel(fetchURL.get().toString(), requestTuner, null, null);
-                return;
-            }
+            URL fetchURL = awsUpstream.generateGetObjectURL(bucket, object, sendFile);
+            Consumer<BoundRequestBuilder> requestTuner = brb -> brb.setMethod(sendFile ? "GET" : "HEAD");
+            webContext.enableTiming(null).respondWith().tunnel(fetchURL.toString(), requestTuner, null, null);
+            return;
         }
 
         if (!object.exists()) {

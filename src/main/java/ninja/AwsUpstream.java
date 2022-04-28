@@ -29,6 +29,8 @@ import java.util.stream.Stream;
  */
 @Register(classes = AwsUpstream.class)
 public class AwsUpstream {
+    private static final String FALLBACK_REGION = "EU";
+    private static final int SOCKET_TIMEOUT = 60 * 1000 * 5;
     /**
      * The secret key to connect to the upstream S3 instance.
      * When this value is not set, the proxy functionality is not enabled.
@@ -82,7 +84,7 @@ public class AwsUpstream {
      * @return client instance to upstream instance
      * @throws IllegalStateException if called when not configured
      */
-    public AmazonS3 getClient() throws IllegalStateException {
+    public AmazonS3 fetchClient() throws IllegalStateException {
         if (client == null) {
             client = createAWSClient();
         }
@@ -93,23 +95,25 @@ public class AwsUpstream {
         if (!isConfigured()) {
             throw new IllegalStateException("Use of not configured instance");
         }
-        AWSStaticCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(new BasicAWSCredentials(s3AccessKey, s3SecretKey));
-        AwsClientBuilder.EndpointConfiguration endpointConfiguration = new AwsClientBuilder
-                .EndpointConfiguration(s3EndPoint, Optional.ofNullable(s3SigningRegion).orElse("EU"));
-        ClientConfiguration config = new ClientConfiguration().withSocketTimeout(60 * 1000 * 5);
+        AWSStaticCredentialsProvider credentialsProvider =
+                new AWSStaticCredentialsProvider(new BasicAWSCredentials(s3AccessKey, s3SecretKey));
+        AwsClientBuilder.EndpointConfiguration endpointConfiguration = new AwsClientBuilder.EndpointConfiguration(
+                s3EndPoint,
+                Optional.ofNullable(s3SigningRegion).orElse(FALLBACK_REGION));
+        ClientConfiguration config = new ClientConfiguration().withSocketTimeout(SOCKET_TIMEOUT);
         Optional.ofNullable(s3SignerType).ifPresent(config::withSignerOverride);
 
         return AmazonS3ClientBuilder.standard()
-                .withClientConfiguration(config)
-                .withPathStyleAccessEnabled(true)
-                .withCredentials(credentialsProvider)
-                .withEndpointConfiguration(endpointConfiguration)
-                .build();
+                                    .withClientConfiguration(config)
+                                    .withPathStyleAccessEnabled(true)
+                                    .withCredentials(credentialsProvider)
+                                    .withEndpointConfiguration(endpointConfiguration)
+                                    .build();
     }
 
     /**
      * Creates the url used to tunnel request to upstream instance.
-     * <br><b>Important: If you do not request the content, the connection must use the method "HEAD"*</b>
+     * <br><b>Important: If you do not request the content, the connection must use the method "HEAD"!</b>
      *
      * @param bucket      from which an object is fetched
      * @param object      which should be fetched
@@ -125,7 +129,7 @@ public class AwsUpstream {
             request.setMethod(HttpMethod.HEAD);
         }
 
-        return getClient().generatePresignedUrl(request);
+        return fetchClient().generatePresignedUrl(request);
     }
 
     public void setS3SecretKey(String s3SecretKey) {

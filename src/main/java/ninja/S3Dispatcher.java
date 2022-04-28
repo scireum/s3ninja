@@ -19,12 +19,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
+import org.asynchttpclient.BoundRequestBuilder;
 import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.Callback;
-import sirius.kernel.commons.Hasher;
-import sirius.kernel.commons.Strings;
-import sirius.kernel.commons.Tuple;
-import sirius.kernel.commons.Value;
+import sirius.kernel.commons.*;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
@@ -41,29 +38,17 @@ import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.http.WebDispatcher;
 
-import java.io.File;
-import java.io.FileFilter;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.net.InetAddress;
+import java.net.URL;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -115,6 +100,9 @@ public class S3Dispatcher implements WebDispatcher {
 
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
+
+    @Part
+    private AwsUpstream awsUpstream;
 
     private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
@@ -645,6 +633,19 @@ public class S3Dispatcher implements WebDispatcher {
         StoredObject object = bucket.getObject(id);
         object.delete();
 
+        // If it exists online, we mark it locally as "deleted"
+        if (awsUpstream.getClient().map(c -> c.doesObjectExist(bucket.getName(), id)).orElse(false)) {
+            try {
+                object.markDeleted();
+            } catch (IOException e) {
+                signalObjectError(webContext,
+                        bucket.getName(),
+                        id,
+                        S3ErrorCode.InternalError,
+                        Strings.apply("Error while marking file as deleted"));
+            }
+        }
+
         webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
         signalObjectSuccess(webContext);
     }
@@ -771,6 +772,15 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void getObject(WebContext webContext, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
+        if (!object.exists() && !object.isMarkedDeleted() && awsUpstream.isConfigured()) {
+            Optional<URL> fetchURL = awsUpstream.generateGetObjectURL(bucket, object, sendFile);
+            if (fetchURL.isPresent()) {
+                Consumer<BoundRequestBuilder> requestTuner = brb -> brb.setMethod(sendFile ? "GET" : "HEAD");
+                webContext.enableTiming(null).respondWith().tunnel(fetchURL.get().toString(), requestTuner, null, null);
+                return;
+            }
+        }
+
         if (!object.exists()) {
             signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;

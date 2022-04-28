@@ -8,7 +8,7 @@ import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
-import org.apache.logging.log4j.util.Strings;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Register;
 
@@ -72,7 +72,7 @@ public class AwsUpstream {
      * @return true if the minimum required config values are set.
      */
     public boolean isConfigured() {
-        return Stream.of(s3EndPoint, s3AccessKey, s3SecretKey).allMatch(Strings::isNotEmpty);
+        return Stream.of(s3EndPoint, s3AccessKey, s3SecretKey).allMatch(Strings::isFilled);
     }
 
     /**

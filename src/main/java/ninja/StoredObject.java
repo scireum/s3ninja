@@ -29,6 +29,8 @@ import java.util.Properties;
  */
 public class StoredObject {
 
+    private static final String DELETED_MARKER = "DeletedMarker";
+
     private final File file;
 
     private final String key;
@@ -220,6 +222,26 @@ public class StoredObject {
         try (FileOutputStream out = new FileOutputStream(getPropertiesFile())) {
             props.store(out, "");
         }
+    }
+
+    /**
+     * Checks if the marker for "deleted" is set.
+     * When an object is marked as "deleted" it can not be requested anymore.
+     * @return true if this file is "deleted"
+     */
+    public boolean isMarkedDeleted() {
+        return getProperties().containsKey(DELETED_MARKER);
+    }
+
+    /**
+     * Sets the object as "deleted", all requests onto this object are handled as if it is deleted.
+     * <br><b>This method does not perform an actual delete!<br>To perform an actual delete please check {@link StoredObject#delete} </b>
+     * @throws IOException if the properties could not be updated
+     */
+    public void markDeleted() throws IOException {
+        Map<String, String> fileProperties = getProperties();
+        fileProperties.put(DELETED_MARKER, "true");
+        setProperties(fileProperties);
     }
 
     /**

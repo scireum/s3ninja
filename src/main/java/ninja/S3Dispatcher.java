@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QuerySynthesizer;
+import org.asynchttpclient.BoundRequestBuilder;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Hasher;
@@ -47,6 +48,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
+import java.net.URL;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -64,6 +66,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -115,6 +118,9 @@ public class S3Dispatcher implements WebDispatcher {
 
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
+
+    @Part
+    private AwsUpstream awsUpstream;
 
     private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
@@ -645,6 +651,20 @@ public class S3Dispatcher implements WebDispatcher {
         StoredObject object = bucket.getObject(id);
         object.delete();
 
+        // If it exists online, we mark it locally as "deleted"
+        if (awsUpstream.isConfigured() && awsUpstream.fetchClient().doesObjectExist(bucket.getName(), id)) {
+            try {
+                object.markDeleted();
+            } catch (IOException ignored) {
+                signalObjectError(webContext,
+                        bucket.getName(),
+                        id,
+                        S3ErrorCode.InternalError,
+                        Strings.apply("Error while marking file as deleted"));
+                return;
+            }
+        }
+
         webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
         signalObjectSuccess(webContext);
     }
@@ -771,6 +791,13 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void getObject(WebContext webContext, Bucket bucket, String id, boolean sendFile) throws IOException {
         StoredObject object = bucket.getObject(id);
+        if (!object.exists() && !object.isMarkedDeleted() && awsUpstream.isConfigured()) {
+            URL fetchURL = awsUpstream.generateGetObjectURL(bucket, object, sendFile);
+            Consumer<BoundRequestBuilder> requestTuner = requestBuilder -> requestBuilder.setMethod(sendFile ? "GET" : "HEAD");
+            webContext.enableTiming(null).respondWith().tunnel(fetchURL.toString(), requestTuner, null, null);
+            return;
+        }
+
         if (!object.exists()) {
             signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.NoSuchKey, "Object does not exist");
             return;

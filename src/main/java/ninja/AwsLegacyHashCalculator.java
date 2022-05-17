@@ -110,6 +110,9 @@ public class AwsLegacyHashCalculator {
             }
         }
 
+        // Caution: Do not blindly copy this example as the AWS secret is passed as string.
+        // Strings are immutable in Java and stay in memory until collected by Java's garbage collector.
+        // Thus, the JCA recommends the usage of a char array <https://docs.oracle.com/javase/8/docs/technotes/guides/security/crypto/CryptoSpec.html#PBEEx>.
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
         mac.init(keySpec);

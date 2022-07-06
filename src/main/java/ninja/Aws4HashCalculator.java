@@ -149,17 +149,21 @@ public class Aws4HashCalculator {
         Monoflop mf = Monoflop.create();
         for (Tuple<String, List<String>> param : queryString) {
             if (!Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
-                if (param.getSecond().isEmpty()) {
-                    appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
-                } else {
-                    for (String value : param.getSecond()) {
-                        appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
-                    }
-                }
+                appendParam(canonicalRequest, mf, param);
             }
         }
 
         canonicalRequest.append("\n");
+    }
+
+    private void appendParam(StringBuilder canonicalRequest, Monoflop mf, Tuple<String, List<String>> param) {
+        if (param.getSecond().isEmpty()) {
+            appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
+        } else {
+            for (String value : param.getSecond()) {
+                appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
+            }
+        }
     }
 
     private void appendQueryStringValue(String name,

@@ -9,6 +9,7 @@
 package ninja;
 
 import com.google.common.collect.Maps;
+import sirius.kernel.commons.Files;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.nls.NLS;
@@ -146,14 +147,8 @@ public class StoredObject {
      * Deletes the object.
      */
     public void delete() {
-        if (!file.delete()) {
-            Storage.LOG.WARN("Failed to delete data file for object %s (%s).", getKey(), file.getAbsolutePath());
-        }
-        if (!getPropertiesFile().delete()) {
-            Storage.LOG.WARN("Failed to delete properties file for object %s (%s).",
-                             getKey(),
-                             getPropertiesFile().getAbsolutePath());
-        }
+        Files.delete(file);
+        Files.delete(getPropertiesFile());
     }
 
     /**
@@ -204,7 +199,7 @@ public class StoredObject {
 
         // convert the properties object to a string-to-string-map
         Map<String, String> map = Maps.newTreeMap();
-        props.forEach((key, value) -> map.put(String.valueOf(key), String.valueOf(value)));
+        props.forEach((propertyKey, value) -> map.put(String.valueOf(propertyKey), String.valueOf(value)));
         return map;
     }
 

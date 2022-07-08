@@ -55,6 +55,7 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -689,7 +690,7 @@ public class S3Dispatcher implements WebDispatcher {
 
         Map<String, String> properties = parseUploadProperties(webContext);
         byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
-        String md5 = BaseEncoding.base64().encode(hash);
+        String md5 = Base64.getEncoder().encodeToString(hash);
         String contentMd5 = properties.get("Content-MD5");
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();

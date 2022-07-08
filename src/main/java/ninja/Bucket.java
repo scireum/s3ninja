@@ -29,7 +29,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -160,12 +159,13 @@ public class Bucket {
             return true;
         }
 
-        boolean deleted = false;
-        for (File child : Objects.requireNonNull(folder.listFiles())) {
-            deleted = child.delete() || deleted;
+        try {
+            sirius.kernel.commons.Files.delete(folder.toPath());
+            return true;
+        } catch (IOException e) {
+            Exceptions.handle(e);
+            return false;
         }
-        deleted = folder.delete() || deleted;
-        return deleted;
     }
 
     /**
@@ -248,11 +248,8 @@ public class Bucket {
      */
     public void makePrivate() {
         if (publicMarker.exists()) {
-            if (publicMarker.delete()) {
-                publicAccessCache.put(getName(), false);
-            } else {
-                Storage.LOG.WARN("Failed to delete public marker for bucket %s - it remains public!", getName());
-            }
+            sirius.kernel.commons.Files.delete(publicMarker);
+            publicAccessCache.put(getName(), false);
         }
     }
 
@@ -333,9 +330,9 @@ public class Bucket {
     }
 
     private boolean isMatchingObject(@Nullable String query, File currentFile) {
-        return (Strings.isEmpty(query) || currentFile.getName().contains(query)) && currentFile.isFile() && !currentFile
-                .getName()
-                .startsWith("$");
+        return (Strings.isEmpty(query) || currentFile.getName().contains(query))
+               && currentFile.isFile()
+               && !currentFile.getName().startsWith("$");
     }
 
     protected int getVersion() {

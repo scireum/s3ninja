@@ -9,11 +9,14 @@
 package ninja.errors;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
+import sirius.kernel.commons.Explain;
 
 /**
  * Lists some <em>S3</em> <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html">error codes</a>
  * along with their respective {@linkplain HttpResponseStatus HTTP response codes}.
  */
+@SuppressWarnings("java:S115")
+@Explain("We use the proper names as defined in the AWS API")
 public enum S3ErrorCode {
     AccessDenied(HttpResponseStatus.FORBIDDEN), BadDigest(HttpResponseStatus.BAD_REQUEST),
     IncompleteBody(HttpResponseStatus.BAD_REQUEST), InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),

@@ -16,8 +16,8 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>dev-31.1.0</sirius.kernel>
-        <sirius.web>dev-52.1.1</sirius.web>
+        <sirius.kernel>dev-33.1.0</sirius.kernel>
+        <sirius.web>dev-57.3.0</sirius.web>
     </properties>
 
     <repositories>
@@ -55,7 +55,7 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-            <version>1.12.261</version>
+            <version>1.12.307</version>
         </dependency>
     </dependencies>
 </project>

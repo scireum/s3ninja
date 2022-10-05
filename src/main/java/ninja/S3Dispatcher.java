@@ -137,16 +137,6 @@ public class S3Dispatcher implements WebDispatcher {
                                           .withChronology(IsoChronology.INSTANCE)
                                           .withZone(ZoneOffset.ofHours(0));
 
-    /**
-     * RFC 822 date/time formatter.
-     */
-    public static final DateTimeFormatter RFC822_INSTANT =
-            new DateTimeFormatterBuilder().appendPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'")
-                                          .toFormatter()
-                                          .withLocale(Locale.ENGLISH)
-                                          .withChronology(IsoChronology.INSTANCE)
-                                          .withZone(ZoneOffset.ofHours(0));
-
     private static final Map<String, String> headerOverrides;
 
     static {
@@ -829,7 +819,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               Response.RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }

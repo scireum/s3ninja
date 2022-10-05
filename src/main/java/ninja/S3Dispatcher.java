@@ -648,10 +648,10 @@ public class S3Dispatcher implements WebDispatcher {
                 object.markDeleted();
             } catch (IOException ignored) {
                 signalObjectError(webContext,
-                        bucket.getName(),
-                        id,
-                        S3ErrorCode.InternalError,
-                        Strings.apply("Error while marking file as deleted"));
+                                  bucket.getName(),
+                                  id,
+                                  S3ErrorCode.InternalError,
+                                  Strings.apply("Error while marking file as deleted"));
                 return;
             }
         }
@@ -784,7 +784,8 @@ public class S3Dispatcher implements WebDispatcher {
         StoredObject object = bucket.getObject(id);
         if (!object.exists() && !object.isMarkedDeleted() && awsUpstream.isConfigured()) {
             URL fetchURL = awsUpstream.generateGetObjectURL(bucket, object, sendFile);
-            Consumer<BoundRequestBuilder> requestTuner = requestBuilder -> requestBuilder.setMethod(sendFile ? "GET" : "HEAD");
+            Consumer<BoundRequestBuilder> requestTuner =
+                    requestBuilder -> requestBuilder.setMethod(sendFile ? "GET" : "HEAD");
             webContext.enableTiming(null).respondWith().tunnel(fetchURL.toString(), requestTuner, null, null);
             return;
         }

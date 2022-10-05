@@ -307,7 +307,7 @@ public class Bucket {
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())
                          .map(StoredObject::new)
-                         .collect(Collectors.toList());
+                         .toList();
         } catch (IOException e) {
             throw Exceptions.handle(e);
         }

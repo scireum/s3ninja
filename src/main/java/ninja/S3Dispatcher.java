@@ -967,7 +967,7 @@ public class S3Dispatcher implements WebDispatcher {
                                       .stream()
                                       .sorted(Comparator.comparing(Map.Entry::getKey))
                                       .map(Map.Entry::getValue)
-                                      .collect(Collectors.toList()));
+                                      .toList());
 
         file.deleteOnExit();
         if (!file.exists()) {

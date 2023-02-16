@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Contains a log of the latest API calls
  * <p>
- * The entries are stored in memory and will be lost during server restarts. Also the site is limited to 250 entries.
+ * The entries are stored in memory and will be lost during server restarts. Also, the site is limited to 250 entries.
  * The newest entry will be the first in the list.
  */
 @Register(classes = APILog.class)

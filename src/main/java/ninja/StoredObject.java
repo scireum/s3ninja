@@ -185,8 +185,8 @@ public class StoredObject {
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
-     * @return a set of name value pairs representing all properties stored for this object, or an empty set if no
-     * properties could be read
+     * @return name value pairs representing all properties stored for this object, or an empty map if no properties
+     * could be read
      */
     public Map<String, String> getProperties() {
         // read properties object from disk

@@ -188,7 +188,9 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
-        if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
+        if (Strings.isFilled(request.query)
+            && !Strings.areEqual(request.query, "uploads")
+            && !Strings.areEqual(request.query, "delete")) {
             forwardQueryToSynthesizer(webContext, request);
             return null;
         }

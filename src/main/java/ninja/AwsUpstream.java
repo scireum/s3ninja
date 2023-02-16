@@ -18,13 +18,15 @@ import java.util.stream.Stream;
 
 /**
  * Represents an upstream S3 instance which can be used in case an object is not found locally.
- *
- * <br>To enable this functionality the ConfigValue defined in this class must be set accordingly.
- * <br>The minimal required fields are:<ul>
- *      <li>{@link AwsUpstream#s3EndPoint}</li>
- *      <li>{@link AwsUpstream#s3AccessKey}</li>
- *      <li>{@link AwsUpstream#s3SecretKey}</li>
+ * <p>
+ * To enable this functionality the ConfigValue defined in this class must be set accordingly.
+ * The minimal required fields are:
+ * <ul>
+ * <li>{@link AwsUpstream#s3EndPoint}</li>
+ * <li>{@link AwsUpstream#s3AccessKey}</li>
+ * <li>{@link AwsUpstream#s3SecretKey}</li>
  * </ul>
+ * <p>
  * For details for the config name and expected value check each defined ConfigValue.
  */
 @Register(classes = AwsUpstream.class)

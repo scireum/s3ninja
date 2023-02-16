@@ -10,6 +10,7 @@ import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
+import com.amazonaws.services.s3.model.DeleteObjectsResult
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
@@ -370,6 +371,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def bucketName = DEFAULT_BUCKET_NAME
         def key1 = DEFAULT_KEY + "/Eins"
         def key2 = DEFAULT_KEY + "/Zwei"
+        def key3 = DEFAULT_KEY + "/Drei"
         def client = getClient()
         when:
         client.putObject(
@@ -382,10 +384,23 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 key2,
                 new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
-        client.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2));
-        client.getObject(bucketName, key1)
+        client.putObject(
+                bucketName,
+                key3,
+                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        List<DeleteObjectsResult.DeletedObject> deletedObjects = client
+                .deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2)).getDeletedObjects()
         then:
-        AmazonS3Exception e = thrown()
-        e.statusCode == 404
+        deletedObjects.size() == 2
+        deletedObjects.get(0).getKey() == key1
+        deletedObjects.get(1).getKey() == key2
+        and:
+        def listing = client.listObjects(bucketName)
+        def summaries = listing.getObjectSummaries()
+        summaries.size() == 1
+        summaries.get(0).getKey() == key3
+        and:
+        client.deleteObject(bucketName, key3)
     }
 }

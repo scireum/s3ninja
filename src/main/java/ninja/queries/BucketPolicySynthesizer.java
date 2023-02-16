@@ -19,7 +19,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy">bucket policy</a>
+ * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy">bucket policy</a>
  * responses.
  */
 @Register(name = "policy")

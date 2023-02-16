@@ -17,7 +17,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation">bucket location</a>
+ * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation">bucket location</a>
  * responses.
  */
 @Register(name = "location")

@@ -17,7 +17,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketRequestPayment">bucket request
+ * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketRequestPayment">bucket request
  * payment</a> responses.
  */
 @Register(name = "requestPayment")

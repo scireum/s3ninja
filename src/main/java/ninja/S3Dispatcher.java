@@ -34,6 +34,7 @@ import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
 import sirius.kernel.xml.Attribute;
+import sirius.kernel.xml.Outcall;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.InputStreamHandler;
@@ -820,7 +821,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               Response.RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }

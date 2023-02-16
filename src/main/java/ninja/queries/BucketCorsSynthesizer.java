@@ -17,7 +17,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors">bucket cors</a> responses.
+ * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors">bucket cors</a> responses.
  */
 @Register(name = "cors")
 public class BucketCorsSynthesizer implements S3QuerySynthesizer {

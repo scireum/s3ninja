@@ -30,7 +30,7 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
     private final XMLStructuredOutput output;
     private final int limit;
     private final String marker;
-    private String prefix;
+    private final String prefix;
     private final boolean useLimit;
     private final boolean usePrefix;
     private boolean markerReached;

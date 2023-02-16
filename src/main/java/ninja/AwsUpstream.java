@@ -18,13 +18,15 @@ import java.util.stream.Stream;
 
 /**
  * Represents an upstream S3 instance which can be used in case an object is not found locally.
- *
- * <br>To enable this functionality the ConfigValue defined in this class must be set accordingly.
- * <br>The minimal required fields are:<ul>
- *      <li>{@link AwsUpstream#s3EndPoint}</li>
- *      <li>{@link AwsUpstream#s3AccessKey}</li>
- *      <li>{@link AwsUpstream#s3SecretKey}</li>
+ * <p>
+ * To enable this functionality the ConfigValue defined in this class must be set accordingly.
+ * The minimal required fields are:
+ * <ul>
+ * <li>{@link AwsUpstream#s3EndPoint}</li>
+ * <li>{@link AwsUpstream#s3AccessKey}</li>
+ * <li>{@link AwsUpstream#s3SecretKey}</li>
  * </ul>
+ * <p>
  * For details for the config name and expected value check each defined ConfigValue.
  */
 @Register(classes = AwsUpstream.class)
@@ -84,14 +86,18 @@ public class AwsUpstream {
      * @return client instance to upstream instance
      * @throws IllegalStateException if called when not configured
      */
-    public AmazonS3 fetchClient() throws IllegalStateException {
+    public AmazonS3 fetchClient() {
         if (client == null) {
             client = createAWSClient();
         }
         return client;
     }
 
-    private AmazonS3 createAWSClient() throws IllegalStateException {
+    /**
+     * @return client instance to upstream instance
+     * @throws IllegalStateException if called when not configured
+     */
+    private AmazonS3 createAWSClient() {
         if (!isConfigured()) {
             throw new IllegalStateException("Use of not configured instance");
         }
@@ -121,7 +127,7 @@ public class AwsUpstream {
      * @return an url which can be used to perform the matching request.
      * @throws IllegalStateException if called when not configured
      */
-    public URL generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) throws IllegalStateException {
+    public URL generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket.getName(), object.getKey());
         if (requestFile) {
             request.setMethod(HttpMethod.GET);

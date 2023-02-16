@@ -77,7 +77,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
         // read the chunk size
         Optional<Integer> optionalLength = readChunkLength(chunkBuffer);
-        if (!optionalLength.isPresent()) {
+        if (optionalLength.isEmpty()) {
             chunkBuffer.resetReaderIndex();
             return -1;
         }
@@ -85,7 +85,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
         // read the signature
         Optional<String> optionalSignature = readSignature(chunkBuffer);
-        if (!optionalSignature.isPresent()) {
+        if (optionalSignature.isEmpty()) {
             chunkBuffer.resetReaderIndex();
             return -1;
         }

@@ -34,6 +34,7 @@ import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
 import sirius.kernel.xml.Attribute;
+import sirius.kernel.xml.Outcall;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.InputStreamHandler;
@@ -69,7 +70,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
-import java.util.stream.Collectors;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
@@ -820,7 +820,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               Response.RFC822_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }

@@ -83,7 +83,7 @@ public class StoredObject {
      */
     public static String decodeKey(String key) {
         try {
-            return URLDecoder.decode(key, StandardCharsets.UTF_8.name());
+            return URLDecoder.decode(key, StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw Exceptions.handle(Storage.LOG, e);
         }
@@ -185,8 +185,8 @@ public class StoredObject {
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
-     * @return a set of name value pairs representing all properties stored for this object, or an empty set if no
-     * properties could be read
+     * @return name value pairs representing all properties stored for this object, or an empty map if no properties
+     * could be read
      */
     public Map<String, String> getProperties() {
         // read properties object from disk
@@ -222,6 +222,7 @@ public class StoredObject {
     /**
      * Checks if the marker for "deleted" is set.
      * When an object is marked as "deleted" it can not be requested anymore.
+     *
      * @return true if this file is "deleted"
      */
     public boolean isMarkedDeleted() {
@@ -231,6 +232,7 @@ public class StoredObject {
     /**
      * Sets the object as "deleted", all requests onto this object are handled as if it is deleted.
      * <br><b>This method does not perform an actual delete!<br>To perform an actual delete please check {@link StoredObject#delete} </b>
+     *
      * @throws IOException if the properties could not be updated
      */
     public void markDeleted() throws IOException {

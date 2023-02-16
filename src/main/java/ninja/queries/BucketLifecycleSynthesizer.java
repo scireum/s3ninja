@@ -19,7 +19,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Synthesises <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle">bucket lifecycle</a>
+ * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle">bucket lifecycle</a>
  * responses.
  */
 @Register(name = "lifecycle")

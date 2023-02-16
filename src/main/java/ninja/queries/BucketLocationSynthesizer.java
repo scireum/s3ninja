@@ -21,7 +21,7 @@ import javax.annotation.Nullable;
  * responses.
  */
 @Register(name = "location")
-public class BucketLocationSynthesizer implements S3QuerySynthesizer {
+public class BucketLocationSynthesizer implements S3QueryProcessor {
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,

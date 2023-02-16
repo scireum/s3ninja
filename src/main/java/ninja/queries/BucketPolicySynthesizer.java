@@ -23,7 +23,7 @@ import javax.annotation.Nullable;
  * responses.
  */
 @Register(name = "policy")
-public class BucketPolicySynthesizer implements S3QuerySynthesizer {
+public class BucketPolicySynthesizer implements S3QueryProcessor {
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;

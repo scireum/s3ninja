@@ -9,6 +9,8 @@
 import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
+import com.amazonaws.services.s3.model.DeleteObjectsRequest
+import com.amazonaws.services.s3.model.DeleteObjectsResult
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
@@ -110,6 +112,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         tm.download(bucketName, key, download).waitForCompletion()
         then:
         Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "PUT and then GET work as expected"() {
@@ -139,6 +143,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         content == "Test"
         and:
         downloadedData == "Test"
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "PUT and then LIST work as expected"() {
@@ -258,6 +264,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         then:
         content == "Test"
         userdata == "test123"
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "MultipartUpload and then DELETE work as expected"() {
@@ -317,6 +325,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
         then:
         downloadedData == content
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/153
@@ -351,5 +361,46 @@ abstract class BaseAWSSpec extends BaseSpecification {
         content == "Test"
         and:
         downloadedData == "Test"
+        and:
+        client.deleteObject(bucketName, key)
+    }
+
+    // reported in https://github.com/scireum/s3ninja/issues/181
+    def "Bulk delete using DeleteObjectCommand works as expected"() {
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key1 = DEFAULT_KEY + "/Eins"
+        def key2 = DEFAULT_KEY + "/Zwei"
+        def key3 = DEFAULT_KEY + "/Drei"
+        def client = getClient()
+        when:
+        client.putObject(
+                bucketName,
+                key1,
+                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key2,
+                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key3,
+                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        List<DeleteObjectsResult.DeletedObject> deletedObjects = client
+                .deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2)).getDeletedObjects()
+        then:
+        deletedObjects.size() == 2
+        deletedObjects.get(0).getKey() == key1
+        deletedObjects.get(1).getKey() == key2
+        and:
+        def listing = client.listObjects(bucketName)
+        def summaries = listing.getObjectSummaries()
+        summaries.size() == 1
+        summaries.get(0).getKey() == key3
+        and:
+        client.deleteObject(bucketName, key3)
     }
 }

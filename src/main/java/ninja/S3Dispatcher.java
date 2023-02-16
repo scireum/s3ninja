@@ -18,7 +18,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
-import ninja.queries.S3QuerySynthesizer;
+import ninja.queries.S3QueryProcessor;
 import org.asynchttpclient.BoundRequestBuilder;
 import sirius.kernel.async.CallContext;
 import sirius.kernel.commons.Callback;
@@ -188,8 +188,10 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
-        if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, "uploads")) {
-            forwardQueryToSynthesizer(webContext, request);
+        if (Strings.isFilled(request.query)
+            && !Strings.areEqual(request.query, "uploads")
+            && !Strings.areEqual(request.query, "delete")) {
+            forwardQueryToProcessor(webContext, request);
             return null;
         }
 
@@ -226,7 +228,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isFilled(request.query)) {
-            forwardQueryToSynthesizer(webContext, request);
+            forwardQueryToProcessor(webContext, request);
             return DispatchDecision.DONE;
         }
 
@@ -314,7 +316,7 @@ public class S3Dispatcher implements WebDispatcher {
         return request;
     }
 
-    private void forwardQueryToSynthesizer(WebContext webContext, S3Request request) {
+    private void forwardQueryToProcessor(WebContext webContext, S3Request request) {
         Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists()) {
             errorSynthesizer.synthesiseError(webContext,
@@ -325,9 +327,9 @@ public class S3Dispatcher implements WebDispatcher {
             return;
         }
 
-        S3QuerySynthesizer synthesizer = globalContext.getPart(request.query, S3QuerySynthesizer.class);
-        if (synthesizer != null) {
-            synthesizer.processQuery(webContext, bucket, request.key, request.query);
+        S3QueryProcessor processor = globalContext.getPart(request.query, S3QueryProcessor.class);
+        if (processor != null) {
+            processor.processQuery(webContext, bucket, request.key, request.query);
         } else {
             Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
             errorSynthesizer.synthesiseError(webContext,

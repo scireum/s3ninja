@@ -15,17 +15,17 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * Permits to synthesize responses to <em>S3</em> queries such as {@code /bucket?location}.
+ * Permits to process <em>S3</em> queries such as {@code /bucket?location}.
  */
-public interface S3QuerySynthesizer {
+public interface S3QueryProcessor {
 
     /**
-     * Synthesizes a response for the given query.
+     * Processes the given query.
      *
-     * @param webContext the request to process.
-     * @param bucket     the requested bucket, potentially <b>null</b>.
-     * @param key        the requested object's key, potentially <b>null</b>.
-     * @param query      the query string.
+     * @param webContext the request to process
+     * @param bucket     the requested bucket, potentially <b>null</b>
+     * @param key        the requested object's key, potentially <b>null</b>
+     * @param query      the query string
      */
     void processQuery(@Nonnull WebContext webContext,
                       @Nullable Bucket bucket,

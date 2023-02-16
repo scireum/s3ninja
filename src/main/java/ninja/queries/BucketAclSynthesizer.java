@@ -20,7 +20,7 @@ import javax.annotation.Nullable;
  * Synthesizes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl">bucket acl</a> responses.
  */
 @Register(name = "acl")
-public class BucketAclSynthesizer implements S3QuerySynthesizer {
+public class BucketAclSynthesizer implements S3QueryProcessor {
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,

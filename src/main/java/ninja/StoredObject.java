@@ -83,7 +83,7 @@ public class StoredObject {
      */
     public static String decodeKey(String key) {
         try {
-            return URLDecoder.decode(key, StandardCharsets.UTF_8.name());
+            return URLDecoder.decode(key, StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw Exceptions.handle(Storage.LOG, e);
         }

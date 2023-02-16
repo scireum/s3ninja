@@ -9,6 +9,7 @@
 import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
+import com.amazonaws.services.s3.model.DeleteObjectsRequest
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
@@ -351,5 +352,30 @@ abstract class BaseAWSSpec extends BaseSpecification {
         content == "Test"
         and:
         downloadedData == "Test"
+    }
+
+    // reported in https://github.com/scireum/s3ninja/issues/181
+    def "Bulk delete using DeleteObjectCommand works as expected"() {
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key1 = DEFAULT_KEY + "/Eins"
+        def key2 = DEFAULT_KEY + "/Zwei"
+        def client = getClient()
+        when:
+        client.putObject(
+                bucketName,
+                key1,
+                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key2,
+                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2));
+        client.getObject(bucketName, key1)
+        then:
+        AmazonS3Exception e = thrown()
+        e.statusCode == 404
     }
 }

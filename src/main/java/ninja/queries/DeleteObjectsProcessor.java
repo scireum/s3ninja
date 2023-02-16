@@ -25,7 +25,7 @@ import java.io.IOException;
  * Processes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html">delete object</a> requests.
  */
 @Register(name = "delete")
-public class DeleteObjectsProcessor implements S3QuerySynthesizer {
+public class DeleteObjectsProcessor implements S3QueryProcessor {
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,

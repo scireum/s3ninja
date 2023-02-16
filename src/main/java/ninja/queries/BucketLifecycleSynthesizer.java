@@ -23,7 +23,7 @@ import javax.annotation.Nullable;
  * responses.
  */
 @Register(name = "lifecycle")
-public class BucketLifecycleSynthesizer implements S3QuerySynthesizer {
+public class BucketLifecycleSynthesizer implements S3QueryProcessor {
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;

@@ -84,14 +84,18 @@ public class AwsUpstream {
      * @return client instance to upstream instance
      * @throws IllegalStateException if called when not configured
      */
-    public AmazonS3 fetchClient() throws IllegalStateException {
+    public AmazonS3 fetchClient() {
         if (client == null) {
             client = createAWSClient();
         }
         return client;
     }
 
-    private AmazonS3 createAWSClient() throws IllegalStateException {
+    /**
+     * @return client instance to upstream instance
+     * @throws IllegalStateException if called when not configured
+     */
+    private AmazonS3 createAWSClient() {
         if (!isConfigured()) {
             throw new IllegalStateException("Use of not configured instance");
         }
@@ -121,7 +125,7 @@ public class AwsUpstream {
      * @return an url which can be used to perform the matching request.
      * @throws IllegalStateException if called when not configured
      */
-    public URL generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) throws IllegalStateException {
+    public URL generateGetObjectURL(Bucket bucket, StoredObject object, boolean requestFile) {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket.getName(), object.getKey());
         if (requestFile) {
             request.setMethod(HttpMethod.GET);

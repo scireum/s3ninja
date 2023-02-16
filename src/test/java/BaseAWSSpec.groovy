@@ -111,6 +111,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         tm.download(bucketName, key, download).waitForCompletion()
         then:
         Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "PUT and then GET work as expected"() {
@@ -140,6 +142,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         content == "Test"
         and:
         downloadedData == "Test"
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "PUT and then LIST work as expected"() {
@@ -259,6 +263,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         then:
         content == "Test"
         userdata == "test123"
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     def "MultipartUpload and then DELETE work as expected"() {
@@ -318,6 +324,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
         then:
         downloadedData == content
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/153
@@ -352,6 +360,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         content == "Test"
         and:
         downloadedData == "Test"
+        and:
+        client.deleteObject(bucketName, key)
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/181

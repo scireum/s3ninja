@@ -70,7 +70,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
-import java.util.stream.Collectors;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
 import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;

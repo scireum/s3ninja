@@ -168,14 +168,18 @@ public class Bucket {
     }
 
     /**
-     * Returns a list of at most the provided number of stored objects
+     * Sends a list of at most the provided number of stored objects using
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV1.html">V1</a> format.
      *
      * @param output the xml structured output the list of objects should be written to
      * @param limit  controls the maximum number of objects returned
      * @param marker the key to start with when listing objects in a bucket
      * @param prefix limits the response to keys that begin with the specified prefix
      */
-    public void outputObjects(XMLStructuredOutput output, int limit, @Nullable String marker, @Nullable String prefix) {
+    public void outputObjectsV1(XMLStructuredOutput output,
+                                int limit,
+                                @Nullable String marker,
+                                @Nullable String prefix) {
         ListFileTreeVisitor visitor = new ListFileTreeVisitor(output, limit, marker, prefix);
 
         output.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
@@ -189,6 +193,36 @@ public class Bucket {
             throw Exceptions.handle(e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
+        output.endOutput();
+    }
+
+    /**
+     * Sends a list of at most the provided number of stored objects using
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html">V2</a> format.
+     *
+     * @param output the xml structured output the list of objects should be written to
+     * @param limit  controls the maximum number of objects returned
+     * @param marker the key to start with when listing objects in a bucket
+     * @param prefix limits the response to keys that begin with the specified prefix
+     */
+    public void outputObjectsV2(XMLStructuredOutput output,
+                                int limit,
+                                @Nullable String marker,
+                                @Nullable String prefix) {
+        ListFileTreeVisitor visitor = new ListFileTreeVisitor(output, limit, marker, prefix);
+
+        output.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+        output.property("Name", getName());
+        output.property("MaxKeys", limit);
+        output.property("StartAfter", marker);
+        output.property("Prefix", prefix);
+        try {
+            walkFileTreeOurWay(folder.toPath(), visitor);
+        } catch (IOException e) {
+            throw Exceptions.handle(e);
+        }
+        output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
+        output.property("KeyCount", visitor.getCount());
         output.endOutput();
     }
 

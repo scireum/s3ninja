@@ -1,6 +1,7 @@
 <i:arg name="title" type="String" default=""/>
 <i:arg name="subtitle" type="String" default=""/>
 <i:arg name="notice" type="String" default=""/>
+
 <div class="row">
     <div class="col-md-8">
         <div class="header">

@@ -617,12 +617,23 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
-     * Handles GET /bucket
+     * Handles {@code GET /bucket} requests as triggered by
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html">{@code ListObjects}</a>
+     * and <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html">{@code ListObjectsV2}</a>
+     * calls.
      *
      * @param webContext the context describing the current request
      * @param bucket     the bucket of which the contents should be listed
      */
     private void listObjects(WebContext webContext, Bucket bucket) {
+        if (webContext.get("list-type").asInt(1) == 2) {
+            listObjectsV2(webContext, bucket);
+        } else {
+            listObjectsV1(webContext, bucket);
+        }
+    }
+
+    private void listObjectsV1(WebContext webContext, Bucket bucket) {
         int maxKeys = webContext.get("max-keys").asInt(1000);
         String marker = webContext.get("marker").asString();
         String prefix = webContext.get("prefix").asString();
@@ -630,7 +641,18 @@ public class S3Dispatcher implements WebDispatcher {
         Response response = webContext.respondWith();
         response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
-        bucket.outputObjects(response.xml(), maxKeys, marker, prefix);
+        bucket.outputObjectsV1(response.xml(), maxKeys, marker, prefix);
+    }
+
+    private void listObjectsV2(WebContext webContext, Bucket bucket) {
+        int maxKeys = webContext.get("max-keys").asInt(1000);
+        String marker = webContext.get("start-after").asString();
+        String prefix = webContext.get("prefix").asString();
+
+        Response response = webContext.respondWith();
+        response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
+
+        bucket.outputObjectsV2(response.xml(), maxKeys, marker, prefix);
     }
 
     /**

@@ -6,9 +6,10 @@
     <div class="row">
         <div class="col-md-12">
             <div class="well">
-                <p>Basically all object methods are supported. However no ACLs are checked. If the bucket is public,
+                <p>
+                    Basically all object methods are supported. However, no ACLs are checked. If the bucket is public,
                     everyone can access its contents.
-                    Otherwise a valid hash has to be provided as Authorization header. The hash will be checked as
+                    Otherwise, a valid hash has to be provided as Authorization header. The hash will be checked as
                     expected by amazon, but no multiline-headers are supported yet. (Multi-value headers are supported).
                 </p>
                 <legend>Supported Methods</legend>

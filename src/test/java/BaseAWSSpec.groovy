@@ -10,8 +10,8 @@ import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
-import com.amazonaws.services.s3.model.DeleteObjectsResult
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
+import com.amazonaws.services.s3.model.ListObjectsV2Request
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
@@ -389,18 +389,52 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 key3,
                 new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
                 new ObjectMetadata())
-        List<DeleteObjectsResult.DeletedObject> deletedObjects = client
-                .deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2)).getDeletedObjects()
+        def result = client.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2))
         then:
-        deletedObjects.size() == 2
-        deletedObjects.get(0).getKey() == key1
-        deletedObjects.get(1).getKey() == key2
+        result.getDeletedObjects().size() == 2
+        result.getDeletedObjects().get(0).getKey() == key1
+        result.getDeletedObjects().get(1).getKey() == key2
         and:
         def listing = client.listObjects(bucketName)
-        def summaries = listing.getObjectSummaries()
-        summaries.size() == 1
-        summaries.get(0).getKey() == key3
+        listing.getObjectSummaries().size() == 1
+        listing.getObjectSummaries().get(0).getKey() == key3
         and:
+        client.deleteObject(bucketName, key3)
+    }
+
+    // reported in https://github.com/scireum/s3ninja/issues/214
+    def "ListObjectsV2 works as expected"() {
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def key1 = DEFAULT_KEY + "/Eins"
+        def key2 = DEFAULT_KEY + "/Eins-Eins"
+        def key3 = DEFAULT_KEY + "/Drei"
+        def client = getClient()
+        when:
+        client.putObject(
+                bucketName,
+                key1,
+                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key2,
+                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        client.putObject(
+                bucketName,
+                key3,
+                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
+                new ObjectMetadata())
+        def result = client.listObjectsV2(new ListObjectsV2Request().withBucketName(bucketName).withPrefix(key1))
+        then:
+        result.getKeyCount() == 2
+        result.getObjectSummaries().size() == 2
+        result.getObjectSummaries().get(0).getKey() == key1
+        result.getObjectSummaries().get(1).getKey() == key2
+        and:
+        client.deleteObject(bucketName, key1)
+        client.deleteObject(bucketName, key2)
         client.deleteObject(bucketName, key3)
     }
 }

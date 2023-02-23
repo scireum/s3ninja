@@ -16,11 +16,11 @@ import com.amazonaws.services.s3.model.ListObjectsV2Request
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
-import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
 import com.google.common.io.Files
 import sirius.kernel.BaseSpecification
 
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -34,7 +34,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     private void putObjectWithContent(String bucketName, String key, String content) {
         def client = getClient()
-        def data = content.getBytes(Charsets.UTF_8)
+        def data = content.getBytes(StandardCharsets.UTF_8)
 
         def metadata = new ObjectMetadata()
         metadata.setHeader(Headers.CONTENT_LENGTH, new Long(data.length))
@@ -112,7 +112,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         File file = File.createTempFile("test", "")
         file.delete()
         for (int i = 0; i < 10000; i++) {
-            Files.append("This is a test.", file, Charsets.UTF_8)
+            Files.append("This is a test.", file, StandardCharsets.UTF_8)
         }
         and:
         def tm = TransferManagerBuilder.standard().withS3Client(client).build()
@@ -122,7 +122,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         download.deleteOnExit()
         tm.download(bucketName, key, download).waitForCompletion()
         then:
-        Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
+        Files.toString(file, StandardCharsets.UTF_8) == Files.toString(download, StandardCharsets.UTF_8)
         and:
         client.deleteObject(bucketName, key)
     }
@@ -140,12 +140,12 @@ abstract class BaseAWSSpec extends BaseSpecification {
         putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         and:
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         content == "Test"
         and:
@@ -230,7 +230,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 withMultipartUploadThreshold(1).
                 withMinimumUploadPartSize(1).build()
         def meta = new ObjectMetadata()
-        def message = "Test".getBytes(Charsets.UTF_8)
+        def message = "Test".getBytes(StandardCharsets.UTF_8)
         and:
         if (!client.doesBucketExist(bucketName)) {
             client.createBucket(bucketName)
@@ -242,7 +242,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         upload.waitForUploadResult()
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         def userdata = client.getObjectMetadata(bucketName, key).getUserMetaDataOf("userdata")
         then:
         content == "Test"
@@ -262,7 +262,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 withMultipartUploadThreshold(1).
                 withMinimumUploadPartSize(1).build()
         def meta = new ObjectMetadata()
-        def message = "Test".getBytes(Charsets.UTF_8)
+        def message = "Test".getBytes(StandardCharsets.UTF_8)
         and:
         if (!client.doesBucketExist(bucketName)) {
             client.createBucket(bucketName)
@@ -305,7 +305,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         downloadedData == content
         and:
@@ -326,7 +326,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         and:
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
                 .withExpiration(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
@@ -335,7 +335,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                                 .withContentDisposition("inline; filename=\"hello.txt\""))
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         content == "Test"
         and:

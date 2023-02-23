@@ -32,6 +32,16 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     abstract AmazonS3Client getClient()
 
+    private void putObjectWithContent(String bucketName, String key, String content) {
+        def client = getClient()
+        def data = content.getBytes(Charsets.UTF_8)
+
+        def metadata = new ObjectMetadata()
+        metadata.setHeader(Headers.CONTENT_LENGTH, new Long(data.length))
+
+        client.putObject(bucketName, key, new ByteArrayInputStream(data), metadata)
+    }
+
     def "HEAD of non-existing bucket as expected"() {
         given:
         def bucketName = "does-not-exist"
@@ -381,15 +391,5 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.deleteObject(bucketName, key1)
         client.deleteObject(bucketName, key2)
         client.deleteObject(bucketName, key3)
-    }
-
-    private void putObjectWithContent(String bucketName, String key, String content) {
-        def client = getClient()
-        def data = content.getBytes(Charsets.UTF_8)
-
-        def metadata = new ObjectMetadata()
-        metadata.setHeader(Headers.CONTENT_LENGTH, new Long(data.length))
-
-        client.putObject(bucketName, key, new ByteArrayInputStream(data), metadata)
     }
 }

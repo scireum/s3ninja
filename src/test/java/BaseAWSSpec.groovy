@@ -8,6 +8,7 @@
 
 import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
+import com.amazonaws.services.s3.Headers
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
@@ -126,11 +127,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
                 Charsets.UTF_8)
@@ -159,16 +156,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         client.createBucket(bucketName)
         and:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
         then:
         def listing = client.listObjects(bucketName)
         def summaries = listing.getObjectSummaries()
@@ -191,21 +180,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         client.createBucket(bucketName)
         and:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         then:
         def listing = client.listObjects(bucketName, DEFAULT_KEY + '/')
         def summaries = listing.getObjectSummaries()
@@ -224,11 +201,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         client.deleteBucket(bucketName)
         client.getObject(bucketName, key)
         then:
@@ -340,11 +313,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
                 Charsets.UTF_8)
@@ -374,21 +343,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def key3 = DEFAULT_KEY + "/Drei"
         def client = getClient()
         when:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         def result = client.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2))
         then:
         result.getDeletedObjects().size() == 2
@@ -411,21 +368,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def key3 = DEFAULT_KEY + "/Drei"
         def client = getClient()
         when:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         def result = client.listObjectsV2(new ListObjectsV2Request().withBucketName(bucketName).withPrefix(key1))
         then:
         result.getKeyCount() == 2
@@ -436,5 +381,15 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.deleteObject(bucketName, key1)
         client.deleteObject(bucketName, key2)
         client.deleteObject(bucketName, key3)
+    }
+
+    private void putObjectWithContent(String bucketName, String key, String content) {
+        def client = getClient()
+        def data = content.getBytes(Charsets.UTF_8)
+
+        def metadata = new ObjectMetadata()
+        metadata.setHeader(Headers.CONTENT_LENGTH, new Long(data.length))
+
+        client.putObject(bucketName, key, new ByteArrayInputStream(data), metadata)
     }
 }

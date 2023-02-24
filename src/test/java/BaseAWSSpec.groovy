@@ -32,6 +32,18 @@ abstract class BaseAWSSpec extends BaseSpecification {
 
     abstract AmazonS3Client getClient()
 
+    private void createPubliclyAccessibleBucket(String bucketName) {
+        def client = getClient()
+        client.createBucket(bucketName)
+
+        // we make the bucket now public via our own endpoint; note that this is not proper S3 code
+        // where you would use ACLs that we do not support in S3 Ninja
+        def url = new URL("http://localhost:9999/ui/" + bucketName + "/?make-public")
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+        connection.getResponseCode() == 200
+        connection.disconnect();
+    }
+
     private void putObjectWithContent(String bucketName, String key, String content) {
         def client = getClient()
         def data = content.getBytes(StandardCharsets.UTF_8)

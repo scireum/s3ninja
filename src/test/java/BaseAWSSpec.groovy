@@ -404,4 +404,26 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.deleteObject(bucketName, key2)
         client.deleteObject(bucketName, key3)
     }
+
+    // reported in https://github.com/scireum/s3ninja/issues/209
+    def "HEAD reports content length correctly"() {
+        given:
+        def bucketName = "public-bucket"
+        def key = "simple_test"
+        def content = "I am pointless text content"
+        def client = getClient()
+        when:
+        createPubliclyAccessibleBucket(bucketName)
+        putObjectWithContent(bucketName, key, content)
+        then:
+        def url = new URL("http://localhost:9999/" + bucketName + "/" + key)
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+        connection.setRequestMethod("HEAD")
+        connection.getResponseCode() == 200
+        connection.getContentLengthLong() == content.getBytes(StandardCharsets.UTF_8).length
+        connection.disconnect()
+        and:
+        client.deleteObject(bucketName, key)
+        client.deleteBucket(bucketName)
+    }
 }

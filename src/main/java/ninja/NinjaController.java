@@ -296,7 +296,7 @@ public class NinjaController extends BasicController {
             return;
         }
 
-        Response response = webContext.respondWith();
+        Response response = webContext.respondWith().named(object.getKey());
         for (Map.Entry<String, String> entry : object.getProperties().entrySet()) {
             response.addHeader(entry.getKey(), entry.getValue());
         }

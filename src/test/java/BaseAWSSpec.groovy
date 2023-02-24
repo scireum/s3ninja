@@ -8,6 +8,7 @@
 
 import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
+import com.amazonaws.services.s3.Headers
 import com.amazonaws.services.s3.model.AmazonS3Exception
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
@@ -15,11 +16,11 @@ import com.amazonaws.services.s3.model.ListObjectsV2Request
 import com.amazonaws.services.s3.model.ObjectMetadata
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
-import com.google.common.base.Charsets
 import com.google.common.io.ByteStreams
 import com.google.common.io.Files
 import sirius.kernel.BaseSpecification
 
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -30,6 +31,28 @@ abstract class BaseAWSSpec extends BaseSpecification {
     def DEFAULT_KEY = "key/with/slashes and spaces 😇"
 
     abstract AmazonS3Client getClient()
+
+    private void createPubliclyAccessibleBucket(String bucketName) {
+        def client = getClient()
+        client.createBucket(bucketName)
+
+        // we make the bucket now public via our own endpoint; note that this is not proper S3 code
+        // where you would use ACLs that we do not support in S3 Ninja
+        def url = new URL("http://localhost:9999/ui/" + bucketName + "/?make-public")
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+        connection.getResponseCode() == 200
+        connection.disconnect();
+    }
+
+    private void putObjectWithContent(String bucketName, String key, String content) {
+        def client = getClient()
+        def data = content.getBytes(StandardCharsets.UTF_8)
+
+        def metadata = new ObjectMetadata()
+        metadata.setHeader(Headers.CONTENT_LENGTH, new Long(data.length))
+
+        client.putObject(bucketName, key, new ByteArrayInputStream(data), metadata)
+    }
 
     def "HEAD of non-existing bucket as expected"() {
         given:
@@ -101,7 +124,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         File file = File.createTempFile("test", "")
         file.delete()
         for (int i = 0; i < 10000; i++) {
-            Files.append("This is a test.", file, Charsets.UTF_8)
+            Files.append("This is a test.", file, StandardCharsets.UTF_8)
         }
         and:
         def tm = TransferManagerBuilder.standard().withS3Client(client).build()
@@ -111,7 +134,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         download.deleteOnExit()
         tm.download(bucketName, key, download).waitForCompletion()
         then:
-        Files.toString(file, Charsets.UTF_8) == Files.toString(download, Charsets.UTF_8)
+        Files.toString(file, StandardCharsets.UTF_8) == Files.toString(download, StandardCharsets.UTF_8)
         and:
         client.deleteObject(bucketName, key)
     }
@@ -126,19 +149,15 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         and:
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         content == "Test"
         and:
@@ -159,16 +178,8 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         client.createBucket(bucketName)
         and:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
         then:
         def listing = client.listObjects(bucketName)
         def summaries = listing.getObjectSummaries()
@@ -191,21 +202,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
         client.createBucket(bucketName)
         and:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         then:
         def listing = client.listObjects(bucketName, DEFAULT_KEY + '/')
         def summaries = listing.getObjectSummaries()
@@ -224,11 +223,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         client.deleteBucket(bucketName)
         client.getObject(bucketName, key)
         then:
@@ -247,7 +242,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 withMultipartUploadThreshold(1).
                 withMinimumUploadPartSize(1).build()
         def meta = new ObjectMetadata()
-        def message = "Test".getBytes(Charsets.UTF_8)
+        def message = "Test".getBytes(StandardCharsets.UTF_8)
         and:
         if (!client.doesBucketExist(bucketName)) {
             client.createBucket(bucketName)
@@ -259,7 +254,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         upload.waitForUploadResult()
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         def userdata = client.getObjectMetadata(bucketName, key).getUserMetaDataOf("userdata")
         then:
         content == "Test"
@@ -279,7 +274,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                 withMultipartUploadThreshold(1).
                 withMinimumUploadPartSize(1).build()
         def meta = new ObjectMetadata()
-        def message = "Test".getBytes(Charsets.UTF_8)
+        def message = "Test".getBytes(StandardCharsets.UTF_8)
         and:
         if (!client.doesBucketExist(bucketName)) {
             client.createBucket(bucketName)
@@ -322,7 +317,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         downloadedData == content
         and:
@@ -340,14 +335,10 @@ abstract class BaseAWSSpec extends BaseSpecification {
             client.createBucket(bucketName)
         }
         and:
-        client.putObject(
-                bucketName,
-                key,
-                new ByteArrayInputStream("Test".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key, "Test")
         def content = new String(
                 ByteStreams.toByteArray(client.getObject(bucketName, key).getObjectContent()),
-                Charsets.UTF_8)
+                StandardCharsets.UTF_8)
         and:
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, key)
                 .withExpiration(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
@@ -356,7 +347,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
                                 .withContentDisposition("inline; filename=\"hello.txt\""))
         URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
         and:
-        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), Charsets.UTF_8)
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
         then:
         content == "Test"
         and:
@@ -374,21 +365,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def key3 = DEFAULT_KEY + "/Drei"
         def client = getClient()
         when:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         def result = client.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(key1, key2))
         then:
         result.getDeletedObjects().size() == 2
@@ -411,21 +390,9 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def key3 = DEFAULT_KEY + "/Drei"
         def client = getClient()
         when:
-        client.putObject(
-                bucketName,
-                key1,
-                new ByteArrayInputStream("Eins".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key2,
-                new ByteArrayInputStream("Zwei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
-        client.putObject(
-                bucketName,
-                key3,
-                new ByteArrayInputStream("Drei".getBytes(Charsets.UTF_8)),
-                new ObjectMetadata())
+        putObjectWithContent(bucketName, key1, "Eins")
+        putObjectWithContent(bucketName, key2, "Zwei")
+        putObjectWithContent(bucketName, key3, "Drei")
         def result = client.listObjectsV2(new ListObjectsV2Request().withBucketName(bucketName).withPrefix(key1))
         then:
         result.getKeyCount() == 2
@@ -436,5 +403,27 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.deleteObject(bucketName, key1)
         client.deleteObject(bucketName, key2)
         client.deleteObject(bucketName, key3)
+    }
+
+    // reported in https://github.com/scireum/s3ninja/issues/209
+    def "HEAD reports content length correctly"() {
+        given:
+        def bucketName = "public-bucket"
+        def key = "simple_test"
+        def content = "I am pointless text content"
+        def client = getClient()
+        when:
+        createPubliclyAccessibleBucket(bucketName)
+        putObjectWithContent(bucketName, key, content)
+        then:
+        def url = new URL("http://localhost:9999/" + bucketName + "/" + key)
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+        connection.setRequestMethod("HEAD")
+        connection.getResponseCode() == 200
+        connection.getContentLengthLong() == content.getBytes(StandardCharsets.UTF_8).length
+        connection.disconnect()
+        and:
+        client.deleteObject(bucketName, key)
+        client.deleteBucket(bucketName)
     }
 }

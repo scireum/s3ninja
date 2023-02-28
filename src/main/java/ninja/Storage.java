@@ -104,6 +104,8 @@ public class Storage {
             }
         }
 
+        result.sort((bucket1, bucket2) -> bucket1.getName().compareToIgnoreCase(bucket2.getName()));
+
         return result;
     }
 

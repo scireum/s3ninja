@@ -7,7 +7,7 @@
   ~ http://www.scireum.de - info@scireum.de
   -->
 
-<html>
+<html lang="en">
 <head>
     <title>S3 Ninja</title>
     <link rel="stylesheet" media="screen" href="assets/bootstrap/bootstrap.min.css">
@@ -40,29 +40,50 @@
         <div class="span4">
             <div class="jumbotron" style="text-align: center">
                 <a href="/">
-                    <img src="assets/images/ninja.jpg" border="0"/>
+                    <img src="assets/images/ninja.jpg" alt=""/>
                 </a>
             </div>
         </div>
         <div class="span8">
             <div class="jumbotron">
                 <h1>S3 ninja</h1>
-                <p class="lead">S3 ninja emulates the S3 API for development and testing purposes.</p>
+                <p class="lead">
+                    S3 ninja emulates the S3 API for development and testing purposes.
+                </p>
                 <a href="https://hub.docker.com/r/scireum/s3-ninja/" class="btn btn-large btn-success">Download</a>
                 <a href="https://github.com/scireum/s3ninja" target="_blank" class="btn btn-large">Contribute</a>
             </div>
             <legend>Screenshot</legend>
             <ul class="thumbnails">
-                <li><a href="assets/images/screenie.png" target="_blank" class="thumbnail"><img src="assets/images/screenie_min.jpg" /></a></li>
+                <li>
+                    <a href="assets/images/screenie.png" target="_blank" class="thumbnail">
+                        <img src="assets/images/screenie_min.jpg" alt=""/>
+                    </a>
+                </li>
             </ul>
             <legend>Use</legend>
             <div class="well">
                 <ol>
-                    <li>A readily packaged docker image is available at <a href="https://hub.docker.com/r/scireum/s3-ninja/">scireum/s3-ninja</a></li>
-                    <li>Run like <b>docker run -p 9444:9000 scireum/s3-ninja:latest</b></li>
-                    <li>Navigate to <a href="http://localhost:9444/ui" target="_blank">http://localhost:9444/ui</a></li>
-                    <li>Run S3 API-Calls against <b>http://localhost:9444/</b> (e.g. http://localhost:9444/test-bucket/test-object)</li>
-                    <li>Provide an volume for <b>/home/sirius/data</b> to persist data accross restarts.<br/>S3Ninja runs as user id 2000 inside the container. If you link a existing directory into your container, change the user/group id to 2000.</li>
+                    <li>
+                        A readily packaged docker image is available at <a
+                            href="https://hub.docker.com/r/scireum/s3-ninja/">scireum/s3-ninja</a>
+                    </li>
+                    <li>
+                        Run like <b>docker run -p 9444:9000 scireum/s3-ninja:latest</b>
+                    </li>
+                    <li>
+                        Navigate to <a href="http://localhost:9444/ui" target="_blank">http://localhost:9444/ui</a>
+                    </li>
+                    <li>
+                        Run S3 API-Calls against <b>http://localhost:9444/</b> (e.g.
+                        http://localhost:9444/test-bucket/test-object)
+                    </li>
+                    <li>
+                        Provide an volume for <b>/home/sirius/data</b> to persist data across restarts.
+                        <br/>
+                        S3Ninja runs as user id 2000 inside the container. If you link an existing directory into your
+                        container, change the user/group id to 2000.
+                    </li>
                 </ol>
             </div>
             <legend>API</legend>
@@ -105,9 +126,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <div class="container">
     <hr style="margin-bottom: 0px"/>
     <div class="pull-left">
-        <small class="muted">S3 ninja is made with all the love in the world by <a href="http://www.scireum.de"
-                                                                                   target="_blank">scireum</a> in
-            Remshalden
+        <small class="muted">
+            S3 ninja is made with all the love in the world by <a href="http://www.scireum.de"
+                                                                  target="_blank">scireum</a> in Remshalden
         </small>
     </div>
     <div class="pull-right">

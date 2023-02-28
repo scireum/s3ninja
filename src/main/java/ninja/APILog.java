@@ -108,13 +108,13 @@ public class APILog {
          */
         public String getCSS() {
             if ("ERROR".equals(result)) {
-                return "error";
+                return "sci-left-border-red";
             }
             if ("REJECTED".equals(result)) {
-                return "warning";
+                return "sci-left-border-yellow";
             }
 
-            return "";
+            return "sci-left-border-gray";
         }
     }
 

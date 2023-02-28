@@ -1,20 +1,31 @@
-<i:arg name="entries" type="List"/>
-<i:arg name="canPagePrev" type="boolean"/>
-<i:arg name="canPageNext" type="boolean"/>
-<i:arg name="range" type="String"/>
-<i:arg name="prevStart" type="int"/>
-<i:arg name="nextStart" type="int"/>
+<i:arg name="entries"
+       type="List"/>
+<i:arg name="canPagePrev"
+       type="boolean"/>
+<i:arg name="canPageNext"
+       type="boolean"/>
+<i:arg name="range"
+       type="String"/>
+<i:arg name="prevStart"
+       type="int"/>
+<i:arg name="nextStart"
+       type="int"/>
 
-<w:page title="Access Logs">
-    <i:block name="breadcrumbBar"/>
+<t:page title="Access Logs">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="/ui?log">Access Logs</a>
+        </li>
+    </i:block>
 
-    <i:invoke template="/templates/header.html.pasta" title="Access Logs"
+    <i:invoke template="/templates/header.html.pasta"
+              title="Access Logs"
               subtitle="All API calls are listed here."
               notice="Note that this log is stored in memory and will be cleared once the server restarts."/>
 
     <div class="row">
         <div class="col-md-12">
-            <w:table data="entries">
+            <table class="table w-100">
                 <thead>
                 <tr>
                     <th>Function</th>
@@ -23,41 +34,58 @@
                 </tr>
                 </thead>
                 <tbody>
-                <i:for type="ninja.APILog$Entry" var="entry" items="entries">
+                <i:for type="ninja.APILog$Entry"
+                       var="entry"
+                       items="entries">
                     <tr class="@entry.getCSS()">
-                        <td class="col-md-2">@entry.getFunction()<br/><span class="muted">@entry.getTod()</span></td>
-                        <td>@entry.getDescription()</td>
-                        <td class="col-md-2">@entry.getResult()<br/><span class="muted">@entry.getDuration()</span></td>
+                        <td style="width: 20vw;">
+                            @entry.getFunction()
+                            <br/>
+                            <span class="text-muted small">@entry.getTod()</span>
+                        </td>
+                        <td style="width: 60vw;">
+                            @entry.getDescription()
+                        </td>
+                        <td style="width: 20vw;">
+                            @entry.getResult()
+                            <br/>
+                            <span class="text-muted small">@entry.getDuration()</span>
+                        </td>
                     </tr>
                 </i:for>
                 </tbody>
-            </w:table>
+            </table>
         </div>
         <i:if test="!entries.isEmpty()">
-            <nav class="text-center">
-                <ul class="pagination">
+            <div class="input-group justify-content-center mb-4">
+                <div class="input-group-prepend">
                     <i:if test="canPagePrev">
-                        <li><a href="/ui?log&start=@prevStart">&#8592;</a></li>
+                        <a class="btn btn-outline-secondary"
+                           href="/ui?log&start=@prevStart">&#8592;</a>
                         <i:else>
-                            <li class="disabled"><span>&#8592;</span></li>
+                            <a class="btn btn-outline-secondary disabled">&#8592;</a>
                         </i:else>
                     </i:if>
-                    <li><span>@range</span></li>
+                </div>
+                <div class="input-group-text"
+                     style="background: none">@range</div>
+                <div class="input-group-append">
                     <i:if test="canPageNext">
-                        <li><a href="/ui?log&start=@nextStart">&#8594;</a></li>
+                        <a class="btn btn-outline-secondary"
+                           href="/ui?log&start=@nextStart">&#8594;</a>
                         <i:else>
-                            <li class="disabled"><span>&#8594;</span></li>
+                            <a class="btn btn-outline-secondary disabled">&#8594;</a>
                         </i:else>
                     </i:if>
-                </ul>
-            </nav>
+                </div>
+            </div>
         </i:if>
     </div>
 
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>
     </i:block>
-</w:page>
+</t:page>
 
 
 

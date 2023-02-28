@@ -1,11 +1,12 @@
 <div class="footer">
-    <div class="container">
-        <div class="pull-left">
-            <small>@sirius.kernel.info.Product.getProduct().getName() is made with all the love in the world by <a
-                    href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden
+    <div class="container-fluid d-flex justify-content-between">
+        <div>
+            <small>
+                @sirius.kernel.info.Product.getProduct().getName() is made with all the love in the world by
+                <a href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden
             </small>
         </div>
-        <div class="pull-right" style="text-align: right">
+        <div class="text-right">
             <small>@sirius.kernel.info.Product.getProduct().getDetails()</small>
         </div>
     </div>

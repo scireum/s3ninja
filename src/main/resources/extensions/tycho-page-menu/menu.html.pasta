@@ -1,0 +1,14 @@
+<i:arg type="String" name="point"/>
+<i:pragma name="priority" value="10"/>
+
+<i:switch test="@point">
+    <i:block name="left">
+        <t:menuItem label="Home" url="/ui" />
+        <t:menuItem label="Access Logs" url="/ui?log" />
+        <t:menuItem label="License" url="/ui?license" />
+        <t:menuItem label="Supported API" url="/ui?api"/>
+    </i:block>
+    <i:block name="right">
+        <t:menuItem label="F**k me on GitHub" url="https://github.com/scireum/s3ninja" />
+    </i:block>
+</i:switch>

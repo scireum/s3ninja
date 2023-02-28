@@ -1,16 +1,21 @@
-<w:page title="Supported API">
-    <i:block name="breadcrumbBar"/>
+<t:page title="Supported API">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="/ui?api">Supported API</a>
+        </li>
+    </i:block>
 
-    <i:invoke template="/templates/header.html.pasta" title="Supported API"/>
+    <i:invoke template="/templates/header.html.pasta"
+              title="Supported API"/>
 
     <div class="row">
         <div class="col-md-12">
-            <div class="well">
+            <div>
                 <p>
                     Basically all object methods are supported. However, no ACLs are checked. If the bucket is public,
                     everyone can access its contents.
                     Otherwise, a valid hash has to be provided as Authorization header. The hash will be checked as
-                    expected by amazon, but no multiline-headers are supported yet. (Multi-value headers are supported).
+                    expected by amazon, but no multiline-headers are supported yet. (Multi-value headers are supported.)
                 </p>
                 <legend>Supported Methods</legend>
                 <ul>
@@ -38,4 +43,4 @@
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>
     </i:block>
-</w:page>
+</t:page>

@@ -1,11 +1,16 @@
-<w:page title="License">
-    <i:block name="breadcrumbBar"/>
+<t:page title="License">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="/ui?license">License</a>
+        </li>
+    </i:block>
 
-    <i:invoke template="/templates/header.html.pasta" title="License"/>
+    <i:invoke template="/templates/header.html.pasta"
+              title="License"/>
 
     <div class="row">
         <div class="col-md-12">
-        <pre class="well">
+        <pre>
 The MIT License (MIT)
 
 Copyright (c) 2013 scireum GmbH
@@ -33,4 +38,4 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>
     </i:block>
-</w:page>
+</t:page>

@@ -1,58 +1,90 @@
-<i:arg name="bucket" type="ninja.Bucket"/>
-<i:arg name="page" type="Page"/>
+<i:arg name="bucket"
+       type="ninja.Bucket"/>
+<i:arg name="page"
+       type="Page"/>
 
-<w:page title="@bucket.getName()">
-    <i:block name="breadcrumbBar"/>
+<t:page title="@bucket.getName()">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="@apply('/ui/%s', bucket.getEncodedName())">@bucket.getName()</a>
+        </li>
+    </i:block>
 
     <i:invoke template="/templates/header.html.pasta"
               title="@bucket.getName()"
               subtitle="Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone."/>
 
-
     <div class="row">
         <div class="col-md-4">
-            <div class="well">
-                <w:fileUpload uploadUrl="@apply('/ui/%s?upload', bucket.getEncodedName())"/>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <i:if test="bucket.isPrivate()">
+                        <a class="btn btn-success w-100"
+                           href="/ui/@bucket.getEncodedName()?make-public">
+                            <i class="fa-solid fa-lock-open"></i>
+                            Make Public
+                        </a>
+                        <i:else>
+                            <a class="btn btn-danger w-100"
+                               href="/ui/@bucket.getEncodedName()?make-private">
+                                <i class="fa-solid fa-lock"></i>
+                                Make Private
+                            </a>
+                        </i:else>
+                    </i:if>
+                </div>
+            </div>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <t:fileUpload btnClass="btn-secondary w-100"
+                                  uploadUrl="@apply('/ui/%s?upload', bucket.getEncodedName())"/>
+                    <div class="text-muted text-small">
+                        Drag files onto the button to upload them.
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-md-8">
-            <w:tableSearchHeader page="@page" baseUrl="@apply('/ui/%s', bucket.getEncodedName())">
-                <i:if test="bucket.isPrivate()">
-                    <a class="btn btn-success" href="/ui/@bucket.getEncodedName()?make-public">Make Public</a>
-                    <i:else>
-                        <a class="btn btn-danger" href="/ui/@bucket.getEncodedName()?make-private">Make Private</a>
-                    </i:else>
-                </i:if>
-            </w:tableSearchHeader>
+            <t:searchHeader page="@page"
+                            baseUrl="@apply('/ui/%s', bucket.getEncodedName())"></t:searchHeader>
 
-            <w:table data="page">
-                <thead>
-                <tr>
-                    <th>Object</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                <i:for type="ninja.StoredObject" var="obj" items="page.getItems()">
-                    <tr>
-                        <td>
-                            <a class="link" href="/ui/@bucket.getEncodedName()/@obj.getEncodedKey()">@obj.getKey()</a><br/>
-                            <span class="muted">@obj.getSize()</span>
-                            <span class="muted pull-right">@obj.getLastModified()</span>
-                        </td>
-                        <td class="align-center col-md-2">
-                            <w:deleteLink url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
-                        </td>
-                    </tr>
-                </i:for>
-                </tbody>
-            </w:table>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th>Object</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <i:for type="ninja.StoredObject"
+                               var="obj"
+                               items="page.getItems()">
+                            <tr>
+                                <td>
+                                    <a class="link"
+                                       href="/ui/@bucket.getEncodedName()/@obj.getEncodedKey()">@obj.getKey()</a><br/>
+                                    <div class="text-muted small">@obj.getSize()</div>
+                                    <div class="text-muted small">@obj.getLastModified()</div>
+                                </td>
+                                <td class="text-right pr-0">
+                                    <t:deleteButton
+                                            url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
+                                </td>
+                            </tr>
+                        </i:for>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-            <w:pagination page="@page" baseUrl="@apply('/ui/%s', bucket.getEncodedName())"/>
+            <t:pagination page="@page"
+                          baseUrl="@apply('/ui/%s', bucket.getEncodedName())"/>
         </div>
     </div>
 
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>
     </i:block>
-</w:page>
+</t:page>

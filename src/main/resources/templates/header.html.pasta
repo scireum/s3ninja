@@ -1,23 +1,37 @@
-<i:arg name="title" type="String" default=""/>
-<i:arg name="subtitle" type="String" default=""/>
-<i:arg name="notice" type="String" default=""/>
+<i:arg name="title"
+       type="String"
+       default=""/>
+<i:arg name="subtitle"
+       type="String"
+       default=""/>
+<i:arg name="notice"
+       type="String"
+       default=""/>
 
-<div class="row">
-    <div class="col-md-8">
-        <div class="header">
-            <h1>@title</h1>
-            <p class="lead">
-                @subtitle<br/>
-                <small style="font-size: 18px">@notice</small>
-            </p>
-            
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="text-center">
-            <a href="/" style="margin-top: 20px">
-                <img id="ninja" src="/assets/images/logo.png" border="0"/>
-            </a>
-        </div>
-    </div>
-</div>
+<div style="
+pointer-events: none;
+position: fixed;
+width: 100vw;
+height: 100vh;
+left: 0;
+top: 0;
+background-image: url(/assets/images/ninja.png);
+background-repeat: no-repeat;
+background-position: center;
+background-size: auto 80vh;
+opacity: 3%;
+"></div>
+
+<t:pageHeader title="@title">
+    <i:if test="isFilled(subtitle) || isFilled(notice)">
+    <p>
+        <i:if test="isFilled(subtitle)">
+            @subtitle
+        </i:if>
+        <i:if test="isFilled(notice)">
+            <br/>
+            <span class="text-muted small">@notice</span>
+        </i:if>
+    </p>
+    </i:if>
+</t:pageHeader>

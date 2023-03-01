@@ -36,6 +36,12 @@
                         </tr>
                         </thead>
                         <tbody>
+                        <i:if test="buckets.isEmpty()">
+                            <tr>
+                                <td colspan="3"
+                                    class="text-muted">(No entries)</td>
+                            </tr>
+                        </i:if>
                         <i:for type="ninja.APILog$Entry"
                                var="entry"
                                items="entries">

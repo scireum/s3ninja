@@ -143,6 +143,12 @@
                         </tr>
                         </thead>
                         <tbody>
+                        <i:if test="buckets.isEmpty()">
+                            <tr>
+                                <td colspan="2"
+                                    class="text-muted">(No buckets)</td>
+                            </tr>
+                        </i:if>
                         <i:for type="ninja.Bucket"
                                var="bucket"
                                items="buckets">

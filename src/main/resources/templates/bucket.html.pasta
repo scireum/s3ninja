@@ -58,6 +58,12 @@
                         </tr>
                         </thead>
                         <tbody>
+                        <i:if test="page.getItems().isEmpty()">
+                            <tr>
+                                <td colspan="2"
+                                    class="text-muted">(No objects in bucket)</td>
+                            </tr>
+                        </i:if>
                         <i:for type="ninja.StoredObject"
                                var="obj"
                                items="page.getItems()">

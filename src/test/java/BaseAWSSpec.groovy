@@ -10,6 +10,8 @@ import com.amazonaws.HttpMethod
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.Headers
 import com.amazonaws.services.s3.model.AmazonS3Exception
+import com.amazonaws.services.s3.model.CannedAccessControlList
+import com.amazonaws.services.s3.model.CreateBucketRequest
 import com.amazonaws.services.s3.model.DeleteObjectsRequest
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
 import com.amazonaws.services.s3.model.ListObjectsV2Request
@@ -31,18 +33,6 @@ abstract class BaseAWSSpec extends BaseSpecification {
     def DEFAULT_KEY = "key/with/slashes and spaces 😇"
 
     abstract AmazonS3Client getClient()
-
-    private void createPubliclyAccessibleBucket(String bucketName) {
-        def client = getClient()
-        client.createBucket(bucketName)
-
-        // we make the bucket now public via our own endpoint; note that this is not proper S3 code
-        // where you would use ACLs that we do not support in S3 Ninja
-        def url = new URL("http://localhost:9999/ui/" + bucketName + "/?make-public")
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
-        connection.getResponseCode() == 200
-        connection.disconnect();
-    }
 
     private void putObjectWithContent(String bucketName, String key, String content) {
         def client = getClient()
@@ -413,7 +403,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         def content = "I am pointless text content"
         def client = getClient()
         when:
-        createPubliclyAccessibleBucket(bucketName)
+        client.createBucket(new CreateBucketRequest(bucketName).withCannedAcl(CannedAccessControlList.PublicReadWrite))
         putObjectWithContent(bucketName, key, content)
         then:
         def url = new URL("http://localhost:9999/" + bucketName + "/" + key)

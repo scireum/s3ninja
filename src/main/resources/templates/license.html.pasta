@@ -10,7 +10,9 @@
 
     <div class="row">
         <div class="col-md-12">
-        <pre>
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <pre class="mb-0">
 The MIT License (MIT)
 
 Copyright (c) 2023 scireum GmbH
@@ -30,8 +32,9 @@ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
 FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-</pre>
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre>
+                </div>
+            </div>
         </div>
     </div>
 

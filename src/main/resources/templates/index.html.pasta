@@ -146,12 +146,15 @@
                         <i:for type="ninja.Bucket"
                                var="bucket"
                                items="buckets">
-                            <tr class="@if(bucket.isPrivate()) { sci-left-border-red } else { sci-left-border-gray }">
+                            <tr class="@if(bucket.isPrivate()) { sci-left-border-red } else { sci-left-border-green }">
                                 <td>
-                                    <a class="link"
+                                    <a class="@if(bucket.isPrivate()) { sci-text-red } else { sci-text-green }"
                                        href="/ui/@bucket.getEncodedName()">@bucket.getName()</a><br>
                                     <i:if test="bucket.isPrivate()">
                                         <small class="text-muted small">private</small>
+                                        <i:else>
+                                            <small class="text-muted small">public</small>
+                                        </i:else>
                                     </i:if>
                                 </td>
                                 <td class="text-right pr-0">

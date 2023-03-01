@@ -16,7 +16,7 @@
     <url>http://s3ninja.net</url>
 
     <properties>
-        <sirius.kernel>dev-35.0.0</sirius.kernel>
+        <sirius.kernel>dev-35.0.1</sirius.kernel>
         <sirius.web>dev-64.0.1</sirius.web>
     </properties>
 

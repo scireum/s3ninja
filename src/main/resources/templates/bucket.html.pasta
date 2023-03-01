@@ -22,13 +22,13 @@
                         <a class="btn btn-success w-100"
                            href="/ui/@bucket.getEncodedName()?make-public">
                             <i class="fa-solid fa-lock-open"></i>
-                            Make Public
+                            <span class="pl-2">Make public</span>
                         </a>
                         <i:else>
                             <a class="btn btn-danger w-100"
                                href="/ui/@bucket.getEncodedName()?make-private">
                                 <i class="fa-solid fa-lock"></i>
-                                Make Private
+                                <span class="pl-2">Make private</span>
                             </a>
                         </i:else>
                     </i:if>

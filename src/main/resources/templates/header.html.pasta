@@ -21,14 +21,17 @@ background-position: center;
 background-size: auto 80vh;
 opacity: 3%;
 "></div>
-<div class="row">
-    <div class="col-md-12">
-        <div class="header">
-            <h1>@title</h1>
-            <p class="lead">
-                @subtitle<br/>
-                <small>@notice</small>
-            </p>
-        </div>
-    </div>
-</div>
+
+<t:pageHeader title="@title">
+    <i:if test="isFilled(subtitle) || isFilled(notice)">
+    <p>
+        <i:if test="isFilled(subtitle)">
+            @subtitle
+        </i:if>
+        <i:if test="isFilled(notice)">
+            <br/>
+            <span class="text-muted small">@notice</span>
+        </i:if>
+    </p>
+    </i:if>
+</t:pageHeader>

@@ -37,17 +37,17 @@
                 <i:for type="ninja.APILog$Entry"
                        var="entry"
                        items="entries">
-                    <tr class="@entry.getCSS()">
+                    <tr class="@entry.getStyleClass()">
                         <td style="width: 20vw;">
                             @entry.getFunction()
                             <br/>
-                            <span class="text-muted small">@entry.getTod()</span>
+                            <span class="text-muted small">@NLS.toUserString(entry.getTime())</span>
                         </td>
                         <td style="width: 60vw;">
                             @entry.getDescription()
                         </td>
                         <td style="width: 20vw;">
-                            @entry.getResult()
+                            @entry.getResult().name()
                             <br/>
                             <span class="text-muted small">@entry.getDuration()</span>
                         </td>

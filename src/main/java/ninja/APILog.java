@@ -18,9 +18,9 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Contains a log of the latest API calls
+ * Contains a log of the latest API calls.
  * <p>
- * The entries are stored in memory and will be lost during server restarts. Also, the site is limited to 250 entries.
+ * The entries are stored in memory and will be lost during server restarts. Also, the size is limited to 250 entries.
  * The newest entry will be the first in the list.
  */
 @Register(classes = APILog.class)
@@ -35,21 +35,21 @@ public class APILog {
      * Represents a log entry.
      */
     public static class Entry {
-        private final String tod = NLS.toUserString(LocalDateTime.now());
+        private final LocalDateTime time = LocalDateTime.now();
         private final String function;
         private final String description;
-        private final String result;
+        private final Result result;
         private final String duration;
 
         /**
          * Creates a new log entry.
          *
-         * @param function    name or method of the function which was invoked
-         * @param description description of the call
-         * @param result      outcome of the call
-         * @param duration    duration of the call
+         * @param function    the name of the method or function which was invoked
+         * @param description the description of the call
+         * @param result      the outcome of the call
+         * @param duration    the duration of the call
          */
-        protected Entry(String function, String description, String result, String duration) {
+        protected Entry(String function, String description, Result result, String duration) {
             this.function = function;
             this.description = description;
             this.result = result;
@@ -66,7 +66,7 @@ public class APILog {
         }
 
         /**
-         * Returns a description of the call
+         * Returns a description of the call.
          *
          * @return a short text describing the call
          */
@@ -75,16 +75,16 @@ public class APILog {
         }
 
         /**
-         * Returns the outcome (one of Result.name()) of the call
+         * Returns the outcome of the call.
          *
-         * @return a string describing if the call succeeded or why it failed.
+         * @return a string describing if the call succeeded or why it failed
          */
-        public String getResult() {
+        public Result getResult() {
             return result;
         }
 
         /**
-         * Returns the duration of the call
+         * Returns the duration of the call.
          *
          * @return a textual representation of the duration of the call
          */
@@ -93,24 +93,24 @@ public class APILog {
         }
 
         /**
-         * Returns a timestamp of the call
+         * Returns a timestamp of the call.
          *
-         * @return a string representation of the timestamp when the call was invoked.
+         * @return the timestamp when the call was invoked
          */
-        public String getTod() {
-            return tod;
+        public LocalDateTime getTime() {
+            return time;
         }
 
         /**
-         * Helper method which returns a bootstrap css class based on the result of the call
+         * Helper method which returns a css class based on the result of the call.
          *
-         * @return a css class used to represent the result of the call.
+         * @return a css class used to represent the result of the call
          */
-        public String getCSS() {
-            if ("ERROR".equals(result)) {
+        public String getStyleClass() {
+            if (Result.ERROR == result) {
                 return "sci-left-border-red";
             }
-            if ("REJECTED".equals(result)) {
+            if (Result.REJECTED == result) {
                 return "sci-left-border-yellow";
             }
 
@@ -125,7 +125,7 @@ public class APILog {
      *
      * @param start index of the item where to start
      * @param count max number of items returned
-     * @return a non null list of log entries
+     * @return a non-null list of log entries
      */
     public List<Entry> getEntries(int start, int count) {
         List<Entry> result = Lists.newArrayList();
@@ -156,7 +156,7 @@ public class APILog {
      */
     public void log(String function, String description, Result result, Watch watch) {
         synchronized (entries) {
-            entries.add(0, new Entry("OBJECT " + function, description, result.name(), watch.duration()));
+            entries.add(0, new Entry("OBJECT " + function, description, result, watch.duration()));
             if (entries.size() > 250) {
                 entries.remove(entries.size() - 1);
             }

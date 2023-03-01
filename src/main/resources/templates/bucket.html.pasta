@@ -10,9 +10,11 @@
         </li>
     </i:block>
 
-    <i:invoke template="/templates/header.html.pasta"
-              title="@bucket.getName()"
-              subtitle="Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone."/>
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="@bucket.getName()"
+                  subtitle="Private buckets can only be accessed using proper API keys. Public buckets can be accessed by anyone."/>
+    </i:block>
 
     <div class="row">
         <div class="col-md-4">
@@ -61,7 +63,8 @@
                         <i:if test="page.getItems().isEmpty()">
                             <tr>
                                 <td colspan="2"
-                                    class="text-muted">(No objects in bucket)</td>
+                                    class="text-muted">(No objects in bucket)
+                                </td>
                             </tr>
                         </i:if>
                         <i:for type="ninja.StoredObject"

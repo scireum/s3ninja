@@ -5,8 +5,10 @@
         </li>
     </i:block>
 
-    <i:invoke template="/templates/header.html.pasta"
-              title="License"/>
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="License"/>
+    </i:block>
 
     <div class="row">
         <div class="col-md-12">

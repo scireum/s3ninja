@@ -10,9 +10,11 @@
 <t:page title="Start">
     <i:block name="breadcrumbs"/>
 
-    <i:invoke template="/templates/header.html.pasta"
-              title="S3 ninja"
-              subtitle="@toUserString(config('product.tagLine'))"/>
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="S3 ninja"
+                  subtitle="@toUserString(config('product.tagLine'))"/>
+    </i:block>
 
     <script type="text/javascript">
 
@@ -146,7 +148,8 @@
                         <i:if test="buckets.isEmpty()">
                             <tr>
                                 <td colspan="2"
-                                    class="text-muted">(No buckets)</td>
+                                    class="text-muted">(No buckets)
+                                </td>
                             </tr>
                         </i:if>
                         <i:for type="ninja.Bucket"

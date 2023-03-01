@@ -18,10 +18,12 @@
         </li>
     </i:block>
 
-    <i:invoke template="/templates/header.html.pasta"
-              title="Access Logs"
-              subtitle="All API calls are listed here."
-              notice="Note that this log is stored in memory and will be cleared once the server restarts."/>
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="Access Logs"
+                  subtitle="All API calls are listed here."
+                  notice="Note that this log is stored in memory and will be cleared once the server restarts."/>
+    </i:block>
 
     <div class="row">
         <div class="col-md-12">
@@ -39,7 +41,8 @@
                         <i:if test="entries.isEmpty()">
                             <tr>
                                 <td colspan="3"
-                                    class="text-muted">(No entries)</td>
+                                    class="text-muted">(No entries)
+                                </td>
                             </tr>
                         </i:if>
                         <i:for type="ninja.APILog$Entry"

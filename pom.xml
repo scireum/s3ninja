@@ -13,7 +13,7 @@
     <packaging>jar</packaging>
     <name>s3-ninja</name>
     <description>S3 ninja emulates the S3 API for development and testing purposes.</description>
-    <url>http://s3ninja.net</url>
+    <url>https://s3ninja.net</url>
 
     <properties>
         <sirius.kernel>dev-35.0.1</sirius.kernel>

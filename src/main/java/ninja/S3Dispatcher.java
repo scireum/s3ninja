@@ -473,6 +473,13 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.PUT.equals(method)) {
             bucket.create();
+
+            // in order to allow creation of public buckets, we support a single canned access control list
+            String cannedAccessControlList = webContext.getHeader(HTTP_HEADER_NAME_AMAZON_ACL);
+            if (Strings.areEqual(cannedAccessControlList, "public-read-write")) {
+                bucket.makePublic();
+            }
+
             signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
         } else {

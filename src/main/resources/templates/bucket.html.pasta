@@ -63,7 +63,8 @@
                         <i:if test="page.getItems().isEmpty()">
                             <tr>
                                 <td colspan="2"
-                                    class="text-muted">(No objects in bucket)
+                                    class="text-muted">
+                                    (No objects in bucket)
                                 </td>
                             </tr>
                         </i:if>

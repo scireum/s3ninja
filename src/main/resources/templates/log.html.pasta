@@ -41,7 +41,8 @@
                         <i:if test="entries.isEmpty()">
                             <tr>
                                 <td colspan="3"
-                                    class="text-muted">(No entries)
+                                    class="text-muted">
+                                    (No entries)
                                 </td>
                             </tr>
                         </i:if>

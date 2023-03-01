@@ -148,7 +148,8 @@
                         <i:if test="buckets.isEmpty()">
                             <tr>
                                 <td colspan="2"
-                                    class="text-muted">(No buckets)
+                                    class="text-muted">
+                                    (No buckets)
                                 </td>
                             </tr>
                         </i:if>

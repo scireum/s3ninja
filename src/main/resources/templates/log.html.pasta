@@ -25,37 +25,42 @@
 
     <div class="row">
         <div class="col-md-12">
-            <table class="table w-100">
-                <thead>
-                <tr>
-                    <th>Function</th>
-                    <th>Description</th>
-                    <th>Result</th>
-                </tr>
-                </thead>
-                <tbody>
-                <i:for type="ninja.APILog$Entry"
-                       var="entry"
-                       items="entries">
-                    <tr class="@entry.getStyleClass()">
-                        <td style="width: 20vw;">
-                            @entry.getFunction()
-                            <br/>
-                            <span class="text-muted small">@NLS.toUserString(entry.getTime())</span>
-                        </td>
-                        <td style="width: 60vw;">
-                            @entry.getDescription()
-                        </td>
-                        <td style="width: 20vw;">
-                            @entry.getResult().name()
-                            <br/>
-                            <span class="text-muted small">@entry.getDuration()</span>
-                        </td>
-                    </tr>
-                </i:for>
-                </tbody>
-            </table>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <table class="table w-100 mb-0">
+                        <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Description</th>
+                            <th>Result</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <i:for type="ninja.APILog$Entry"
+                               var="entry"
+                               items="entries">
+                            <tr class="@entry.getStyleClass()">
+                                <td style="width: 20vw;">
+                                    @entry.getFunction()
+                                    <br/>
+                                    <span class="text-muted small">@NLS.toUserString(entry.getTime())</span>
+                                </td>
+                                <td style="width: 60vw;">
+                                    @entry.getDescription()
+                                </td>
+                                <td style="width: 20vw;">
+                                    @entry.getResult().name()
+                                    <br/>
+                                    <span class="text-muted small">@entry.getDuration()</span>
+                                </td>
+                            </tr>
+                        </i:for>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
         <i:if test="!entries.isEmpty()">
             <div class="input-group justify-content-center mb-4">
                 <div class="input-group-prepend">
@@ -68,7 +73,9 @@
                     </i:if>
                 </div>
                 <div class="input-group-text"
-                     style="background: none">@range</div>
+                     style="background: none">
+                    @range
+                </div>
                 <div class="input-group-append">
                     <i:if test="canPageNext">
                         <a class="btn btn-outline-secondary"

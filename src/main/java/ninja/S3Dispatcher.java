@@ -737,8 +737,7 @@ public class S3Dispatcher implements WebDispatcher {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || HTTP_HEADER_NAME_AMAZON_ACL.equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-") || "content-md5".equals(nameLower) || "content-type".equals(nameLower)) {
                 properties.put(name, webContext.getHeader(name));
             }
         }
@@ -872,8 +871,7 @@ public class S3Dispatcher implements WebDispatcher {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || HTTP_HEADER_NAME_AMAZON_ACL.equals(nameLower)) {
+            if (nameLower.startsWith("x-amz-") || "content-md5".equals(nameLower) || "content-type".equals(nameLower)) {
                 properties.put(name, webContext.getHeader(name));
                 response.addHeader(name, webContext.getHeader(name));
             }

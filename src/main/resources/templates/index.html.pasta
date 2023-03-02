@@ -168,7 +168,19 @@
                                     </i:if>
                                 </td>
                                 <td class="text-right pr-0">
-                                    <t:deleteButton url="@apply('/ui/%s?delete', bucket.getEncodedName())"/>
+                                    <t:additionalActions label="Actions">
+                                        <i:if test="bucket.isPrivate()">
+                                            <t:dropdownItem url="@apply('/ui/%s?make-public&return=%%2Fui', bucket.getEncodedName())"
+                                                            icon="fa-solid fa-lock-open"
+                                                            label="Make public" />
+                                            <i:else>
+                                                <t:dropdownItem url="@apply('/ui/%s?make-private&return=%%2Fui', bucket.getEncodedName())"
+                                                                icon="fa-solid fa-lock"
+                                                                label="Make private" />
+                                            </i:else>
+                                        </i:if>
+                                        <t:dropdownDeleteItem url="@apply('/ui/%s?delete', bucket.getEncodedName())" />
+                                    </t:additionalActions>
                                 </td>
                             </tr>
                         </i:for>

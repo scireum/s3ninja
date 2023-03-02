@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.PriorityCollector;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
@@ -170,12 +171,20 @@ public class NinjaController extends BasicController {
             return;
         }
 
+        // we only accept known paths below /ui as return address
+        String address = webContext.getParameter("return");
+        if (Strings.areEqual(address, "/ui") || Strings.areEqual(address, "/ui/") || Strings.areEqual(address, "ui")) {
+            address = "/ui";
+        } else {
+            address = "/ui/" + bucket.getEncodedName();
+        }
+
         // handle /ui/[bucket]?make-public
         if (webContext.hasParameter("make-public")) {
             bucket.makePublic();
 
             UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
-            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            webContext.respondWith().redirectTemporarily(address);
             return;
         }
 
@@ -184,7 +193,7 @@ public class NinjaController extends BasicController {
             bucket.makePrivate();
 
             UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
-            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            webContext.respondWith().redirectTemporarily(address);
             return;
         }
 

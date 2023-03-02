@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -181,11 +182,11 @@ public class StoredObject {
     /**
      * Returns all meta information stored along with the object.
      * <p>
-     * This is the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-meta-*</tt> header.
+     * These are the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-*</tt> headers.
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
-     * @return name value pairs representing all properties stored for this object, or an empty map if no properties
+     * @return name-value-pairs representing all properties stored for this object, or an empty map if no properties
      * could be read
      */
     public Map<String, String> getProperties() {
@@ -201,6 +202,16 @@ public class StoredObject {
         Map<String, String> map = Maps.newTreeMap();
         props.forEach((propertyKey, value) -> map.put(String.valueOf(propertyKey), String.valueOf(value)));
         return map;
+    }
+
+    /**
+     * Returns a sorted list of all property names.
+     *
+     * @return a list of property names
+     * @see #getProperties()
+     */
+    public List<String> getPropertyNames() {
+        return getProperties().keySet().stream().sorted(String::compareToIgnoreCase).toList();
     }
 
     /**

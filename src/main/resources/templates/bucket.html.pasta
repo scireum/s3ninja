@@ -79,8 +79,47 @@
                                     <div class="text-muted small">@obj.getLastModified()</div>
                                 </td>
                                 <td class="text-right pr-0">
-                                    <t:deleteButton
-                                            url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
+                                    <i:local name="modalId"
+                                             value="generateId('object_info_%s')"/>
+                                    <i:local name="propertyNames"
+                                             value="obj.getPropertyNames()"/>
+                                    <i:local name="properties"
+                                             value="obj.getProperties()"/>
+                                    <t:modal name="@modalId"
+                                             title="@obj.getKey()"
+                                             cancel="Close"
+                                             class="modal-lg modal-dialog-centered">
+                                        <div class="text-left"
+                                             style="margin-bottom: -1rem;">
+                                            <i:if test="properties.isEmpty()">
+                                                <p class="text-muted">
+                                                    (No properties)
+                                                </p>
+                                            </i:if>
+                                            <i:for type="ninja.StoredObject"
+                                                   var="propertyName"
+                                                   items="propertyNames">
+                                                <i:local name="propertyValue"
+                                                         value="properties.get(propertyName)"/>
+                                                <p>
+                                                    <span class="text-muted">
+                                                        @propertyName
+                                                    </span>
+                                                    <br/>
+                                                    <span>
+                                                        @propertyValue
+                                                    </span>
+                                                </p>
+                                            </i:for>
+                                        </div>
+                                    </t:modal>
+                                    <t:additionalActions label="Actions">
+                                        <t:dropdownItem url="@apply('javascript:$(document.querySelector(\'#%s\')).modal()', modalId)"
+                                                        icon="fa-solid fa-circle-info"
+                                                        label="Properties"/>
+                                        <t:dropdownDeleteItem
+                                                url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
+                                    </t:additionalActions>
                                 </td>
                             </tr>
                         </i:for>

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -201,6 +202,16 @@ public class StoredObject {
         Map<String, String> map = Maps.newTreeMap();
         props.forEach((propertyKey, value) -> map.put(String.valueOf(propertyKey), String.valueOf(value)));
         return map;
+    }
+
+    /**
+     * Returns a sorted list of all property names.
+     *
+     * @return a list of property names
+     * @see #getProperties()
+     */
+    public List<String> getPropertyNames() {
+        return getProperties().keySet().stream().sorted(String::compareToIgnoreCase).toList();
     }
 
     /**

@@ -87,6 +87,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
+    private static final String HTTP_HEADER_NAME_AMAZON_ACL = "x-amz-acl";
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final String RESPONSE_DISPLAY_NAME = "DisplayName";
     private static final String RESPONSE_BUCKET = "Bucket";
@@ -472,6 +473,13 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.PUT.equals(method)) {
             bucket.create();
+
+            // in order to allow creation of public buckets, we support a single canned access control list
+            String cannedAccessControlList = webContext.getHeader(HTTP_HEADER_NAME_AMAZON_ACL);
+            if (Strings.areEqual(cannedAccessControlList, "public-read-write")) {
+                bucket.makePublic();
+            }
+
             signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
         } else {
@@ -730,7 +738,7 @@ public class S3Dispatcher implements WebDispatcher {
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
             if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || "x-amz-acl".equals(nameLower)) {
+                    nameLower) || HTTP_HEADER_NAME_AMAZON_ACL.equals(nameLower)) {
                 properties.put(name, webContext.getHeader(name));
             }
         }
@@ -865,7 +873,7 @@ public class S3Dispatcher implements WebDispatcher {
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
             if (nameLower.startsWith("x-amz-meta-") || "content-md5".equals(nameLower) || "content-type".equals(
-                    nameLower) || "x-amz-acl".equals(nameLower)) {
+                    nameLower) || HTTP_HEADER_NAME_AMAZON_ACL.equals(nameLower)) {
                 properties.put(name, webContext.getHeader(name));
                 response.addHeader(name, webContext.getHeader(name));
             }

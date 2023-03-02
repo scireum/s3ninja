@@ -181,11 +181,11 @@ public class StoredObject {
     /**
      * Returns all meta information stored along with the object.
      * <p>
-     * This is the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-meta-*</tt> header.
+     * These are the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-*</tt> headers.
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
-     * @return name value pairs representing all properties stored for this object, or an empty map if no properties
+     * @return name-value-pairs representing all properties stored for this object, or an empty map if no properties
      * could be read
      */
     public Map<String, String> getProperties() {

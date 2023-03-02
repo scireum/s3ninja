@@ -79,8 +79,10 @@
                                     <div class="text-muted small">@obj.getLastModified()</div>
                                 </td>
                                 <td class="text-right pr-0">
-                                    <t:deleteButton
-                                            url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
+                                    <t:additionalActions label="Actions">
+                                        <t:dropdownDeleteItem
+                                                url="@apply('/ui/%s/%s?delete', bucket.getEncodedName(), obj.getEncodedKey())"/>
+                                    </t:additionalActions>
                                 </td>
                             </tr>
                         </i:for>

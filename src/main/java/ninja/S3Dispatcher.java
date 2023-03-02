@@ -87,7 +87,6 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
     private static final String HTTP_HEADER_NAME_CONTENT_TYPE = "Content-Type";
-    private static final String HTTP_HEADER_NAME_AMAZON_ACL = "x-amz-acl";
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final String RESPONSE_DISPLAY_NAME = "DisplayName";
     private static final String RESPONSE_BUCKET = "Bucket";
@@ -475,7 +474,7 @@ public class S3Dispatcher implements WebDispatcher {
             bucket.create();
 
             // in order to allow creation of public buckets, we support a single canned access control list
-            String cannedAccessControlList = webContext.getHeader(HTTP_HEADER_NAME_AMAZON_ACL);
+            String cannedAccessControlList = webContext.getHeader("x-amz-acl");
             if (Strings.areEqual(cannedAccessControlList, "public-read-write")) {
                 bucket.makePublic();
             }

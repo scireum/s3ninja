@@ -367,7 +367,7 @@ public class Bucket {
             return false;
         }
 
-        return Strings.isEmpty(query) || currentFile.getName().contains(query);
+        return Strings.isEmpty(query) || StoredObject.decodeKey(currentFile.getName()).contains(query);
     }
 
     protected int getVersion() {

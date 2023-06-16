@@ -757,7 +757,7 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private void copyObject(WebContext webContext, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);
-        if (!copy.contains(PATH_DELIMITER)) {
+        if (Strings.isEmpty(copy) || !copy.contains(PATH_DELIMITER)) {
             signalObjectError(webContext,
                               null,
                               null,

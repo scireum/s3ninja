@@ -765,7 +765,8 @@ public class S3Dispatcher implements WebDispatcher {
                               String.format("Source '%s' must contain '/'", copy));
             return;
         }
-        String srcBucketName = copy.substring(1, copy.indexOf(PATH_DELIMITER, 1));
+        int cutFrom = copy.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
+        String srcBucketName = copy.substring(cutFrom, copy.indexOf(PATH_DELIMITER, cutFrom));
         String srcId = copy.substring(copy.indexOf(PATH_DELIMITER, 1) + 1);
         Bucket srcBucket = storage.getBucket(srcBucketName);
         if (!srcBucket.exists()) {

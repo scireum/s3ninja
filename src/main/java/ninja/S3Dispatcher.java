@@ -753,6 +753,7 @@ public class S3Dispatcher implements WebDispatcher {
      * @param webContext the context describing the current request
      * @param bucket     the bucket containing the object to use as destination
      * @param id         name of the object to use as destination
+     * @param copy       the path of source object to copy from
      */
     private void copyObject(WebContext webContext, Bucket bucket, String id, String copy) throws IOException {
         StoredObject object = bucket.getObject(id);

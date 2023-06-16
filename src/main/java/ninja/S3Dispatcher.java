@@ -769,7 +769,7 @@ public class S3Dispatcher implements WebDispatcher {
         int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
         String sourceBucketName =
                 sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));
-        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, 1) + 1);
+        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart) + 1);
 
         Bucket sourceBucket = storage.getBucket(sourceBucketName);
         if (!sourceBucket.exists()) {

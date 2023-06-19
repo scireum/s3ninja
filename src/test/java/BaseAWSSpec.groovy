@@ -421,7 +421,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
     def "Copying an object within the same bucket works as expected"() {
         given:
         def bucketName = DEFAULT_BUCKET_NAME
-        def keyFrom = "content"
+        def keyFrom = DEFAULT_KEY
         def keyTo = keyFrom + "-copy"
         def content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
         def client = getClient()
@@ -451,7 +451,7 @@ abstract class BaseAWSSpec extends BaseSpecification {
         given:
         def bucketNameFrom = DEFAULT_BUCKET_NAME
         def bucketNameTo = DEFAULT_BUCKET_NAME + "-copy"
-        def key = "content"
+        def key = DEFAULT_KEY
         def content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
         def client = getClient()
         when:

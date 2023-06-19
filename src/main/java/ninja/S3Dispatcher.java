@@ -766,6 +766,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         // parse the path of the source object
+        sourcePath = Strings.urlDecode(sourcePath);
         int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
         String sourceBucketName =
                 sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));

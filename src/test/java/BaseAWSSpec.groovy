@@ -416,4 +416,67 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.deleteObject(bucketName, key)
         client.deleteBucket(bucketName)
     }
+
+    // reported in https://github.com/scireum/s3ninja/issues/230
+    def "Copying an object within the same bucket works as expected"() {
+        given:
+        def bucketName = DEFAULT_BUCKET_NAME
+        def keyFrom = DEFAULT_KEY
+        def keyTo = keyFrom + "-copy"
+        def content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
+        def client = getClient()
+        when:
+        if (!client.doesBucketExist(bucketName)) {
+            client.createBucket(bucketName)
+        }
+        and:
+        putObjectWithContent(bucketName, keyFrom, content)
+        and:
+        client.copyObject(bucketName, keyFrom, bucketName, keyTo);
+        and:
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, keyTo)
+        URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
+        and:
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
+        then:
+        downloadedData == content
+        and:
+        client.deleteObject(bucketName, keyFrom)
+        client.deleteObject(bucketName, keyTo)
+        client.deleteBucket(bucketName)
+    }
+
+    // reported in https://github.com/scireum/s3ninja/issues/230
+    def "Copying an object across buckets works as expected"() {
+        given:
+        def bucketNameFrom = DEFAULT_BUCKET_NAME
+        def bucketNameTo = DEFAULT_BUCKET_NAME + "-copy"
+        def key = DEFAULT_KEY
+        def content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
+        def client = getClient()
+        when:
+        if (!client.doesBucketExist(bucketNameFrom)) {
+            client.createBucket(bucketNameFrom)
+        }
+        and:
+        if (!client.doesBucketExist(bucketNameTo)) {
+            client.createBucket(bucketNameTo)
+        }
+        and:
+        putObjectWithContent(bucketNameFrom, key, content)
+        and:
+        client.copyObject(bucketNameFrom, key, bucketNameTo, key);
+        and:
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketNameTo, key)
+        URLConnection c = new URL(getClient().generatePresignedUrl(request).toString()).openConnection()
+        and:
+        String downloadedData = new String(ByteStreams.toByteArray(c.getInputStream()), StandardCharsets.UTF_8)
+        then:
+        downloadedData == content
+        and:
+        client.deleteObject(bucketNameFrom, key)
+        client.deleteBucket(bucketNameFrom)
+        client.deleteObject(bucketNameTo, key)
+        client.deleteBucket(bucketNameTo)
+    }
 }

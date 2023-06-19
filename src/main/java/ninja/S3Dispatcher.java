@@ -752,42 +752,52 @@ public class S3Dispatcher implements WebDispatcher {
      *
      * @param webContext the context describing the current request
      * @param bucket     the bucket containing the object to use as destination
-     * @param id         name of the object to use as destination
+     * @param key        the key of the object to use as destination
+     * @param sourcePath the path of the source object to copy from
      */
-    private void copyObject(WebContext webContext, Bucket bucket, String id, String copy) throws IOException {
-        StoredObject object = bucket.getObject(id);
-        if (!copy.contains(PATH_DELIMITER)) {
+    private void copyObject(WebContext webContext, Bucket bucket, String key, String sourcePath) throws IOException {
+        if (Strings.isEmpty(sourcePath) || !sourcePath.contains(PATH_DELIMITER)) {
             signalObjectError(webContext,
                               null,
                               null,
                               S3ErrorCode.InvalidRequest,
-                              String.format("Source '%s' must contain '/'", copy));
+                              String.format("Source '%s' must contain '/'", sourcePath));
             return;
         }
-        String srcBucketName = copy.substring(1, copy.indexOf(PATH_DELIMITER, 1));
-        String srcId = copy.substring(copy.indexOf(PATH_DELIMITER, 1) + 1);
-        Bucket srcBucket = storage.getBucket(srcBucketName);
-        if (!srcBucket.exists()) {
+
+        // parse the path of the source object
+        sourcePath = Strings.urlDecode(sourcePath);
+        int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
+        String sourceBucketName =
+                sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));
+        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart) + 1);
+
+        Bucket sourceBucket = storage.getBucket(sourceBucketName);
+        if (!sourceBucket.exists()) {
             signalObjectError(webContext,
-                              srcBucketName,
-                              srcId,
+                              sourceBucketName,
+                              sourceKey,
                               S3ErrorCode.NoSuchBucket,
-                              String.format("Source bucket '%s' does not exist", srcBucketName));
+                              String.format("Source bucket '%s' does not exist", sourceBucketName));
             return;
         }
-        StoredObject src = srcBucket.getObject(srcId);
-        if (!src.exists()) {
+
+        StoredObject sourceObject = sourceBucket.getObject(sourceKey);
+        if (!sourceObject.exists()) {
             signalObjectError(webContext,
-                              srcBucketName,
-                              srcId,
+                              sourceBucketName,
+                              sourceKey,
                               S3ErrorCode.NoSuchKey,
-                              String.format("Source object '%s/%s' does not exist", srcBucketName, srcId));
+                              String.format("Source object '%s/%s' does not exist", sourceBucketName, sourceKey));
             return;
         }
-        Files.copy(src.getFile(), object.getFile());
-        if (src.getPropertiesFile().exists()) {
-            Files.copy(src.getPropertiesFile(), object.getPropertiesFile());
+
+        StoredObject object = bucket.getObject(key);
+        Files.copy(sourceObject.getFile(), object.getFile());
+        if (sourceObject.getPropertiesFile().exists()) {
+            Files.copy(sourceObject.getPropertiesFile(), object.getPropertiesFile());
         }
+
         String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
 
         XMLStructuredOutput structuredOutput =

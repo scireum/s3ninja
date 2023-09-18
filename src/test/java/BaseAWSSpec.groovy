@@ -44,6 +44,32 @@ abstract class BaseAWSSpec extends BaseSpecification {
         client.putObject(bucketName, key, new ByteArrayInputStream(data), metadata)
     }
 
+    /**
+     * Before each test, delete all buckets and their objects. This allows to run the test based on a clean state.
+     */
+    def setup() {
+        def client = getClient()
+
+        client.listBuckets().stream().forEach {
+            def bucket = it
+            client.listObjects(bucket.getName()).getObjectSummaries().stream().forEach {
+                client.deleteObject(bucket.getName(), it.getKey())
+            }
+            client.deleteBucket(bucket.getName())
+        }
+    }
+
+    /**
+     * After each test, make sure that the test leaves the state clean. This makes sure that no unintended side effects
+     * have been missed.
+     */
+    def cleanup() {
+        def client = getClient()
+        if (!client.listBuckets().isEmpty()) {
+            throw new IllegalStateException("Test left state polluted. Ensure that the test includes a proper cleanup section.")
+        }
+    }
+
     def "HEAD of non-existing bucket as expected"() {
         given:
         def bucketName = "does-not-exist"

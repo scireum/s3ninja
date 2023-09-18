@@ -19,6 +19,9 @@ import sirius.kernel.commons.Explain;
 @Explain("We use the proper names as defined in the AWS API")
 public enum S3ErrorCode {
     AccessDenied(HttpResponseStatus.FORBIDDEN), BadDigest(HttpResponseStatus.BAD_REQUEST),
+    BucketAlreadyExists(HttpResponseStatus.CONFLICT),
+    BucketAlreadyOwnedByYou(HttpResponseStatus.CONFLICT),
+    BucketNotEmpty(HttpResponseStatus.CONFLICT),
     IncompleteBody(HttpResponseStatus.BAD_REQUEST), InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
     InvalidDigest(HttpResponseStatus.BAD_REQUEST), InvalidRequest(HttpResponseStatus.BAD_REQUEST),
     NoSuchBucket(HttpResponseStatus.NOT_FOUND), NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),

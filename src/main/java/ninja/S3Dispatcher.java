@@ -162,9 +162,9 @@ public class S3Dispatcher implements WebDispatcher {
             builder.add('.' + myself.getHostAddress());
             builder.add('.' + myself.getHostName());
             builder.add('.' + myself.getCanonicalHostName());
-        } catch (Exception e) {
+        } catch (Exception exception) {
             // reaching this point, we failed to resolve the local host name. tant pis.
-            Exceptions.ignore(e);
+            Exceptions.ignore(exception);
         }
 
         DOMAINS = builder.build();
@@ -351,14 +351,14 @@ public class S3Dispatcher implements WebDispatcher {
         }
         String authentication =
                 Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
-        Matcher m = AWS_AUTH_PATTERN.matcher(authentication);
-        if (m.matches()) {
-            return m.group(2);
+        Matcher matcher = AWS_AUTH_PATTERN.matcher(authentication);
+        if (matcher.matches()) {
+            return matcher.group(2);
         }
 
-        m = AWS_AUTH4_PATTERN.matcher(authentication);
-        if (m.matches()) {
-            return m.group(7);
+        matcher = AWS_AUTH4_PATTERN.matcher(authentication);
+        if (matcher.matches()) {
+            return matcher.group(7);
         }
 
         return null;
@@ -915,13 +915,14 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private void storePropertiesInUploadDir(Map<String, String> properties, String uploadId) {
-        Properties props = new Properties();
-        properties.forEach(props::setProperty);
-        try (FileOutputStream propsOut = new FileOutputStream(new File(getUploadDir(uploadId),
-                                                                       TEMPORARY_PROPERTIES_FILENAME))) {
-            props.store(propsOut, "");
-        } catch (IOException e) {
-            Exceptions.handle(e);
+        Properties clonedProperties = new Properties();
+        properties.forEach(clonedProperties::setProperty);
+
+        try (FileOutputStream outputStream = new FileOutputStream(new File(getUploadDir(uploadId),
+                                                                           TEMPORARY_PROPERTIES_FILENAME))) {
+            clonedProperties.store(outputStream, "");
+        } catch (IOException exception) {
+            Exceptions.handle(exception);
         }
     }
 
@@ -958,12 +959,12 @@ public class S3Dispatcher implements WebDispatcher {
                       .setHeader(HTTP_HEADER_NAME_ETAG, etag)
                       .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
                       .status(HttpResponseStatus.OK);
-        } catch (IOException e) {
+        } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
                                              S3ErrorCode.InternalError,
-                                             Exceptions.handle(e).getMessage());
+                                             Exceptions.handle(exception).getMessage());
         }
     }
 
@@ -999,8 +1000,8 @@ public class S3Dispatcher implements WebDispatcher {
         });
         try {
             reader.parse(in);
-        } catch (IOException e) {
-            Exceptions.handle(e);
+        } catch (IOException exception) {
+            Exceptions.handle(exception);
         }
 
         File file = combineParts(id,
@@ -1042,8 +1043,8 @@ public class S3Dispatcher implements WebDispatcher {
             out.property("Key", id);
             out.property(HTTP_HEADER_NAME_ETAG, etag);
             out.endOutput();
-        } catch (IOException e) {
-            Exceptions.ignore(e);
+        } catch (IOException exception) {
+            Exceptions.ignore(exception);
             errorSynthesizer.synthesiseError(webContext,
                                              null,
                                              null,
@@ -1053,9 +1054,9 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private void commitPropertiesFromUploadDir(String uploadId, StoredObject object) throws IOException {
-        File propsFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
-        if (propsFile.exists()) {
-            Files.move(propsFile, object.getPropertiesFile());
+        File propertiesFile = new File(getUploadDir(uploadId), TEMPORARY_PROPERTIES_FILENAME);
+        if (propertiesFile.exists()) {
+            Files.move(propertiesFile, object.getPropertiesFile());
         }
     }
 
@@ -1076,8 +1077,8 @@ public class S3Dispatcher implements WebDispatcher {
                  FileChannel outChannel = outStream.getChannel()) {
                 combine(parts, outChannel);
             }
-        } catch (IOException e) {
-            throw Exceptions.handle(e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(exception);
         }
 
         return file;
@@ -1107,8 +1108,8 @@ public class S3Dispatcher implements WebDispatcher {
     private static void delete(File file) {
         try {
             sirius.kernel.commons.Files.delete(file.toPath());
-        } catch (IOException e) {
-            Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            Exceptions.handle(Storage.LOG, exception);
         }
     }
 

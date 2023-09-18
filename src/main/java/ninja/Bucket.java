@@ -162,7 +162,7 @@ public class Bucket {
             sirius.kernel.commons.Files.delete(folder.toPath());
             return true;
         } catch (IOException e) {
-            Exceptions.handle(e);
+            Exceptions.handle(Storage.LOG, e);
             return false;
         }
     }
@@ -190,7 +190,7 @@ public class Bucket {
         try {
             walkFileTreeOurWay(folder.toPath(), visitor);
         } catch (IOException e) {
-            throw Exceptions.handle(e);
+            throw Exceptions.handle(Storage.LOG, e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
@@ -219,7 +219,7 @@ public class Bucket {
         try {
             walkFileTreeOurWay(folder.toPath(), visitor);
         } catch (IOException e) {
-            throw Exceptions.handle(e);
+            throw Exceptions.handle(Storage.LOG, e);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.property("KeyCount", visitor.getCount());
@@ -244,7 +244,7 @@ public class Bucket {
                     BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
                     visitor.visitFile(p, attrs);
                 } catch (IOException e) {
-                    throw Exceptions.handle(e);
+                    throw Exceptions.handle(Storage.LOG, e);
                 }
             });
         }
@@ -342,7 +342,7 @@ public class Bucket {
                          .map(StoredObject::new)
                          .toList();
         } catch (IOException e) {
-            throw Exceptions.handle(e);
+            throw Exceptions.handle(Storage.LOG, e);
         }
     }
 
@@ -358,7 +358,7 @@ public class Bucket {
                                          .filter(currentFile -> isMatchingObject(query, currentFile))
                                          .count());
         } catch (IOException e) {
-            throw Exceptions.handle(e);
+            throw Exceptions.handle(Storage.LOG, e);
         }
     }
 

@@ -157,7 +157,12 @@ public class NinjaController extends BasicController {
                 return;
             }
 
-            bucket.create();
+            if (!bucket.create()) {
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("Failed creating bucket. Missing file system permission?")
+                                .handle();
+            }
 
             UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
             webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
@@ -181,7 +186,12 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?make-public
         if (webContext.hasParameter("make-public")) {
-            bucket.makePublic();
+            if (!bucket.makePublic()) {
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("Failed making bucket public. Missing file system permission?")
+                                .handle();
+            }
 
             UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
             webContext.respondWith().redirectTemporarily(address);
@@ -190,7 +200,12 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?make-private
         if (webContext.hasParameter("make-private")) {
-            bucket.makePrivate();
+            if (!bucket.makePrivate()) {
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("Failed making bucket private. Missing file system permission?")
+                                .handle();
+            }
 
             UserContext.message(Message.info().withTextMessage("ACLs successfully changed"));
             webContext.respondWith().redirectTemporarily(address);
@@ -199,7 +214,12 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?delete
         if (webContext.hasParameter("delete")) {
-            bucket.delete();
+            if (!bucket.delete()) {
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("Failed deleting bucket. Missing file system permission?")
+                                .handle();
+            }
 
             UserContext.message(Message.info().withTextMessage("Bucket successfully deleted."));
             webContext.respondWith().redirectTemporarily("/ui");

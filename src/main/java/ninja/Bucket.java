@@ -136,22 +136,26 @@ public class Bucket {
      * <p>
      * If the underlying directory already exists, nothing happens.
      *
-     * @return <b>true</b> if the folder for the bucket was created successfully and if it was missing before
+     * @return <b>true</b> if the folder for the bucket was created successfully or existed before, <b>false</b> else
      */
     public boolean create() {
-        if (folder.exists() || !folder.mkdirs()) {
+        if (folder.exists()) {
+            return true;
+        }
+
+        if (!folder.mkdirs()) {
             return false;
         }
 
         // having successfully created the folder, write the version marker
         writeVersion();
-        return true;
+        return folder.isDirectory();
     }
 
     /**
      * Deletes the bucket and all of its contents.
      *
-     * @return true if all files of the bucket and the bucket itself was deleted successfully, false otherwise.
+     * @return <b>true</b> if all files of the bucket and the bucket itself were deleted successfully, <b>false</b> else
      */
     public boolean delete() {
         if (!folder.exists()) {
@@ -278,26 +282,35 @@ public class Bucket {
 
     /**
      * Marks the bucket as only privately accessible, i.e. non-public.
+     *
+     * @return <b>true</b> if the bucket is now only privately accessible, <b>false</b> else
      */
-    public void makePrivate() {
+    public boolean makePrivate() {
         if (publicMarker.exists()) {
             sirius.kernel.commons.Files.delete(publicMarker);
             publicAccessCache.put(getName(), false);
         }
+
+        return !publicMarker.exists();
     }
 
     /**
      * Marks the bucket as publicly accessible.
+     *
+     * @return <b>true</b> if the bucket is now publicly accessible, <b>false</b> else
      */
-    public void makePublic() {
+    public boolean makePublic() {
         if (!publicMarker.exists()) {
             try {
                 new FileOutputStream(publicMarker).close();
             } catch (IOException e) {
-                throw Exceptions.handle(Storage.LOG, e);
+                Exceptions.handle(Storage.LOG, e);
+                return false;
             }
         }
         publicAccessCache.put(getName(), true);
+
+        return publicMarker.exists();
     }
 
     /**

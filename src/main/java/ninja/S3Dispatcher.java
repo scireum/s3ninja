@@ -94,7 +94,8 @@ public class S3Dispatcher implements WebDispatcher {
     private static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
     private static final String ERROR_BUCKET_IS_NOT_EMPTY = "Bucket is not empty";
     private static final String ERROR_BUCKET_ALREADY_OWNED_BY_YOU = "Bucket already owned by you";
-    private static final String ERROR_FILE_SYSTEM = "Problems with file system access";
+    private static final String ERROR_FILE_SYSTEM_ACCESS =
+            "General problems accessing the file system — Permissions set correctly?";
     private static final String PATH_DELIMITER = "/";
 
     private static class S3Request {
@@ -479,7 +480,11 @@ public class S3Dispatcher implements WebDispatcher {
                 }
 
                 if (!bucket.delete()) {
-                    signalObjectError(webContext, bucketName, null, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM);
+                    signalObjectError(webContext,
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.InternalError,
+                                      ERROR_FILE_SYSTEM_ACCESS);
                     return;
                 }
 
@@ -497,14 +502,14 @@ public class S3Dispatcher implements WebDispatcher {
             }
 
             if (!bucket.create()) {
-                signalObjectError(webContext, bucketName, null, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM);
+                signalObjectError(webContext, bucketName, null, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM_ACCESS);
                 return;
             }
 
             // in order to allow creation of public buckets, we support a single canned access control list
             String cannedAccessControlList = webContext.getHeader("x-amz-acl");
             if (Strings.areEqual(cannedAccessControlList, "public-read-write") && !bucket.makePublic()) {
-                signalObjectError(webContext, bucketName, null, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM);
+                signalObjectError(webContext, bucketName, null, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM_ACCESS);
                 return;
             }
 
@@ -603,7 +608,11 @@ public class S3Dispatcher implements WebDispatcher {
         if (!bucket.exists()) {
             if (storage.isAutocreateBuckets()) {
                 if (!bucket.create()) {
-                    signalObjectError(webContext, bucket.getName(), id, S3ErrorCode.InternalError, ERROR_FILE_SYSTEM);
+                    signalObjectError(webContext,
+                                      bucket.getName(),
+                                      id,
+                                      S3ErrorCode.InternalError,
+                                      ERROR_FILE_SYSTEM_ACCESS);
                     return false;
                 }
             } else {

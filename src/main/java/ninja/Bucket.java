@@ -165,8 +165,8 @@ public class Bucket {
         try {
             sirius.kernel.commons.Files.delete(folder.toPath());
             return true;
-        } catch (IOException e) {
-            Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            Exceptions.handle(Storage.LOG, exception);
             return false;
         }
     }
@@ -193,8 +193,8 @@ public class Bucket {
         output.property("Prefix", prefix);
         try {
             walkFileTreeOurWay(folder.toPath(), visitor);
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.endOutput();
@@ -222,8 +222,8 @@ public class Bucket {
         output.property("Prefix", prefix);
         try {
             walkFileTreeOurWay(folder.toPath(), visitor);
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
         output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
         output.property("KeyCount", visitor.getCount());
@@ -243,32 +243,33 @@ public class Bucket {
         }
 
         try (Stream<Path> children = Files.list(path)) {
-            children.filter(p -> filterObjects(p.toFile())).sorted(Bucket::compareUtf8Binary).forEach(p -> {
-                try {
-                    BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
-                    visitor.visitFile(p, attrs);
-                } catch (IOException e) {
-                    throw Exceptions.handle(Storage.LOG, e);
-                }
-            });
+            children.filter(childPath -> filterObjects(childPath.toFile()))
+                    .sorted(Bucket::compareUtf8Binary)
+                    .forEach(childPath -> {
+                        try {
+                            visitor.visitFile(childPath, Files.readAttributes(childPath, BasicFileAttributes.class));
+                        } catch (IOException exception) {
+                            throw Exceptions.handle(Storage.LOG, exception);
+                        }
+                    });
         }
     }
 
-    private static int compareUtf8Binary(Path p1, Path p2) {
-        String s1 = StoredObject.decodeKey(p1.getFileName().toString());
-        String s2 = StoredObject.decodeKey(p2.getFileName().toString());
+    private static int compareUtf8Binary(Path path1, Path path2) {
+        String string1 = StoredObject.decodeKey(path1.getFileName().toString());
+        String string2 = StoredObject.decodeKey(path2.getFileName().toString());
 
-        byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
-        byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
+        byte[] bytes1 = string1.getBytes(StandardCharsets.UTF_8);
+        byte[] bytes2 = string2.getBytes(StandardCharsets.UTF_8);
 
         // unless we upgrade to java 9+ offering Arrays.compare(...), we need to compare the arrays manually :(
-        int length = Math.min(b1.length, b2.length);
-        for (int i = 0; i < length; ++i) {
-            if (b1[i] != b2[i]) {
-                return Byte.compare(b1[i], b2[i]);
+        int length = Math.min(bytes1.length, bytes2.length);
+        for (int index = 0; index < length; ++index) {
+            if (bytes1[index] != bytes2[index]) {
+                return Byte.compare(bytes1[index], bytes2[index]);
             }
         }
-        return b1.length - b2.length;
+        return bytes1.length - bytes2.length;
     }
 
     /**
@@ -303,8 +304,8 @@ public class Bucket {
         if (!publicMarker.exists()) {
             try {
                 new FileOutputStream(publicMarker).close();
-            } catch (IOException e) {
-                Exceptions.handle(Storage.LOG, e);
+            } catch (IOException exception) {
+                Exceptions.handle(Storage.LOG, exception);
                 return false;
             }
         }
@@ -347,15 +348,15 @@ public class Bucket {
      */
     public List<StoredObject> getObjects(@Nullable String query, Limit limit) {
         try (Stream<Path> stream = Files.list(folder.toPath())) {
-            return stream.filter(p -> filterObjects(p.toFile()))
+            return stream.filter(path -> filterObjects(path.toFile()))
                          .sorted(Bucket::compareUtf8Binary)
                          .map(Path::toFile)
                          .filter(currentFile -> isMatchingObject(query, currentFile))
                          .filter(limit.asPredicate())
                          .map(StoredObject::new)
                          .toList();
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
     }
 
@@ -370,8 +371,8 @@ public class Bucket {
             return Math.toIntExact(stream.map(Path::toFile)
                                          .filter(currentFile -> isMatchingObject(query, currentFile))
                                          .count());
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
     }
 
@@ -405,8 +406,8 @@ public class Bucket {
         try {
             // parse the version from the version marker file
             return Integer.parseInt(Strings.join(Files.readAllLines(versionMarker.toPath()), "\n").trim());
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
     }
 
@@ -423,8 +424,8 @@ public class Bucket {
         try {
             // write the version into the version marker file
             Files.write(versionMarker.toPath(), Collections.singletonList(String.valueOf(version)));
-        } catch (IOException e) {
-            throw Exceptions.handle(Storage.LOG, e);
+        } catch (IOException exception) {
+            throw Exceptions.handle(Storage.LOG, exception);
         }
     }
 
@@ -483,7 +484,7 @@ public class Bucket {
             if (IP_ADDRESS_PATTERN.matcher(name).matches() && InetAddress.getByName(name) != null) {
                 return false;
             }
-        } catch (Exception e) {
+        } catch (Exception ignored) {
             // ignore this, we want the conversion to fail and thus to end up here
         }
 

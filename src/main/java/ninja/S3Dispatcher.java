@@ -1072,8 +1072,9 @@ public class S3Dispatcher implements WebDispatcher {
 
                                  file.getName(), file.getAbsolutePath());
             }
-            try (FileChannel out = new FileOutputStream(file).getChannel()) {
-                combine(parts, out);
+            try (FileOutputStream outStream = new FileOutputStream(file);
+                 FileChannel outChannel = outStream.getChannel()) {
+                combine(parts, outChannel);
             }
         } catch (IOException e) {
             throw Exceptions.handle(e);

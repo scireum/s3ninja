@@ -1086,9 +1086,9 @@ public class S3Dispatcher implements WebDispatcher {
 
     private void combine(List<File> parts, FileChannel out) throws IOException {
         for (File part : parts) {
-            try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
-                FileChannel channel = raf.getChannel();
-                out.write(channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length()));
+            try (RandomAccessFile randomAccessToPart = new RandomAccessFile(part, "r")) {
+                out.write(randomAccessToPart.getChannel()
+                                            .map(FileChannel.MapMode.READ_ONLY, 0, randomAccessToPart.length()));
             }
         }
     }

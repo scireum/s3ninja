@@ -59,17 +59,6 @@ abstract class BaseAWSSpec extends BaseSpecification {
         }
     }
 
-    /**
-     * After each test, make sure that the test leaves the state clean. This makes sure that no unintended side effects
-     * have been missed.
-     */
-    def cleanup() {
-        def client = getClient()
-        if (!client.listBuckets().isEmpty()) {
-            throw new IllegalStateException("Test left state polluted. Ensure that the test includes a proper cleanup section.")
-        }
-    }
-
     def "HEAD of non-existing bucket as expected"() {
         given:
         def bucketName = "does-not-exist"

@@ -18,12 +18,80 @@ import sirius.kernel.commons.Explain;
 @SuppressWarnings("java:S115")
 @Explain("We use the proper names as defined in the AWS API")
 public enum S3ErrorCode {
-    AccessDenied(HttpResponseStatus.FORBIDDEN), BadDigest(HttpResponseStatus.BAD_REQUEST),
-    IncompleteBody(HttpResponseStatus.BAD_REQUEST), InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
-    InvalidDigest(HttpResponseStatus.BAD_REQUEST), InvalidRequest(HttpResponseStatus.BAD_REQUEST),
-    NoSuchBucket(HttpResponseStatus.NOT_FOUND), NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),
-    NoSuchKey(HttpResponseStatus.NOT_FOUND), NoSuchLifecycleConfiguration(HttpResponseStatus.NOT_FOUND),
-    NoSuchUpload(HttpResponseStatus.NOT_FOUND), SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN);
+    /**
+     * Access denied.
+     */
+    AccessDenied(HttpResponseStatus.FORBIDDEN),
+
+    /**
+     * During upload, the specified checksum value did not match the calculated one.
+     */
+    BadDigest(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The specified bucket name is already in use by somebody else.
+     */
+    BucketAlreadyExists(HttpResponseStatus.CONFLICT),
+
+    /**
+     * The specified bucket name is already in use by yourself.
+     */
+    BucketAlreadyOwnedByYou(HttpResponseStatus.CONFLICT),
+
+    /**
+     * The specified bucket can not be deleted as it is not empty.
+     */
+    BucketNotEmpty(HttpResponseStatus.CONFLICT),
+
+    /**
+     * During upload, less than the number of bytes specified have been transmitted.
+     */
+    IncompleteBody(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * An internal error has occurred.
+     */
+    InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
+
+    /**
+     * The specified checksum value is invalid.
+     */
+    InvalidDigest(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The current request is not valid.
+     */
+    InvalidRequest(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The specified bucket does not exist.
+     */
+    NoSuchBucket(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified bucket does not have a policy.
+     */
+    NoSuchBucketPolicy(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified key does not exist.
+     */
+    NoSuchKey(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified lifecycle configuration does not exist.
+     */
+    NoSuchLifecycleConfiguration(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified multipart upload does not exist.
+     */
+    NoSuchUpload(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The provided request signature does not match the one calculated by the server.
+     */
+    SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN);
 
     private final HttpResponseStatus httpStatusCode;
 

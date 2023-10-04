@@ -148,6 +148,7 @@ public class S3Dispatcher implements WebDispatcher {
         headerOverrides.put("response-content-type", HTTP_HEADER_NAME_CONTENT_TYPE);
         headerOverrides.put("response-content-language", "Content-Language");
         headerOverrides.put("response-expires", "Expires");
+        headerOverrides.put("Access-Control-Allow-Origin", "*");
         headerOverrides.put("response-cache-control", "Cache-Control");
         headerOverrides.put("response-content-disposition", "Content-Disposition");
         headerOverrides.put("response-content-encoding", "Content-Encoding");

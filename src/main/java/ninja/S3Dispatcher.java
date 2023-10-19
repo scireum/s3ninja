@@ -58,7 +58,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -1037,7 +1036,7 @@ public class S3Dispatcher implements WebDispatcher {
                                  uploadId,
                                  parts.entrySet()
                                       .stream()
-                                      .sorted(Comparator.comparing(Map.Entry::getKey))
+                                      .sorted(Map.Entry.comparingByKey())
                                       .map(Map.Entry::getValue)
                                       .toList());
 

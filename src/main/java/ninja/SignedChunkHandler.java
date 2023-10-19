@@ -36,7 +36,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         }
 
         // copy everything into the auxiliary buffer first, and try to pull as many complete chunks as possible from it
-        // afterwards
+        // afterward
         chunkBuffer.writeBytes(content);
         if (tryToCompleteTransfer()) {
             drainAndFlush();

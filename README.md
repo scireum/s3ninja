@@ -9,7 +9,7 @@ See https://s3ninja.net for more details.
 
 ## Contributions
 
-Contributions as issues or pull requests are always welcome. Please [sign-off](https://developercertificate.org) 
+Contributions as issues or pull requests are always welcome. Please [sign off](https://developercertificate.org) 
 all your commits by adding a line like "Signed-off-by: Name <email>" at the end of each commit, indicating that
 you wrote the code and have the right to pass it on as an open source
 

@@ -3,7 +3,7 @@
         <div>
             <small>
                 @sirius.kernel.info.Product.getProduct().getName() is made with all the love in the world by
-                <a href="http://www.scireum.de" target="_blank">scireum</a> in Remshalden
+                <a href="https://www.scireum.de" target="_blank">scireum</a> in Remshalden
             </small>
         </div>
         <div class="text-right">

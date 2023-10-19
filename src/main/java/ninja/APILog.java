@@ -11,7 +11,6 @@ package ninja;
 import com.google.common.collect.Lists;
 import sirius.kernel.commons.Watch;
 import sirius.kernel.di.std.Register;
-import sirius.kernel.nls.NLS;
 
 import java.time.LocalDateTime;
 import java.util.Iterator;

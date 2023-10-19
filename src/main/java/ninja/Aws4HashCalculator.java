@@ -69,7 +69,7 @@ public class Aws4HashCalculator {
         Matcher matcher = AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue("Authorization").asString(""));
 
         if (!matcher.matches()) {
-            // If the header doesn't match, let's try an URL parameter as we might be processing a presigned URL
+            // If the header doesn't match, let's try a URL parameter as we might be processing a presigned URL
             matcher = X_AMZ_CREDENTIAL_PATTERN.matcher(webContext.get("X-Amz-Credential").asString(""));
             if (!matcher.matches()) {
                 throw new IllegalArgumentException("Unknown AWS4 auth pattern");

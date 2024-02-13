@@ -114,7 +114,7 @@
                                         </div>
                                     </t:modal>
                                     <t:additionalActions label="Actions">
-                                        <t:dropdownItem url="@apply('javascript:$(document.querySelector(\'#%s\')).modal()', modalId)"
+                                        <t:dropdownItem url="@apply('javascript:showProperties(\'#%s\')', modalId)"
                                                         icon="fa-solid fa-circle-info"
                                                         label="Properties"/>
                                         <t:dropdownDeleteItem
@@ -132,6 +132,16 @@
                           baseUrl="@apply('/ui/%s', bucket.getEncodedName())"/>
         </div>
     </div>
+
+    <script>
+        function showProperties(selector) {
+            const _modalElement = document.querySelector(selector);
+            if (!_modalElement.modal) {
+                _modalElement.modal = new bootstrap.Modal(_modalElement);
+            }
+            _modalElement.modal.show();
+        }
+    </script>
 
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>

@@ -23,7 +23,7 @@
         }
 
         function checkBucketName() {
-            return new Promise(function (resolve, reject) {
+            return new Promise((resolve, reject) => {
                 // make sure we have the text field
                 const textfield = resolveTextfield();
                 if (!textfield) {
@@ -45,13 +45,13 @@
          * Checks the form for errors and styles the input accordingly.
          */
         function checkForm() {
-            checkBucketName().then(function (name) {
+            checkBucketName().then(name => {
                 // remove style class `error`
                 const textfield = resolveTextfield();
                 if (textfield) {
                     textfield.classList.remove('sci-border-red');
                 }
-            }).catch(function (name) {
+            }).catch(name => {
                 // add style class `error` unless empty
                 const textfield = resolveTextfield();
                 if (textfield) {
@@ -67,9 +67,9 @@
          * Checks the form for errors and submits the form if everything is fine.
          */
         function submitForm() {
-            checkBucketName().then(function (name) {
+            checkBucketName().then(name => {
                 location.href = '/ui/' + encodeURIComponent(name) + '?create'
-            }).catch(function () {
+            }).catch(() => {
                 // ignore, error has already been indicated while typing
             });
         }

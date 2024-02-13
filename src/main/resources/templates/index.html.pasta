@@ -115,11 +115,9 @@
                                            placeholder="New Bucket…"
                                            autofocus
                                            oninput="checkForm();"/>
-                                    <div class="input-group-append">
-                                        <a class="btn btn-outline-secondary"
-                                           onclick="submitForm();">
-                                            <i class="fa-solid fa-plus"></i></a>
-                                    </div>
+                                    <a class="btn btn-outline-secondary"
+                                       onclick="submitForm();">
+                                        <i class="fa-solid fa-plus"></i></a>
                                 </div>
                             </form>
                         </div>

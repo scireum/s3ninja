@@ -6,7 +6,7 @@
                 <a href="https://www.scireum.de" target="_blank">scireum</a> in Remshalden
             </small>
         </div>
-        <div class="text-right">
+        <div class="text-end">
             <small>@sirius.kernel.info.Product.getProduct().getDetails()</small>
         </div>
     </div>

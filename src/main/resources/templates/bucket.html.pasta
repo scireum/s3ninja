@@ -24,13 +24,13 @@
                         <a class="btn btn-success w-100"
                            href="/ui/@bucket.getEncodedName()?make-public">
                             <i class="fa-solid fa-lock-open"></i>
-                            <span class="pl-2">Make public</span>
+                            <span class="ps-2">Make public</span>
                         </a>
                         <i:else>
                             <a class="btn btn-danger w-100"
                                href="/ui/@bucket.getEncodedName()?make-private">
                                 <i class="fa-solid fa-lock"></i>
-                                <span class="pl-2">Make private</span>
+                                <span class="ps-2">Make private</span>
                             </a>
                         </i:else>
                     </i:if>
@@ -63,7 +63,7 @@
                         <i:if test="page.getItems().isEmpty()">
                             <tr>
                                 <td colspan="2"
-                                    class="text-muted">
+                                    class="border-0 border-top text-muted">
                                     (No objects in bucket)
                                 </td>
                             </tr>
@@ -72,13 +72,13 @@
                                var="obj"
                                items="page.getItems()">
                             <tr>
-                                <td>
+                                <td class="border-0 border-top">
                                     <a class="link"
                                        href="/ui/@bucket.getEncodedName()/@obj.getEncodedKey()">@obj.getKey()</a><br/>
                                     <div class="text-muted small">@obj.getSize()</div>
                                     <div class="text-muted small">@obj.getLastModified()</div>
                                 </td>
-                                <td class="text-right pr-0">
+                                <td class="border-0 border-top text-end pe-0">
                                     <i:local name="modalId"
                                              value="generateId('object_info_%s')"/>
                                     <i:local name="propertyNames"
@@ -89,7 +89,7 @@
                                              title="@obj.getKey()"
                                              cancel="Close"
                                              class="modal-lg modal-dialog-centered">
-                                        <div class="text-left"
+                                        <div class="text-start"
                                              style="margin-bottom: -1rem;">
                                             <i:if test="properties.isEmpty()">
                                                 <p class="text-muted">
@@ -114,7 +114,7 @@
                                         </div>
                                     </t:modal>
                                     <t:additionalActions label="Actions">
-                                        <t:dropdownItem url="@apply('javascript:$(document.querySelector(\'#%s\')).modal()', modalId)"
+                                        <t:dropdownItem url="@apply('javascript:showProperties(\'#%s\')', modalId)"
                                                         icon="fa-solid fa-circle-info"
                                                         label="Properties"/>
                                         <t:dropdownDeleteItem
@@ -132,6 +132,16 @@
                           baseUrl="@apply('/ui/%s', bucket.getEncodedName())"/>
         </div>
     </div>
+
+    <script>
+        function showProperties(selector) {
+            const _modalElement = document.querySelector(selector);
+            if (!_modalElement.modal) {
+                _modalElement.modal = new bootstrap.Modal(_modalElement);
+            }
+            _modalElement.modal.show();
+        }
+    </script>
 
     <i:block name="footer">
         <i:invoke template="/templates/footer.html.pasta"/>

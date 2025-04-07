@@ -5,7 +5,7 @@ RUN mkdir /home/sirius/data && \
     mkdir /home/sirius/logs
 
 USER root
-ADD --chown=sirius:sirius target/release-dir /home/sirius/
+COPY --chown=sirius:sirius target/release-dir /home/sirius/
 
 USER sirius
 

@@ -175,6 +175,8 @@ abstract class BaseAWS  {
         assertTrue(doesBucketExist(client, bucketName))
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -201,6 +203,8 @@ abstract class BaseAWS  {
         cleanupBuckets(client, bucketName)
 
         assertFalse(doesBucketExist(client, bucketName))
+
+        client.close()
     }
 
     @Test
@@ -237,6 +241,8 @@ abstract class BaseAWS  {
         cleanupBuckets(client, bucketName)
 
         transferManager.close()
+
+        client.close()
     }
 
     @Test
@@ -270,6 +276,8 @@ abstract class BaseAWS  {
         assertEquals("Test", downloadedData)
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -292,6 +300,8 @@ abstract class BaseAWS  {
         assertEquals(key2, summaries[1].key())
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -309,6 +319,8 @@ abstract class BaseAWS  {
         }
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -356,6 +368,8 @@ abstract class BaseAWS  {
         assertEquals("test123", metadata)
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -407,6 +421,8 @@ abstract class BaseAWS  {
         }
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     @Test
@@ -447,6 +463,7 @@ abstract class BaseAWS  {
         cleanupBuckets(client, bucketName)
 
         presigner.close()
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/153
@@ -486,6 +503,8 @@ abstract class BaseAWS  {
         assertEquals("Test", downloadedData)
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/181
@@ -525,6 +544,8 @@ abstract class BaseAWS  {
         assertEquals(key3, listing.contents()[0].key())
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/214
@@ -555,6 +576,8 @@ abstract class BaseAWS  {
         assertEquals(key2, result.contents()[1].key())
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/209
@@ -583,6 +606,8 @@ abstract class BaseAWS  {
         connection.disconnect()
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/230
@@ -619,6 +644,8 @@ abstract class BaseAWS  {
         assertEquals(content, downloadedData)
 
         cleanupBuckets(client, bucketName)
+
+        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/230
@@ -656,5 +683,7 @@ abstract class BaseAWS  {
         assertEquals(content, downloadedData)
 
         cleanupBuckets(client, bucketNameFrom, bucketNameTo)
+
+        client.close()
     }
 }

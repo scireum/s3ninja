@@ -47,7 +47,7 @@ abstract class BaseAWS  {
     abstract fun getAsyncClient(): S3AsyncClient
 
     /**
-     * Before each test, delete all buckets and their objects. This allows to run the test based on a clean state.
+     * Before each test, delete all buckets and their objects. This allows running the test based on a clean state.
      */
     @BeforeEach
     fun setup() {
@@ -69,7 +69,7 @@ abstract class BaseAWS  {
             return try {
                 client.headBucket(HeadBucketRequest.builder().bucket(bucketName).build())
                 true
-            } catch (e: S3Exception) {
+            } catch (_: S3Exception) {
                 false
             }
         }

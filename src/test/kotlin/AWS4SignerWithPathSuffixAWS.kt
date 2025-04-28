@@ -48,7 +48,6 @@ class AWS4SignerWithPathSuffixAWS : BaseAWS() {
                     .pathStyleAccessEnabled(true)
                     .build()
             )
-            .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
             .endpointOverride(URI.create(endpointWithSuffix))
             .region(Region.EU_CENTRAL_1)
             .build()

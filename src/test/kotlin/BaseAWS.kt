@@ -218,8 +218,9 @@ abstract class BaseAWS  {
         val file = File.createTempFile("test", "")
         val writer = FileWriter(file, StandardCharsets.UTF_8, true)
         file.deleteOnExit()
+
         for (ignored in 0..10000) {
-            writer.write("This is a test.\n")
+            writer.write("$ignored. This is a test.\n")
         }
         writer.close()
 

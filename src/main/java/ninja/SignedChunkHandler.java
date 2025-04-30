@@ -101,8 +101,10 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             return -1;
         }
 
-        List<String> contentSHA256Content = List.of("STREAMING-UNSIGNED-PAYLOAD-TRAILER", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER");
-        String contentSHA256Header = Optional.ofNullable(Objects.requireNonNull(webContext).getHeader("x-amz-content-sha256")).orElse("");
+        List<String> contentSHA256Content =
+                List.of("STREAMING-UNSIGNED-PAYLOAD-TRAILER", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER");
+        String contentSHA256Header =
+                Optional.ofNullable(Objects.requireNonNull(webContext).getHeader("x-amz-content-sha256")).orElse("");
         if (length == 0 && contentSHA256Content.contains(contentSHA256Header)) {
             String checksum = readRawSignature(chunkBuffer).orElse("");
             String signature = readRawSignature(chunkBuffer).orElse("");

@@ -42,7 +42,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             return;
         }
 
-        // copy everything into the auxiliary buffer first, and try to pull as many complete chunks as possible from it
+        // copy everything into the auxiliary buffer first and try to pull as many complete chunks as possible from it
         // afterward
         chunkBuffer.writeBytes(content);
         if (tryToCompleteTransfer()) {
@@ -77,7 +77,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     /**
      * Extracts the next chunk from the {@link #chunkBuffer} and returns its size in bytes. If the number is negative,
-     * the next chunk is not complete and can not be read yet. The chunk can be processed once more data has been
+     * the next chunk is not complete and cannot be read yet. The chunk can be processed once more data has been
      * received.
      *
      * @return number of bytes transferred, or negative number if the chunk has not yet been completely transmitted.
@@ -132,7 +132,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             throw new IOException("Failed to find expected <CR><LF> characters.");
         }
 
-        // finally pass on the data
+        // finally, pass on the data
         if (length > 0) {
             // we could check the signature here
             ByteBuf data = chunkBuffer.copy(index, length);

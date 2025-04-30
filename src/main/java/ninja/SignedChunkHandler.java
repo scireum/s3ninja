@@ -173,7 +173,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         StringBuilder chunkLengthString = new StringBuilder();
         while (content.isReadable()) {
             byte data = content.readByte();
-            if (data == ';') {
+            if (data == ';' || data == '\r') {
                 return Optional.of(chunkLengthString.toString());
             }
             chunkLengthString.append((char) data);

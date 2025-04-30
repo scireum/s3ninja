@@ -20,7 +20,11 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QueryProcessor;
 import sirius.kernel.async.CallContext;
-import sirius.kernel.commons.*;
+import sirius.kernel.commons.Callback;
+import sirius.kernel.commons.Hasher;
+import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
+import sirius.kernel.commons.Value;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
@@ -32,9 +36,17 @@ import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.Outcall;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
-import sirius.web.http.*;
+import sirius.web.http.InputStreamHandler;
+import sirius.web.http.MimeHelper;
+import sirius.web.http.Response;
+import sirius.web.http.WebContext;
+import sirius.web.http.WebDispatcher;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileFilter;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.nio.channels.FileChannel;
 import java.time.Instant;
@@ -42,7 +54,17 @@ import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.util.*;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 
 import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
@@ -107,10 +129,10 @@ public class S3Dispatcher implements WebDispatcher {
      */
     public static final DateTimeFormatter ISO8601_INSTANT =
             new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                    .toFormatter()
-                    .withLocale(Locale.ENGLISH)
-                    .withChronology(IsoChronology.INSTANCE)
-                    .withZone(ZoneOffset.ofHours(0));
+                                          .toFormatter()
+                                          .withLocale(Locale.ENGLISH)
+                                          .withChronology(IsoChronology.INSTANCE)
+                                          .withZone(ZoneOffset.ofHours(0));
 
     private static final Map<String, String> headerOverrides;
 
@@ -164,8 +186,8 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isFilled(request.query)
-                && !Strings.areEqual(request.query, "uploads")
-                && !Strings.areEqual(request.query, "delete")) {
+            && !Strings.areEqual(request.query, "uploads")
+            && !Strings.areEqual(request.query, "delete")) {
             forwardQueryToProcessor(webContext, request);
             return null;
         }
@@ -186,8 +208,8 @@ public class S3Dispatcher implements WebDispatcher {
 
     private InputStreamHandler createInputStreamHandler(WebContext webContext) {
         if (aws4HashCalculator.supports(webContext)
-                && HttpMethod.PUT.equals(webContext.getRequest().method())
-                && webContext.getHeader("x-amz-decoded-content-length") != null) {
+            && HttpMethod.PUT.equals(webContext.getRequest().method())
+            && webContext.getHeader("x-amz-decoded-content-length") != null) {
             // We have to pass the web context to the handler, as it is necessary to access the request
             return new SignedChunkHandler(webContext);
         } else {
@@ -260,8 +282,8 @@ public class S3Dispatcher implements WebDispatcher {
         Iterator<String> parameterIterator = webContext.getParameterNames().iterator();
         String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
         String query = Strings.isFilled(firstParameter) && Strings.isEmpty(webContext.getParameter(firstParameter)) ?
-                firstParameter :
-                null;
+                       firstParameter :
+                       null;
 
         // chop off potential port from host
         Tuple<String, String> hostAndPort = Strings.split(webContext.getHeader("Host"), ":");
@@ -296,10 +318,10 @@ public class S3Dispatcher implements WebDispatcher {
         Bucket bucket = storage.getBucket(request.bucket);
         if (!bucket.exists()) {
             errorSynthesizer.synthesiseError(webContext,
-                    bucket.getName(),
-                    request.key,
-                    S3ErrorCode.NoSuchBucket,
-                    ERROR_BUCKET_DOES_NOT_EXIST);
+                                             bucket.getName(),
+                                             request.key,
+                                             S3ErrorCode.NoSuchBucket,
+                                             ERROR_BUCKET_DOES_NOT_EXIST);
             return;
         }
 
@@ -309,10 +331,10 @@ public class S3Dispatcher implements WebDispatcher {
         } else {
             Log.BACKGROUND.WARN("Received unknown query '%s'.", request.query);
             errorSynthesizer.synthesiseError(webContext,
-                    request.bucket,
-                    request.key,
-                    S3ErrorCode.InvalidRequest,
-                    String.format("Received unknown query '%s'.", request.query));
+                                             request.bucket,
+                                             request.key,
+                                             S3ErrorCode.InvalidRequest,
+                                             String.format("Received unknown query '%s'.", request.query));
         }
     }
 
@@ -384,7 +406,7 @@ public class S3Dispatcher implements WebDispatcher {
 
             XMLStructuredOutput out = response.xml();
             out.beginOutput("ListAllMyBucketsResult",
-                    Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+                            Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
             out.property("hint", "Goto: " + webContext.getBaseURL() + "/ui to visit the admin UI");
             outputOwnerInfo(out, "Owner");
 
@@ -393,7 +415,7 @@ public class S3Dispatcher implements WebDispatcher {
                 out.beginObject(RESPONSE_BUCKET);
                 out.property("Name", bucket.getName());
                 out.property("CreationDate",
-                        ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFolder().lastModified())));
+                             ISO8601_INSTANT.format(Instant.ofEpochMilli(bucket.getFolder().lastModified())));
                 out.endObject();
             }
             out.endObject();
@@ -444,19 +466,19 @@ public class S3Dispatcher implements WebDispatcher {
             } else {
                 if (bucket.countObjects("") > 0) {
                     signalObjectError(webContext,
-                            bucketName,
-                            null,
-                            S3ErrorCode.BucketNotEmpty,
-                            ERROR_BUCKET_IS_NOT_EMPTY);
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.BucketNotEmpty,
+                                      ERROR_BUCKET_IS_NOT_EMPTY);
                     return;
                 }
 
                 if (!bucket.delete()) {
                     signalObjectError(webContext,
-                            bucketName,
-                            null,
-                            S3ErrorCode.InternalError,
-                            ERROR_FILE_SYSTEM_ACCESS);
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.InternalError,
+                                      ERROR_FILE_SYSTEM_ACCESS);
                     return;
                 }
 
@@ -466,10 +488,10 @@ public class S3Dispatcher implements WebDispatcher {
         } else if (HttpMethod.PUT.equals(method)) {
             if (bucket.exists()) {
                 signalObjectError(webContext,
-                        bucketName,
-                        null,
-                        S3ErrorCode.BucketAlreadyOwnedByYou,
-                        ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
+                                  bucketName,
+                                  null,
+                                  S3ErrorCode.BucketAlreadyOwnedByYou,
+                                  ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
                 return;
             }
 
@@ -581,18 +603,18 @@ public class S3Dispatcher implements WebDispatcher {
             if (storage.isAutocreateBuckets()) {
                 if (!bucket.create()) {
                     signalObjectError(webContext,
-                            bucket.getName(),
-                            id,
-                            S3ErrorCode.InternalError,
-                            ERROR_FILE_SYSTEM_ACCESS);
+                                      bucket.getName(),
+                                      id,
+                                      S3ErrorCode.InternalError,
+                                      ERROR_FILE_SYSTEM_ACCESS);
                     return false;
                 }
             } else {
                 signalObjectError(webContext,
-                        bucket.getName(),
-                        id,
-                        S3ErrorCode.NoSuchBucket,
-                        ERROR_BUCKET_DOES_NOT_EXIST);
+                                  bucket.getName(),
+                                  id,
+                                  S3ErrorCode.NoSuchBucket,
+                                  ERROR_BUCKET_DOES_NOT_EXIST);
                 return false;
             }
         }
@@ -606,13 +628,13 @@ public class S3Dispatcher implements WebDispatcher {
             String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
                 errorSynthesizer.synthesiseError(webContext,
-                        bucket.getName(),
-                        key,
-                        S3ErrorCode.SignatureDoesNotMatch,
-                        Strings.apply(
-                                "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
-                                expectedHash,
-                                hash));
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 Strings.apply(
+                                                         "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
+                                                         expectedHash,
+                                                         hash));
                 log.log(webContext.getRequest().method().name(),
                         webContext.getRequestedURI(),
                         APILog.Result.REJECTED,
@@ -622,10 +644,10 @@ public class S3Dispatcher implements WebDispatcher {
         }
         if (bucket.isPrivate() && !webContext.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
             errorSynthesizer.synthesiseError(webContext,
-                    bucket.getName(),
-                    key,
-                    S3ErrorCode.AccessDenied,
-                    "Authentication required");
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.AccessDenied,
+                                             "Authentication required");
             log.log(webContext.getRequest().method().name(),
                     webContext.getRequestedURI(),
                     APILog.Result.REJECTED,
@@ -715,10 +737,10 @@ public class S3Dispatcher implements WebDispatcher {
         if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
             object.delete();
             signalObjectError(webContext,
-                    bucket.getName(),
-                    id,
-                    S3ErrorCode.BadDigest,
-                    Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
+                              bucket.getName(),
+                              id,
+                              S3ErrorCode.BadDigest,
+                              Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)", contentMd5, md5));
             return;
         }
         String etag = BaseEncoding.base16().encode(hash).toLowerCase();
@@ -757,10 +779,10 @@ public class S3Dispatcher implements WebDispatcher {
     private void copyObject(WebContext webContext, Bucket bucket, String key, String sourcePath) throws IOException {
         if (Strings.isEmpty(sourcePath) || !sourcePath.contains(PATH_DELIMITER)) {
             signalObjectError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.InvalidRequest,
-                    String.format("Source '%s' must contain '/'", sourcePath));
+                              null,
+                              null,
+                              S3ErrorCode.InvalidRequest,
+                              String.format("Source '%s' must contain '/'", sourcePath));
             return;
         }
 
@@ -774,20 +796,20 @@ public class S3Dispatcher implements WebDispatcher {
         Bucket sourceBucket = storage.getBucket(sourceBucketName);
         if (!sourceBucket.exists()) {
             signalObjectError(webContext,
-                    sourceBucketName,
-                    sourceKey,
-                    S3ErrorCode.NoSuchBucket,
-                    String.format("Source bucket '%s' does not exist", sourceBucketName));
+                              sourceBucketName,
+                              sourceKey,
+                              S3ErrorCode.NoSuchBucket,
+                              String.format("Source bucket '%s' does not exist", sourceBucketName));
             return;
         }
 
         StoredObject sourceObject = sourceBucket.getObject(sourceKey);
         if (!sourceObject.exists()) {
             signalObjectError(webContext,
-                    sourceBucketName,
-                    sourceKey,
-                    S3ErrorCode.NoSuchKey,
-                    String.format("Source object '%s/%s' does not exist", sourceBucketName, sourceKey));
+                              sourceBucketName,
+                              sourceKey,
+                              S3ErrorCode.NoSuchKey,
+                              String.format("Source object '%s/%s' does not exist", sourceBucketName, sourceKey));
             return;
         }
 
@@ -852,7 +874,7 @@ public class S3Dispatcher implements WebDispatcher {
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
             response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                    Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+                               Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }
@@ -899,7 +921,7 @@ public class S3Dispatcher implements WebDispatcher {
         properties.forEach(clonedProperties::setProperty);
 
         try (FileOutputStream outputStream = new FileOutputStream(new File(getUploadDir(uploadId),
-                TEMPORARY_PROPERTIES_FILENAME))) {
+                                                                           TEMPORARY_PROPERTIES_FILENAME))) {
             clonedProperties.store(outputStream, "");
         } catch (IOException exception) {
             Exceptions.handle(exception);
@@ -917,10 +939,10 @@ public class S3Dispatcher implements WebDispatcher {
     private void multiObject(WebContext webContext, String uploadId, String partNumber, InputStreamHandler part) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.NoSuchUpload,
-                    ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -936,15 +958,15 @@ public class S3Dispatcher implements WebDispatcher {
 
             String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(partFile).toHash()).toLowerCase();
             webContext.respondWith()
-                    .setHeader(HTTP_HEADER_NAME_ETAG, etag)
-                    .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
-                    .status(HttpResponseStatus.OK);
+                      .setHeader(HTTP_HEADER_NAME_ETAG, etag)
+                      .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, HTTP_HEADER_NAME_ETAG)
+                      .status(HttpResponseStatus.OK);
         } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.InternalError,
-                    Exceptions.handle(exception).getMessage());
+                                             null,
+                                             null,
+                                             S3ErrorCode.InternalError,
+                                             Exceptions.handle(exception).getMessage());
         }
     }
 
@@ -964,10 +986,10 @@ public class S3Dispatcher implements WebDispatcher {
                                          InputStreamHandler in) {
         if (!multipartUploads.remove(uploadId)) {
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.NoSuchUpload,
-                    ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 
@@ -985,20 +1007,20 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         File file = combineParts(id,
-                uploadId,
-                parts.entrySet()
-                        .stream()
-                        .sorted(Map.Entry.comparingByKey())
-                        .map(Map.Entry::getValue)
-                        .toList());
+                                 uploadId,
+                                 parts.entrySet()
+                                      .stream()
+                                      .sorted(Map.Entry.comparingByKey())
+                                      .map(Map.Entry::getValue)
+                                      .toList());
 
         file.deleteOnExit();
         if (!file.exists()) {
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.NoSuchUpload,
-                    "Multipart File does not exist");
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             "Multipart File does not exist");
             return;
         }
         try {
@@ -1026,10 +1048,10 @@ public class S3Dispatcher implements WebDispatcher {
         } catch (IOException exception) {
             Exceptions.ignore(exception);
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.InternalError,
-                    "Could not build response");
+                                             null,
+                                             null,
+                                             S3ErrorCode.InternalError,
+                                             "Could not build response");
         }
     }
 
@@ -1051,7 +1073,7 @@ public class S3Dispatcher implements WebDispatcher {
             if (!file.createNewFile()) {
                 Storage.LOG.WARN("Failed to create multipart result file %s (%s).",
 
-                        file.getName(), file.getAbsolutePath());
+                                 file.getName(), file.getAbsolutePath());
             }
             try (FileOutputStream outStream = new FileOutputStream(file);
                  FileChannel outChannel = outStream.getChannel()) {
@@ -1068,7 +1090,7 @@ public class S3Dispatcher implements WebDispatcher {
         for (File part : parts) {
             try (RandomAccessFile randomAccessToPart = new RandomAccessFile(part, "r")) {
                 out.write(randomAccessToPart.getChannel()
-                        .map(FileChannel.MapMode.READ_ONLY, 0, randomAccessToPart.length()));
+                                            .map(FileChannel.MapMode.READ_ONLY, 0, randomAccessToPart.length()));
             }
         }
     }
@@ -1103,10 +1125,10 @@ public class S3Dispatcher implements WebDispatcher {
     private void getPartList(WebContext webContext, Bucket bucket, String id, String uploadId) {
         if (!multipartUploads.contains(uploadId)) {
             errorSynthesizer.synthesiseError(webContext,
-                    null,
-                    null,
-                    S3ErrorCode.NoSuchUpload,
-                    ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
+                                             null,
+                                             null,
+                                             S3ErrorCode.NoSuchUpload,
+                                             ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST);
             return;
         }
 

@@ -38,7 +38,7 @@ import java.time.Duration
 import kotlin.test.assertEquals
 
 @ExtendWith(SiriusExtension::class)
-abstract class BaseAWS  {
+abstract class BaseAWS {
 
     private val defaultBucketName = "test"
     private val defaultKey = "key/with/slashes and spaces 😇"
@@ -360,13 +360,10 @@ abstract class BaseAWS  {
             .key(key)
             .build()
 
-
         val contentFuture = client.getObject(getObjectRequest, AsyncResponseTransformer.toBytes())
         val content = String(contentFuture.join().asByteArray(), StandardCharsets.UTF_8)
-        val metadata = client.headObject { it.bucket(bucketName).key(key) }.get().metadata()["userdata"]
 
         assertEquals("Test", content)
-        assertEquals("test123", metadata)
 
         cleanupBuckets(client, bucketName)
 

@@ -24,6 +24,7 @@ import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
+import sirius.kernel.commons.Urls;
 import sirius.kernel.commons.Value;
 import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.ConfigValue;
@@ -787,7 +788,7 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         // parse the path of the source object
-        sourcePath = Strings.urlDecode(sourcePath);
+        sourcePath = Urls.decode(sourcePath);
         int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
         String sourceBucketName =
                 sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));

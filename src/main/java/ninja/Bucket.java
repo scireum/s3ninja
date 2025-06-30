@@ -12,6 +12,7 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Limit;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Urls;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
@@ -102,7 +103,7 @@ public class Bucket {
      * @return the encoded name of the bucket
      */
     public String getEncodedName() {
-        return Strings.urlEncode(getName());
+        return Urls.encode(getName());
     }
 
     /**

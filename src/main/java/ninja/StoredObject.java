@@ -11,6 +11,7 @@ package ninja;
 import com.google.common.collect.Maps;
 import sirius.kernel.commons.Files;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Urls;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.nls.NLS;
 
@@ -73,7 +74,7 @@ public class StoredObject {
      * @return the encoded key
      */
     public static String encodeKey(String key) {
-        return Strings.urlEncode(key).replace("+", "%20");
+        return Urls.encode(key).replace("+", "%20");
     }
 
     /**

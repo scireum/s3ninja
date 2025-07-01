@@ -3,11 +3,13 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>com.scireum</groupId>
         <artifactId>sirius-parent</artifactId>
         <version>14.0.1</version>
     </parent>
+
     <artifactId>s3ninja</artifactId>
     <version>DEVELOPMENT-SNAPSHOT</version>
     <packaging>jar</packaging>
@@ -16,16 +18,16 @@
     <url>https://s3ninja.net</url>
 
     <properties>
+        <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
+
         <sirius.kernel>dev-46.3.2</sirius.kernel>
         <sirius.web>dev-90.9.1</sirius.web>
-    </properties>
 
-    <repositories>
-        <repository>
-            <id>scireum-mvn</id>
-            <url>https://mvn.scireum.com</url>
-        </repository>
-    </repositories>
+        <!-- Force build to complete with warnings, e.g.: while using deprecated code -->
+        <maven.compiler.warnings></maven.compiler.warnings>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <source.skip>true</source.skip>
+    </properties>
 
     <pluginRepositories>
         <pluginRepository>
@@ -34,12 +36,37 @@
         </pluginRepository>
     </pluginRepositories>
 
+    <repositories>
+        <repository>
+            <id>scireum-mvn</id>
+            <url>https://mvn.scireum.com</url>
+        </repository>
+    </repositories>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/*.conf</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>**/*.conf</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources/constants</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+    </build>
+
     <dependencies>
-        <dependency>
-            <groupId>com.scireum</groupId>
-            <artifactId>sirius-web</artifactId>
-            <version>${sirius.web}</version>
-        </dependency>
         <dependency>
             <groupId>com.scireum</groupId>
             <artifactId>sirius-kernel</artifactId>
@@ -52,6 +79,20 @@
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.scireum</groupId>
+            <artifactId>sirius-web</artifactId>
+            <version>${sirius.web}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.scireum</groupId>
+            <artifactId>sirius-web</artifactId>
+            <version>${sirius.web}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>

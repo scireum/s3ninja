@@ -38,7 +38,7 @@ import java.time.Duration
 import kotlin.test.assertEquals
 
 @ExtendWith(SiriusExtension::class)
-abstract class BaseAWS {
+abstract class BaseTest {
 
     private val defaultBucketName = "test"
     private val defaultKey = "key/with/slashes and spaces 😇"

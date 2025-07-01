@@ -2,7 +2,6 @@ import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.S3Client
@@ -10,8 +9,9 @@ import software.amazon.awssdk.services.s3.S3Configuration
 import java.net.URI
 
 @ExtendWith(SiriusExtension::class)
-class AWS4SignerAWS : BaseAWS() {
+class AWS4SignerWithPathSuffixTest : BaseTest() {
 
+    private val endpointWithSuffix = "$ENDPOINT/s3"
     override fun getClient(): S3Client {
         return S3Client.builder()
             .credentialsProvider(
@@ -27,7 +27,7 @@ class AWS4SignerAWS : BaseAWS() {
                     .pathStyleAccessEnabled(true)
                     .build()
             )
-            .endpointOverride(URI.create(ENDPOINT))
+            .endpointOverride(URI.create(endpointWithSuffix))
             .region(Region.EU_CENTRAL_1)
             .build()
     }
@@ -47,7 +47,7 @@ class AWS4SignerAWS : BaseAWS() {
                     .pathStyleAccessEnabled(true)
                     .build()
             )
-            .endpointOverride(URI.create(ENDPOINT))
+            .endpointOverride(URI.create(endpointWithSuffix))
             .region(Region.EU_CENTRAL_1)
             .build()
     }

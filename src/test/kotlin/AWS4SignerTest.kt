@@ -2,7 +2,6 @@ import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
-import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.S3Client
@@ -10,7 +9,7 @@ import software.amazon.awssdk.services.s3.S3Configuration
 import java.net.URI
 
 @ExtendWith(SiriusExtension::class)
-class AWS4SignerWithChecksumCalculationAWS : BaseAWS() {
+class AWS4SignerTest : BaseTest() {
 
     override fun getClient(): S3Client {
         return S3Client.builder()
@@ -27,7 +26,6 @@ class AWS4SignerWithChecksumCalculationAWS : BaseAWS() {
                     .pathStyleAccessEnabled(true)
                     .build()
             )
-            .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
             .endpointOverride(URI.create(ENDPOINT))
             .region(Region.EU_CENTRAL_1)
             .build()
@@ -48,7 +46,6 @@ class AWS4SignerWithChecksumCalculationAWS : BaseAWS() {
                     .pathStyleAccessEnabled(true)
                     .build()
             )
-            .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
             .endpointOverride(URI.create(ENDPOINT))
             .region(Region.EU_CENTRAL_1)
             .build()

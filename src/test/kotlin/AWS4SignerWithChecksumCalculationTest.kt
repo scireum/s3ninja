@@ -10,9 +10,8 @@ import software.amazon.awssdk.services.s3.S3Configuration
 import java.net.URI
 
 @ExtendWith(SiriusExtension::class)
-class AWS4SignerWithPathSuffixWithChecksumCalculationAWS : BaseAWS() {
+class AWS4SignerWithChecksumCalculationTest : BaseTest() {
 
-    private val endpointWithSuffix = "$ENDPOINT/s3"
     override fun getClient(): S3Client {
         return S3Client.builder()
             .credentialsProvider(
@@ -29,7 +28,7 @@ class AWS4SignerWithPathSuffixWithChecksumCalculationAWS : BaseAWS() {
                     .build()
             )
             .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
-            .endpointOverride(URI.create(endpointWithSuffix))
+            .endpointOverride(URI.create(ENDPOINT))
             .region(Region.EU_CENTRAL_1)
             .build()
     }
@@ -50,7 +49,7 @@ class AWS4SignerWithPathSuffixWithChecksumCalculationAWS : BaseAWS() {
                     .build()
             )
             .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
-            .endpointOverride(URI.create(endpointWithSuffix))
+            .endpointOverride(URI.create(ENDPOINT))
             .region(Region.EU_CENTRAL_1)
             .build()
     }

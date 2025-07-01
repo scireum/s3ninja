@@ -9,7 +9,7 @@ import software.amazon.awssdk.services.s3.S3Configuration
 import java.net.URI
 
 @ExtendWith(SiriusExtension::class)
-class AWS4SignerWithPathSuffixTest : BaseTest() {
+class AWS4SignerWithPathSuffixTestBla : BaseTest() {
 
     private val endpointWithSuffix = "$ENDPOINT/s3"
     override fun getClient(): S3Client {

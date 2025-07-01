@@ -9,7 +9,7 @@ import software.amazon.awssdk.services.s3.S3Configuration
 import java.net.URI
 
 @ExtendWith(SiriusExtension::class)
-class AWS4SignerTest : BaseTest() {
+class AWS4SignerTestBla : BaseTest() {
 
     override fun getClient(): S3Client {
         return S3Client.builder()

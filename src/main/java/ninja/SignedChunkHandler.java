@@ -102,8 +102,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         // read the signature
         Optional<String> optionalSignature = readSignature(chunkBuffer);
         if (optionalSignature.isEmpty()) {
-            chunkBuffer.resetReaderIndex();
-            return -1;
+            // usually, this would be an error, but SDK 2.0 seems to send chunks without a signature
         }
 
 

@@ -35,6 +35,10 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     private final WebContext webContext;
 
+    SignedChunkHandler(@Nullable WebContext webContext) {
+        this.webContext = webContext;
+    }
+
     @Override
     public void handle(ByteBuf content, boolean last) throws IOException {
         if (!content.isReadable()) {
@@ -48,10 +52,6 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         if (tryToCompleteTransfer()) {
             drainAndFlush();
         }
-    }
-
-    public SignedChunkHandler(@Nullable WebContext webContext) {
-        this.webContext = webContext;
     }
 
     /**

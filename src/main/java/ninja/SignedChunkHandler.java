@@ -105,30 +105,30 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             // usually, this would be an error, but SDK 2.0 seems to send chunks without a signature
         }
 
-
-        // before passing on the data, make sure that we have sufficiently many bytes (accounting for the two <CR><LF>
-        // characters)
-        if (chunkBuffer.readableBytes() < length + 2) {
-            chunkBuffer.resetReaderIndex();
-            return -1;
-        }
-
-        // make sure that the last two bytes are really <CR><LF>
         int index = chunkBuffer.readerIndex();
-        byte supposedCR = chunkBuffer.getByte(index + length);
-        byte supposedLF = chunkBuffer.getByte(index + length + 1);
-        if (supposedCR != '\r' || supposedLF != '\n') {
-            throw new IOException("Failed to find expected <CR><LF> characters.");
-        }
-
-        // finally, pass on the data
         if (length > 0) {
-            // we could check the signature here
+
+            // before passing on the data, make sure that we have sufficiently many bytes (accounting for the two <CR><LF>
+            // characters)
+            if (chunkBuffer.readableBytes() < length + 2) {
+                chunkBuffer.resetReaderIndex();
+                return -1;
+            }
+
+            // make sure that the last two bytes are really <CR><LF>
+            byte supposedCR = chunkBuffer.getByte(index + length);
+            byte supposedLF = chunkBuffer.getByte(index + length + 1);
+            if (supposedCR != '\r' || supposedLF != '\n') {
+                throw new IOException("Failed to find expected <CR><LF> characters.");
+            }
+
+            // finally, pass on the data; note that we could check the signature here
             ByteBuf data = chunkBuffer.copy(index, length);
             super.handle(data, false);
+
+            chunkBuffer.readerIndex(index + length + 2);
         }
 
-        chunkBuffer.readerIndex(index + length + 2);
         chunkBuffer.discardReadBytes();
 
         return length;

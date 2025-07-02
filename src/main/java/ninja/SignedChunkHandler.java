@@ -10,6 +10,7 @@ package ninja;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Log;
 import sirius.web.http.WebContext;
 
@@ -185,7 +186,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             }
 
             if (data == ';' || data == '\r') {
-                return Optional.of(chunkLengthString.toString());
+                return Optional.of(chunkLengthString.toString()).filter(Strings::isFilled);
             }
 
             chunkLengthString.append((char) data);
@@ -225,7 +226,8 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
                 previousWasCR = true;
             } else if (previousWasCR && data == '\n') {
                 // extract the string, skipping the trailing <CR> character
-                return Optional.of(signatureString.substring(0, signatureString.length() - 1));
+                return Optional.of(signatureString.substring(0, signatureString.length() - 1))
+                               .filter(Strings::isFilled);
             } else {
                 previousWasCR = false;
             }

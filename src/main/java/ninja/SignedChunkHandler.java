@@ -174,10 +174,20 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
     private Optional<String> readRawChunkLength(ByteBuf content) {
         StringBuilder chunkLengthString = new StringBuilder();
         while (content.isReadable()) {
+            int index = content.readerIndex();
             byte data = content.readByte();
+
+            if (data == '\r') {
+                // in case we encounter a <CR> character, we need to backtrack as we likely have come across the
+                // end of a chunk length string without a checksum; the <CR><LF> sequence needs to be maintained for
+                // termination checks further down
+                content.readerIndex(index);
+            }
+
             if (data == ';' || data == '\r') {
                 return Optional.of(chunkLengthString.toString());
             }
+
             chunkLengthString.append((char) data);
         }
 

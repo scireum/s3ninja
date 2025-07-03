@@ -6,7 +6,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import sirius.kernel.SiriusExtension
 
 @ExtendWith(SiriusExtension::class)
-class KeyEncoding {
+class KeyEncodingTest {
 
     @ParameterizedTest
     @CsvSource(

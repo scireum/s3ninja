@@ -154,7 +154,18 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
                 }
                 trailingHeaders.add(header.get());
 
-                // note that for now, we don't do anything with the trailing headers
+                // note that for now, we don't do anything with the trailing headers; we could check the signature here
+            }
+
+            return;
+        }
+
+        if (chunkBuffer.readableBytes() >= 2) {
+            byte supposedCR = chunkBuffer.getByte(0);
+            byte supposedLF = chunkBuffer.getByte(1);
+            if (supposedCR == '\r' && supposedLF == '\n') {
+                chunkBuffer.readerIndex(2);
+                chunkBuffer.discardReadBytes();
             }
         }
     }

@@ -20,9 +20,7 @@ class KeyEncodingTest {
         ]
     )
     fun `key encoding and decoding works`(key: String, encodedKey: String) {
-        val encoded = StoredObject.encodeKey(key)
-        val decoded = StoredObject.decodeKey(encodedKey)
-        Assertions.assertEquals(encoded, encodedKey)
-        Assertions.assertEquals(decoded, key)
+        Assertions.assertEquals(encodedKey, StoredObject.encodeKey(key))
+        Assertions.assertEquals(key, StoredObject.decodeKey(encodedKey))
     }
 }

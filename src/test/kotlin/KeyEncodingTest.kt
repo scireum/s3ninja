@@ -1,9 +1,9 @@
 import ninja.StoredObject
-import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import sirius.kernel.SiriusExtension
+import kotlin.test.assertEquals
 
 @ExtendWith(SiriusExtension::class)
 class KeyEncodingTest {
@@ -20,7 +20,7 @@ class KeyEncodingTest {
         ]
     )
     fun `key encoding and decoding works`(key: String, encodedKey: String) {
-        Assertions.assertEquals(encodedKey, StoredObject.encodeKey(key))
-        Assertions.assertEquals(key, StoredObject.decodeKey(encodedKey))
+        assertEquals(encodedKey, StoredObject.encodeKey(key))
+        assertEquals(key, StoredObject.decodeKey(encodedKey))
     }
 }

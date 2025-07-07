@@ -7,8 +7,6 @@
  */
 
 import com.google.common.io.ByteStreams
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -35,7 +33,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.time.Duration
-import kotlin.test.assertEquals
+import kotlin.test.*
 
 @ExtendWith(SiriusExtension::class)
 abstract class BaseTest {

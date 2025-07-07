@@ -36,7 +36,7 @@ import java.time.Duration
 import kotlin.test.*
 
 @ExtendWith(SiriusExtension::class)
-abstract class BaseTest {
+abstract class BaseSdkSupportTest {
 
     private val defaultBucketName = "test"
     private val defaultKey = "key/with/slashes and spaces 😇"

@@ -38,9 +38,6 @@ import kotlin.test.*
 @ExtendWith(SiriusExtension::class)
 abstract class BaseSdkSupportTest {
 
-    private val defaultBucketName = "test"
-    private val defaultKey = "key/with/slashes and spaces 😇"
-
     abstract fun getClient(): S3Client
     abstract fun getAsyncClient(): S3AsyncClient
 
@@ -62,6 +59,9 @@ abstract class BaseSdkSupportTest {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
         const val ENDPOINT = "http://localhost:9999"
+
+        const val DEFAULT_BUCKET_NAME = "test"
+        const val DEFAULT_KEY = "key/with/slashes and spaces 😇"
 
         fun doesBucketExist(client: S3Client, bucketName: String): Boolean {
             return try {
@@ -165,7 +165,7 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then HEAD bucket as expected`() {
-        val bucketName = defaultBucketName
+        val bucketName = DEFAULT_BUCKET_NAME
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -191,7 +191,7 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then DELETE bucket as expected`() {
-        val bucketName = defaultBucketName
+        val bucketName = DEFAULT_BUCKET_NAME
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -207,8 +207,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then GET file work using TransferManager`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getAsyncClient()
 
         createBucket(client, bucketName)
@@ -246,8 +246,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then GET work as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -281,9 +281,9 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then LIST work as expected`() {
-        val bucketName = defaultBucketName
-        val key1 = "$defaultKey/Eins"
-        val key2 = "$defaultKey/Zwei"
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key1 = "$DEFAULT_KEY/Eins"
+        val key2 = "$DEFAULT_KEY/Zwei"
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -305,8 +305,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT and then DELETE work as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -324,8 +324,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `MultipartUpload and then GET work as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getAsyncClient()
 
         val transferManager = S3TransferManager.builder()
@@ -370,8 +370,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `MultipartUpload and then DELETE work as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getClient()
 
         val message = "Test".toByteArray(StandardCharsets.UTF_8)
@@ -423,8 +423,8 @@ abstract class BaseSdkSupportTest {
 
     @Test
     fun `PUT on presigned URL without signed chunks works as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -465,8 +465,8 @@ abstract class BaseSdkSupportTest {
     // reported in https://github.com/scireum/s3ninja/issues/153
     @Test
     fun `PUT and then GET on presigned URL with ResponseHeaderOverrides works as expected`() {
-        val bucketName = defaultBucketName
-        val key = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -506,10 +506,10 @@ abstract class BaseSdkSupportTest {
     // reported in https://github.com/scireum/s3ninja/issues/181
     @Test
     fun `Bulk delete using DeleteObjectCommand works as expected`() {
-        val bucketName = defaultBucketName
-        val key1 = "$defaultKey/Eins"
-        val key2 = "$defaultKey/Zwei"
-        val key3 = "$defaultKey/Drei"
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key1 = "$DEFAULT_KEY/Eins"
+        val key2 = "$DEFAULT_KEY/Zwei"
+        val key3 = "$DEFAULT_KEY/Drei"
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -547,10 +547,10 @@ abstract class BaseSdkSupportTest {
     // reported in https://github.com/scireum/s3ninja/issues/214
     @Test
     fun `ListObjectsV2 works as expected`() {
-        val bucketName = defaultBucketName
-        val key1 = "$defaultKey/Eins"
-        val key2 = "$defaultKey/Eins-Eins"
-        val key3 = "$defaultKey/Drei"
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key1 = "$DEFAULT_KEY/Eins"
+        val key2 = "$DEFAULT_KEY/Eins-Eins"
+        val key3 = "$DEFAULT_KEY/Drei"
         val client = getClient()
 
         createBucket(client, bucketName)
@@ -609,8 +609,8 @@ abstract class BaseSdkSupportTest {
     // reported in https://github.com/scireum/s3ninja/issues/230
     @Test
     fun `Copying an object within the same bucket works as expected`() {
-        val bucketName = defaultBucketName
-        val keyFrom = defaultKey
+        val bucketName = DEFAULT_BUCKET_NAME
+        val keyFrom = DEFAULT_KEY
         val keyTo = "$keyFrom-copy"
         val content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
         val client = getClient()
@@ -647,9 +647,9 @@ abstract class BaseSdkSupportTest {
     // reported in https://github.com/scireum/s3ninja/issues/230
     @Test
     fun `Copying an object across buckets works as expected`() {
-        val bucketNameFrom = defaultBucketName
-        val bucketNameTo = "$defaultBucketName-copy"
-        val key = defaultKey
+        val bucketNameFrom = DEFAULT_BUCKET_NAME
+        val bucketNameTo = "$DEFAULT_BUCKET_NAME-copy"
+        val key = DEFAULT_KEY
         val content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
         val client = getClient()
 

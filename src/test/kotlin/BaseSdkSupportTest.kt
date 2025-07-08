@@ -55,106 +55,6 @@ abstract class BaseSdkSupportTest {
         }
     }
 
-    companion object {
-        const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
-        const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-        const val ENDPOINT = "http://localhost:9999"
-
-        const val DEFAULT_BUCKET_NAME = "test"
-        const val DEFAULT_KEY = "key/with/slashes and spaces 😇"
-
-        fun doesBucketExist(client: S3Client, bucketName: String): Boolean {
-            return try {
-                client.headBucket(HeadBucketRequest.builder().bucket(bucketName).build())
-                true
-            } catch (_: S3Exception) {
-                false
-            }
-        }
-
-        fun putObjectWithContent(client: S3Client, bucketName: String, key: String, content: String) {
-            val data = content.toByteArray(StandardCharsets.UTF_8)
-
-            val putObjectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .contentLength(data.size.toLong())
-                .build()
-
-            client.putObject(putObjectRequest, RequestBody.fromBytes(data))
-        }
-
-        fun deleteObject(client: S3Client, bucketName: String, objectName: String) {
-            client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(objectName).build())
-        }
-
-        fun deleteObject(client: S3AsyncClient, bucketName: String, objectName: String) {
-            client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(objectName).build()).join()
-        }
-
-        fun deleteBucket(client: S3Client, bucketName: String) {
-            client.deleteBucket(DeleteBucketRequest.builder().bucket(bucketName).build())
-        }
-
-        fun deleteBucket(client: S3AsyncClient, bucketName: String) {
-            client.deleteBucket(DeleteBucketRequest.builder().bucket(bucketName).build()).join()
-        }
-
-        fun createBucket(client: S3Client, bucketName: String) {
-            client.createBucket { it.bucket(bucketName) }
-        }
-
-        fun createBucket(client: S3AsyncClient, bucketName: String) {
-            client.createBucket { it.bucket(bucketName) }.join()
-        }
-
-        fun getObject(
-            client: S3Client,
-            bucketName: String,
-            objectName: String
-        ): ResponseInputStream<GetObjectResponse?>? {
-            return client.getObject(GetObjectRequest.builder().bucket(bucketName).key(objectName).build())
-        }
-
-        fun cleanupBuckets(client: S3Client, vararg bucketNames: String) {
-            bucketNames.forEach { bucketName ->
-                client.listObjects { it.bucket(bucketName) }.contents()?.forEach { obj ->
-                    deleteObject(client, bucketName, obj.key())
-                }
-                deleteBucket(client, bucketName)
-            }
-        }
-
-        fun cleanupBuckets(client: S3AsyncClient, vararg bucketNames: String) {
-            bucketNames.forEach { bucketName ->
-                client.listObjects { it.bucket(bucketName) }.get().contents()?.forEach { obj ->
-                    deleteObject(client, bucketName, obj.key())
-                }
-                deleteBucket(client, bucketName)
-            }
-        }
-
-        fun getPresigner(): S3Presigner {
-            return S3Presigner.builder()
-                .credentialsProvider(
-                    StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(
-                            "AKIAIOSFODNN7EXAMPLE",
-                            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                        )
-                    )
-                )
-                .serviceConfiguration(
-                    S3Configuration.builder()
-                        .pathStyleAccessEnabled(true)
-                        .build()
-                )
-                .endpointOverride(URI.create("http://localhost:9999"))
-                .region(Region.EU_CENTRAL_1)
-                .build()
-        }
-    }
-
     @Test
     fun `HEAD of non-existing bucket as expected`() {
         val bucketName = "does-not-exist"
@@ -681,5 +581,105 @@ abstract class BaseSdkSupportTest {
         cleanupBuckets(client, bucketNameFrom, bucketNameTo)
 
         client.close()
+    }
+
+    companion object {
+        const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
+        const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        const val ENDPOINT = "http://localhost:9999"
+
+        const val DEFAULT_BUCKET_NAME = "test"
+        const val DEFAULT_KEY = "key/with/slashes and spaces 😇"
+
+        fun doesBucketExist(client: S3Client, bucketName: String): Boolean {
+            return try {
+                client.headBucket(HeadBucketRequest.builder().bucket(bucketName).build())
+                true
+            } catch (_: S3Exception) {
+                false
+            }
+        }
+
+        fun putObjectWithContent(client: S3Client, bucketName: String, key: String, content: String) {
+            val data = content.toByteArray(StandardCharsets.UTF_8)
+
+            val putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .contentLength(data.size.toLong())
+                .build()
+
+            client.putObject(putObjectRequest, RequestBody.fromBytes(data))
+        }
+
+        fun deleteObject(client: S3Client, bucketName: String, objectName: String) {
+            client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(objectName).build())
+        }
+
+        fun deleteObject(client: S3AsyncClient, bucketName: String, objectName: String) {
+            client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(objectName).build()).join()
+        }
+
+        fun deleteBucket(client: S3Client, bucketName: String) {
+            client.deleteBucket(DeleteBucketRequest.builder().bucket(bucketName).build())
+        }
+
+        fun deleteBucket(client: S3AsyncClient, bucketName: String) {
+            client.deleteBucket(DeleteBucketRequest.builder().bucket(bucketName).build()).join()
+        }
+
+        fun createBucket(client: S3Client, bucketName: String) {
+            client.createBucket { it.bucket(bucketName) }
+        }
+
+        fun createBucket(client: S3AsyncClient, bucketName: String) {
+            client.createBucket { it.bucket(bucketName) }.join()
+        }
+
+        fun getObject(
+            client: S3Client,
+            bucketName: String,
+            objectName: String
+        ): ResponseInputStream<GetObjectResponse?>? {
+            return client.getObject(GetObjectRequest.builder().bucket(bucketName).key(objectName).build())
+        }
+
+        fun cleanupBuckets(client: S3Client, vararg bucketNames: String) {
+            bucketNames.forEach { bucketName ->
+                client.listObjects { it.bucket(bucketName) }.contents()?.forEach { obj ->
+                    deleteObject(client, bucketName, obj.key())
+                }
+                deleteBucket(client, bucketName)
+            }
+        }
+
+        fun cleanupBuckets(client: S3AsyncClient, vararg bucketNames: String) {
+            bucketNames.forEach { bucketName ->
+                client.listObjects { it.bucket(bucketName) }.get().contents()?.forEach { obj ->
+                    deleteObject(client, bucketName, obj.key())
+                }
+                deleteBucket(client, bucketName)
+            }
+        }
+
+        fun getPresigner(): S3Presigner {
+            return S3Presigner.builder()
+                .credentialsProvider(
+                    StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(
+                            "AKIAIOSFODNN7EXAMPLE",
+                            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                        )
+                    )
+                )
+                .serviceConfiguration(
+                    S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build()
+                )
+                .endpointOverride(URI.create("http://localhost:9999"))
+                .region(Region.EU_CENTRAL_1)
+                .build()
+        }
     }
 }

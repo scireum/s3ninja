@@ -236,6 +236,7 @@ abstract class BaseSdkSupportTest {
         val tempFile = File.createTempFile("upload", null).apply {
             writeBytes(message)
         }
+        tempFile.deleteOnExit()
 
         createBucket(client, bucketName)
 

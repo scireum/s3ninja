@@ -32,6 +32,10 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
     private static final Set<String> TRAILING_HEADER_MARKERS =
             Set.of("STREAMING-UNSIGNED-PAYLOAD-TRAILER", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER");
 
+    private static final char CARRIAGE_RETURN_CHARACTER = '\r';
+
+    private static final char LINE_FEED_CHARACTER = '\n';
+
     /**
      * Temporary buffer object used for caching incomplete chunks.
      */
@@ -118,7 +122,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             // make sure that the last two bytes are really <CR><LF>
             byte supposedCR = chunkBuffer.getByte(index + length);
             byte supposedLF = chunkBuffer.getByte(index + length + 1);
-            if (supposedCR != '\r' || supposedLF != '\n') {
+            if (supposedCR != CARRIAGE_RETURN_CHARACTER || supposedLF != LINE_FEED_CHARACTER) {
                 throw new IOException("Failed to find expected <CR><LF> characters.");
             }
 
@@ -163,7 +167,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         if (chunkBuffer.readableBytes() >= 2) {
             byte supposedCR = chunkBuffer.getByte(0);
             byte supposedLF = chunkBuffer.getByte(1);
-            if (supposedCR == '\r' && supposedLF == '\n') {
+            if (supposedCR == CARRIAGE_RETURN_CHARACTER && supposedLF == LINE_FEED_CHARACTER) {
                 chunkBuffer.readerIndex(2);
                 chunkBuffer.discardReadBytes();
             }
@@ -192,14 +196,14 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             int index = content.readerIndex();
             byte data = content.readByte();
 
-            if (data == '\r') {
+            if (data == CARRIAGE_RETURN_CHARACTER) {
                 // in case we encounter a <CR> character, we need to backtrack as we likely have come across the
                 // end of a chunk length string without a checksum; the <CR><LF> sequence needs to be maintained for
                 // termination checks further down
                 content.readerIndex(index);
             }
 
-            if (data == ';' || data == '\r') {
+            if (data == ';' || data == CARRIAGE_RETURN_CHARACTER) {
                 return Optional.of(chunkLengthString.toString()).filter(Strings::isFilled);
             }
 
@@ -236,9 +240,9 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         boolean previousWasCR = false;
         while (content.isReadable()) {
             byte data = content.readByte();
-            if (data == '\r') {
+            if (data == CARRIAGE_RETURN_CHARACTER) {
                 previousWasCR = true;
-            } else if (previousWasCR && data == '\n') {
+            } else if (previousWasCR && data == LINE_FEED_CHARACTER) {
                 // extract the string, skipping the trailing <CR> character
                 return Optional.of(signatureString.substring(0, signatureString.length() - 1))
                                .filter(Strings::isFilled);

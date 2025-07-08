@@ -20,8 +20,8 @@
     <properties>
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
 
-        <sirius.kernel>dev-46.3.2</sirius.kernel>
-        <sirius.web>dev-90.9.1</sirius.web>
+        <sirius.kernel>dev-47.0.0</sirius.kernel>
+        <sirius.web>dev-90.11.0</sirius.web>
 
         <!-- Force build to complete with warnings, e.g.: while using deprecated code -->
         <maven.compiler.warnings></maven.compiler.warnings>

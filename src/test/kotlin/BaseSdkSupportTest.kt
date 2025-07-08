@@ -115,44 +115,44 @@ abstract class BaseSdkSupportTest {
         ): ResponseInputStream<GetObjectResponse?>? {
             return client.getObject(GetObjectRequest.builder().bucket(bucketName).key(objectName).build())
         }
-    }
 
-    private fun cleanupBuckets(client: S3Client, vararg bucketNames: String) {
-        bucketNames.forEach { bucketName ->
-            client.listObjects { it.bucket(bucketName) }.contents()?.forEach { obj ->
-                deleteObject(client, bucketName, obj.key())
+        fun cleanupBuckets(client: S3Client, vararg bucketNames: String) {
+            bucketNames.forEach { bucketName ->
+                client.listObjects { it.bucket(bucketName) }.contents()?.forEach { obj ->
+                    deleteObject(client, bucketName, obj.key())
+                }
+                deleteBucket(client, bucketName)
             }
-            deleteBucket(client, bucketName)
         }
-    }
 
-    private fun cleanupBuckets(client: S3AsyncClient, vararg bucketNames: String) {
-        bucketNames.forEach { bucketName ->
-            client.listObjects { it.bucket(bucketName) }.get().contents()?.forEach { obj ->
-                deleteObject(client, bucketName, obj.key())
+        fun cleanupBuckets(client: S3AsyncClient, vararg bucketNames: String) {
+            bucketNames.forEach { bucketName ->
+                client.listObjects { it.bucket(bucketName) }.get().contents()?.forEach { obj ->
+                    deleteObject(client, bucketName, obj.key())
+                }
+                deleteBucket(client, bucketName)
             }
-            deleteBucket(client, bucketName)
         }
-    }
 
-    private fun getPresigner(): S3Presigner {
-        return S3Presigner.builder()
-            .credentialsProvider(
-                StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(
-                        "AKIAIOSFODNN7EXAMPLE",
-                        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        fun getPresigner(): S3Presigner {
+            return S3Presigner.builder()
+                .credentialsProvider(
+                    StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(
+                            "AKIAIOSFODNN7EXAMPLE",
+                            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                        )
                     )
                 )
-            )
-            .serviceConfiguration(
-                S3Configuration.builder()
-                    .pathStyleAccessEnabled(true)
-                    .build()
-            )
-            .endpointOverride(URI.create("http://localhost:9999"))
-            .region(Region.EU_CENTRAL_1)
-            .build()
+                .serviceConfiguration(
+                    S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build()
+                )
+                .endpointOverride(URI.create("http://localhost:9999"))
+                .region(Region.EU_CENTRAL_1)
+                .build()
+        }
     }
 
     @Test

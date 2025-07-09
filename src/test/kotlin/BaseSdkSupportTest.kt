@@ -447,7 +447,7 @@ abstract class BaseSdkSupportTest {
 
     // reported in https://github.com/scireum/s3ninja/issues/214
     @Test
-    fun `ListObjectsV2 works as expected`() {
+    fun `ListObjectsV2 supports prefix as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key1 = "$DEFAULT_KEY/Eins"
         val key2 = "$DEFAULT_KEY/Eins-Eins"

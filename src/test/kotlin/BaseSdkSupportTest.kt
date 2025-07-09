@@ -584,6 +584,55 @@ abstract class BaseSdkSupportTest {
         client.close()
     }
 
+    // reported in https://github.com/scireum/s3ninja/issues/251
+    @Test
+    fun `ListObjectsV2 supports pagination as expected`() {
+        val maxKeys = 2
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key1 = "$DEFAULT_KEY/Eins"
+        val key2 = "$DEFAULT_KEY/Eins-Eins"
+        val key3 = "$DEFAULT_KEY/Drei"
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            putObjectWithContent(client, bucketName, key1, "Eins")
+            putObjectWithContent(client, bucketName, key2, "Zwei")
+            putObjectWithContent(client, bucketName, key3, "Drei")
+
+            val request = ListObjectsV2Request.builder()
+                .bucket(bucketName)
+                .maxKeys(maxKeys)
+                .build()
+
+            val result = client.listObjectsV2(request)
+
+            assertEquals(maxKeys, result.keyCount(), "keyCount must match the requested maxKeys")
+            assertEquals(maxKeys, result.maxKeys(), "maxKeys must match the request")
+            assertEquals(maxKeys, result.contents().size)
+            assertEquals(key3, result.contents()[0].key())
+            assertEquals(key1, result.contents()[1].key())
+            assertNotNull(result.nextContinuationToken())
+
+            val followupRequest = ListObjectsV2Request.builder()
+                .bucket(bucketName)
+                .maxKeys(maxKeys)
+                .continuationToken(result.nextContinuationToken())
+                .build()
+
+            val followupResult = client.listObjectsV2(followupRequest)
+
+            assertEquals(3 - maxKeys, followupResult.keyCount(), "keyCount must match the requested maxKeys")
+            assertEquals(maxKeys, followupResult.maxKeys(), "maxKeys must match the request")
+            assertEquals(3 - maxKeys, followupResult.contents().size)
+            assertEquals(key2, followupResult.contents()[0].key())
+            assertEquals(followupRequest.continuationToken(), followupResult.continuationToken())
+            assertNull(followupResult.nextContinuationToken())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
     companion object {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"

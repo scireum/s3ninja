@@ -691,11 +691,12 @@ public class S3Dispatcher implements WebDispatcher {
         int maxKeys = webContext.get("max-keys").asInt(1000);
         String marker = webContext.get("start-after").asString();
         String prefix = webContext.get("prefix").asString();
+        String continuationToken = webContext.get("continuation-token").asString();
 
         Response response = webContext.respondWith();
         response.setHeader(HTTP_HEADER_NAME_CONTENT_TYPE, CONTENT_TYPE_XML);
 
-        bucket.outputObjectsV2(response.xml(), maxKeys, marker, prefix);
+        bucket.outputObjectsV2(response.xml(), maxKeys, marker, prefix, continuationToken);
     }
 
     /**

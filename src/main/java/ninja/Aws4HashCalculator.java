@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import sirius.kernel.commons.Monoflop;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
+import sirius.kernel.commons.Urls;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
@@ -173,9 +174,9 @@ public class Aws4HashCalculator {
         if (successiveCall) {
             canonicalRequest.append("&");
         }
-        canonicalRequest.append(Strings.urlEncode(name));
+        canonicalRequest.append(Urls.encode(name));
         canonicalRequest.append("=");
-        canonicalRequest.append(Strings.urlEncode(value).replace("+", "%20"));
+        canonicalRequest.append(Urls.encode(value).replace("+", "%20"));
     }
 
     private String hashedCanonicalRequest(final StringBuilder canonicalRequest) {

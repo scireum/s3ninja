@@ -33,9 +33,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.time.Duration
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 @ExtendWith(SiriusExtension::class)
 abstract class BaseSdkSupportTest {

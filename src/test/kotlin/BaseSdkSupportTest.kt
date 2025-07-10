@@ -33,7 +33,9 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.time.Duration
-import kotlin.test.*
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @ExtendWith(SiriusExtension::class)
 abstract class BaseSdkSupportTest {
@@ -46,137 +48,135 @@ abstract class BaseSdkSupportTest {
      */
     @BeforeEach
     fun setup() {
-        val client = getClient()
-        client.listBuckets().buckets()?.forEach { bucket ->
-            client.listObjects { it.bucket(bucket.name()) }.contents()?.forEach { obj ->
-                deleteObject(client, bucket.name(), obj.key())
+        getClient().use { client ->
+            client.listBuckets().buckets()?.forEach { bucket ->
+                client.listObjects { it.bucket(bucket.name()) }.contents()?.forEach { obj ->
+                    deleteObject(client, bucket.name(), obj.key())
+                }
+                deleteBucket(client, bucket.name())
             }
-            deleteBucket(client, bucket.name())
         }
     }
 
     @Test
     fun `HEAD of non-existing bucket as expected`() {
         val bucketName = "does-not-exist"
-        val client = getClient()
 
-        assertFalse(doesBucketExist(client, bucketName))
+        getClient().use { client ->
+            assertFalse(doesBucketExist(client, bucketName))
+        }
     }
 
     @Test
     fun `PUT and then HEAD bucket as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
-        val client = getClient()
 
-        createBucket(client, bucketName)
-
-        assertTrue(doesBucketExist(client, bucketName))
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
+        getClient().use { client ->
+            assertFalse(doesBucketExist(client, bucketName))
+            createBucket(client, bucketName)
+            assertTrue(doesBucketExist(client, bucketName))
+            cleanupBuckets(client, bucketName)
+        }
     }
 
     @Test
     fun `DELETE of non-existing bucket as expected`() {
         val bucketName = "does-not-exist"
-        val client = getClient()
 
-        assertThrows<S3Exception> {
-            deleteBucket(client, bucketName)
+        getClient().use { client ->
+            assertFalse(doesBucketExist(client, bucketName))
+            assertThrows<S3Exception> {
+                deleteBucket(client, bucketName)
+            }
+            assertFalse(doesBucketExist(client, bucketName))
         }
-
-        assertFalse(doesBucketExist(client, bucketName))
     }
 
     @Test
     fun `PUT and then DELETE bucket as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            assertTrue(doesBucketExist(client, bucketName))
 
-        assertTrue(doesBucketExist(client, bucketName))
-
-        cleanupBuckets(client, bucketName)
-
-        assertFalse(doesBucketExist(client, bucketName))
-
-        client.close()
+            cleanupBuckets(client, bucketName)
+            assertFalse(doesBucketExist(client, bucketName))
+        }
     }
 
     @Test
     fun `PUT and then GET file work using TransferManager`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getAsyncClient()
 
-        createBucket(client, bucketName)
+        getAsyncClient().use { client ->
+            createBucket(client, bucketName)
 
-        val file = File.createTempFile("test", "")
-        val writer = FileWriter(file, StandardCharsets.UTF_8, true)
-        file.deleteOnExit()
+            val file = File.createTempFile("test", "")
+            file.deleteOnExit()
 
-        for (ignored in 0..10000) {
-            writer.write("$ignored. This is a test.\n")
+            FileWriter(file, StandardCharsets.UTF_8, true).use { writer ->
+                for (ignored in 0..10000) {
+                    writer.write("$ignored. This is a test.\n")
+                }
+            }
+
+            S3TransferManager.builder().s3Client(client).build().use { transferManager ->
+                val uploadFileRequest = UploadFileRequest.builder().putObjectRequest { it.bucket(bucketName).key(key) }
+                    .source(Paths.get(file.toPath().toUri())).build()
+                transferManager.uploadFile(uploadFileRequest).completionFuture().join()
+
+                val download = File.createTempFile("s3-test", "")
+                download.deleteOnExit()
+
+                val downloadFileRequest =
+                    DownloadFileRequest.builder().getObjectRequest { it.bucket(bucketName).key(key) }
+                        .destination(download)
+                        .build()
+                transferManager.downloadFile(downloadFileRequest).completionFuture().join()
+
+                assertEquals(file.readText(), download.readText())
+
+                cleanupBuckets(client, bucketName)
+            }
         }
-        writer.close()
-
-        val transferManager = S3TransferManager.builder().s3Client(client).build()
-
-        val uploadFileRequest = UploadFileRequest.builder().putObjectRequest { it.bucket(bucketName).key(key) }
-            .source(Paths.get(file.toPath().toUri())).build()
-        transferManager.uploadFile(uploadFileRequest).completionFuture().join()
-
-        val download = File.createTempFile("s3-test", "")
-        download.deleteOnExit()
-        val downloadFileRequest =
-            DownloadFileRequest.builder().getObjectRequest { it.bucket(bucketName).key(key) }.destination(download)
-                .build()
-        transferManager.downloadFile(downloadFileRequest).completionFuture().join()
-
-        assertEquals(file.readText(), download.readText())
-
-        cleanupBuckets(client, bucketName)
-
-        transferManager.close()
-
-        client.close()
     }
 
     @Test
     fun `PUT and then GET work as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, key, "Test")
+            putObjectWithContent(client, bucketName, key, "Test")
 
-        val getObjectRequest = GetObjectRequest.builder()
-            .bucket(bucketName)
-            .key(key)
-            .build()
+            val getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build()
 
-        val content = client.getObject(getObjectRequest) { _, inputStream ->
-            String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+            val content = client.getObject(getObjectRequest) { _, inputStream ->
+                String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+            }
+
+            getPresigner().use { presigner ->
+                val presignedRequest = presigner.presignGetObject { builder ->
+                    builder.getObjectRequest { it.bucket(bucketName).key(key) }
+                        .signatureDuration(Duration.ofMinutes(10))
+                }
+                val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
+                val downloadedData =
+                    String(ByteStreams.toByteArray(connection.getInputStream()), StandardCharsets.UTF_8)
+
+                assertEquals("Test", content)
+                assertEquals("Test", downloadedData)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-        val presigner = getPresigner()
-        val presignedRequest = presigner.presignGetObject { builder ->
-            builder.getObjectRequest { it.bucket(bucketName).key(key) }
-                .signatureDuration(Duration.ofMinutes(10))
-        }
-
-        val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
-        val downloadedData = String(ByteStreams.toByteArray(connection.getInputStream()), StandardCharsets.UTF_8)
-
-        assertEquals("Test", content)
-        assertEquals("Test", downloadedData)
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     @Test
@@ -184,183 +184,178 @@ abstract class BaseSdkSupportTest {
         val bucketName = DEFAULT_BUCKET_NAME
         val key1 = "$DEFAULT_KEY/Eins"
         val key2 = "$DEFAULT_KEY/Zwei"
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, key1, "Eins")
-        putObjectWithContent(client, bucketName, key2, "Zwei")
+            putObjectWithContent(client, bucketName, key1, "Eins")
+            putObjectWithContent(client, bucketName, key2, "Zwei")
 
-        val listing = client.listObjects { it.bucket(bucketName) }
-        val summaries = listing.contents()
+            val listing = client.listObjects { it.bucket(bucketName) }
+            val summaries = listing.contents()
 
-        assertEquals(2, summaries.size)
-        assertEquals(key1, summaries.first().key())
-        assertEquals(key2, summaries[1].key())
+            assertEquals(2, summaries.size)
+            assertEquals(key1, summaries.first().key())
+            assertEquals(key2, summaries[1].key())
 
-        cleanupBuckets(client, bucketName)
-
-        client.close()
+            cleanupBuckets(client, bucketName)
+        }
     }
 
     @Test
     fun `PUT and then DELETE work as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        assertThrows<S3Exception> {
-            putObjectWithContent(client, bucketName, key, "Test")
-            deleteObject(client, bucketName, key)
-            getObject(client, bucketName, key)
+            assertThrows<S3Exception> {
+                putObjectWithContent(client, bucketName, key, "Test")
+                deleteObject(client, bucketName, key)
+                getObject(client, bucketName, key)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     @Test
     fun `MultipartUpload and then GET work as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getAsyncClient()
 
-        val transferManager = S3TransferManager.builder()
-            .s3Client(client)
-            .build()
+        getAsyncClient().use { client ->
+            val message = "Test".toByteArray(StandardCharsets.UTF_8)
+            val tempFile = File.createTempFile("upload", null).apply {
+                writeBytes(message)
+            }
+            tempFile.deleteOnExit()
 
-        val message = "Test".toByteArray(StandardCharsets.UTF_8)
-        val tempFile = File.createTempFile("upload", null).apply {
-            writeBytes(message)
+            createBucket(client, bucketName)
+
+            val putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .metadata(mapOf("userdata" to "test123"))
+                .contentLength(message.size.toLong())
+                .build()
+
+            val uploadFileRequest = UploadFileRequest.builder()
+                .putObjectRequest(putObjectRequest)
+                .source(tempFile.toPath())
+                .build()
+
+            S3TransferManager.builder()
+                .s3Client(client)
+                .build().use { transferManager ->
+                    transferManager.uploadFile(uploadFileRequest).completionFuture().join()
+                }
+
+            val getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build()
+
+            val contentFuture = client.getObject(getObjectRequest, AsyncResponseTransformer.toBytes())
+            val content = String(contentFuture.join().asByteArray(), StandardCharsets.UTF_8)
+
+            assertEquals("Test", content)
+
+            cleanupBuckets(client, bucketName)
         }
-        tempFile.deleteOnExit()
-
-        createBucket(client, bucketName)
-
-        val putObjectRequest = PutObjectRequest.builder()
-            .bucket(bucketName)
-            .key(key)
-            .metadata(mapOf("userdata" to "test123"))
-            .contentLength(message.size.toLong())
-            .build()
-
-        val uploadFileRequest = UploadFileRequest.builder()
-            .putObjectRequest(putObjectRequest)
-            .source(tempFile.toPath()) // Übergibt den Pfad der Datei
-            .build()
-
-        transferManager.uploadFile(uploadFileRequest).completionFuture().join()
-
-        val getObjectRequest = GetObjectRequest.builder()
-            .bucket(bucketName)
-            .key(key)
-            .build()
-
-        val contentFuture = client.getObject(getObjectRequest, AsyncResponseTransformer.toBytes())
-        val content = String(contentFuture.join().asByteArray(), StandardCharsets.UTF_8)
-
-        assertEquals("Test", content)
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     @Test
     fun `MultipartUpload and then DELETE work as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getClient()
 
-        val message = "Test".toByteArray(StandardCharsets.UTF_8)
+        getClient().use { client ->
+            val message = "Test".toByteArray(StandardCharsets.UTF_8)
 
-        createBucket(client, bucketName)
+            createBucket(client, bucketName)
 
-        val createMultipartUploadResponse = client.createMultipartUpload {
-            it.bucket(bucketName).key(key)
-        }
+            val createMultipartUploadResponse = client.createMultipartUpload {
+                it.bucket(bucketName).key(key)
+            }
 
-        val uploadId = createMultipartUploadResponse.uploadId()
-        val partNumber = 1
+            val uploadId = createMultipartUploadResponse.uploadId()
+            val partNumber = 1
 
-        val uploadPartResponse = client.uploadPart(
-            UploadPartRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .uploadId(uploadId)
+            val uploadPartResponse = client.uploadPart(
+                UploadPartRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .uploadId(uploadId)
+                    .partNumber(partNumber)
+                    .contentLength(message.size.toLong())
+                    .build(),
+                RequestBody.fromBytes(message)
+            )
+            val completedPart = CompletedPart.builder()
                 .partNumber(partNumber)
-                .contentLength(message.size.toLong())
-                .build(),
-            RequestBody.fromBytes(message)
-        )
-        val completedPart = CompletedPart.builder()
-            .partNumber(partNumber)
-            .eTag(uploadPartResponse.eTag())
-            .build()
+                .eTag(uploadPartResponse.eTag())
+                .build()
 
-        client.completeMultipartUpload {
-            it.bucket(bucketName)
-                .key(key)
-                .uploadId(uploadId)
-                .multipartUpload(
-                    CompletedMultipartUpload.builder()
-                        .parts(completedPart)
-                        .build()
-                )
+            client.completeMultipartUpload {
+                it.bucket(bucketName)
+                    .key(key)
+                    .uploadId(uploadId)
+                    .multipartUpload(
+                        CompletedMultipartUpload.builder()
+                            .parts(completedPart)
+                            .build()
+                    )
+            }
+
+            assertThrows<S3Exception> {
+                deleteObject(client, bucketName, key)
+                getObject(client, bucketName, key)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-
-        assertThrows<S3Exception> {
-            deleteObject(client, bucketName, key)
-            getObject(client, bucketName, key)
-        }
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     @Test
     fun `PUT on presigned URL without signed chunks works as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getClient()
-
-        createBucket(client, bucketName)
-
         val content = "NotSigned"
 
-        val presigner = getPresigner()
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        val putPresignedRequest = presigner.presignPutObject { builder ->
-            builder.putObjectRequest { it.bucket(bucketName).key(key) }
-                .signatureDuration(Duration.ofMinutes(10))
+            getPresigner().use { presigner ->
+                val putPresignedRequest = presigner.presignPutObject { builder ->
+                    builder.putObjectRequest { it.bucket(bucketName).key(key) }
+                        .signatureDuration(Duration.ofMinutes(10))
+                }
+
+                val putUrl = URI(putPresignedRequest.url().toString()).toURL()
+                val putConnection = putUrl.openConnection() as HttpURLConnection
+                putConnection.doOutput = true
+                putConnection.requestMethod = "PUT"
+                putConnection.outputStream.use { it.write(content.toByteArray(StandardCharsets.UTF_8)) }
+
+                assertEquals(200, putConnection.responseCode)
+
+                val getPresignedRequest = presigner.presignGetObject { builder ->
+                    builder.getObjectRequest { it.bucket(bucketName).key(key) }
+                        .signatureDuration(Duration.ofMinutes(10))
+                }
+
+                val getUrl = URI(getPresignedRequest.url().toString()).toURL()
+                val getConnection = getUrl.openConnection()
+                val downloadedData =
+                    String(ByteStreams.toByteArray(getConnection.getInputStream()), StandardCharsets.UTF_8)
+
+                assertEquals(content, downloadedData)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-
-        val putUrl = URI(putPresignedRequest.url().toString()).toURL()
-        val putConnection = putUrl.openConnection() as HttpURLConnection
-        putConnection.doOutput = true
-        putConnection.requestMethod = "PUT"
-        putConnection.outputStream.use { it.write(content.toByteArray(StandardCharsets.UTF_8)) }
-        assertEquals(200, putConnection.responseCode)
-
-        val getPresignedRequest = presigner.presignGetObject { builder ->
-            builder.getObjectRequest { it.bucket(bucketName).key(key) }
-                .signatureDuration(Duration.ofMinutes(10))
-        }
-
-        val getUrl = URI(getPresignedRequest.url().toString()).toURL()
-        val getConnection = getUrl.openConnection()
-        val downloadedData = String(ByteStreams.toByteArray(getConnection.getInputStream()), StandardCharsets.UTF_8)
-
-        assertEquals(content, downloadedData)
-
-        cleanupBuckets(client, bucketName)
-
-        presigner.close()
-        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/153
@@ -368,40 +363,38 @@ abstract class BaseSdkSupportTest {
     fun `PUT and then GET on presigned URL with ResponseHeaderOverrides works as expected`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, key, "Test")
-        val content = client.getObject { builder ->
-            builder.bucket(bucketName).key(key)
-        }.use { inputStream ->
-            String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
-        }
+            putObjectWithContent(client, bucketName, key, "Test")
+            val content = client.getObject { builder ->
+                builder.bucket(bucketName).key(key)
+            }.use { inputStream ->
+                String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+            }
 
-        val presigner = getPresigner()
+            assertEquals("Test", content)
 
-        val presignedRequest = presigner.presignGetObject { builder ->
-            builder.getObjectRequest { it.bucket(bucketName).key(key) }
-                .signatureDuration(Duration.ofHours(1))
-                .getObjectRequest {
-                    it.bucket(bucketName).key(key).responseContentDisposition("inline; filename=\"hello.txt\"")
+            getPresigner().use { presigner ->
+                val presignedRequest = presigner.presignGetObject { builder ->
+                    builder.getObjectRequest { it.bucket(bucketName).key(key) }
+                        .signatureDuration(Duration.ofHours(1))
+                        .getObjectRequest {
+                            it.bucket(bucketName).key(key).responseContentDisposition("inline; filename=\"hello.txt\"")
+                        }
                 }
+
+                val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
+                val downloadedData = connection.getInputStream().use { inputStream ->
+                    String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+                }
+
+                assertEquals("Test", downloadedData)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-
-        val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
-        val downloadedData = connection.getInputStream().use { inputStream ->
-            String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
-        }
-
-        presigner.close()
-
-        assertEquals("Test", content)
-        assertEquals("Test", downloadedData)
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/181
@@ -411,38 +404,37 @@ abstract class BaseSdkSupportTest {
         val key1 = "$DEFAULT_KEY/Eins"
         val key2 = "$DEFAULT_KEY/Zwei"
         val key3 = "$DEFAULT_KEY/Drei"
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, key1, "Eins")
-        putObjectWithContent(client, bucketName, key2, "Zwei")
-        putObjectWithContent(client, bucketName, key3, "Drei")
-        val deleteObjectsRequest = DeleteObjectsRequest.builder()
-            .bucket(bucketName)
-            .delete(
-                Delete.builder()
-                    .objects(
-                        ObjectIdentifier.builder().key(key1).build(),
-                        ObjectIdentifier.builder().key(key2).build()
-                    )
-                    .build()
-            )
-            .build()
+            putObjectWithContent(client, bucketName, key1, "Eins")
+            putObjectWithContent(client, bucketName, key2, "Zwei")
+            putObjectWithContent(client, bucketName, key3, "Drei")
+            val deleteObjectsRequest = DeleteObjectsRequest.builder()
+                .bucket(bucketName)
+                .delete(
+                    Delete.builder()
+                        .objects(
+                            ObjectIdentifier.builder().key(key1).build(),
+                            ObjectIdentifier.builder().key(key2).build()
+                        )
+                        .build()
+                )
+                .build()
 
-        val result = client.deleteObjects(deleteObjectsRequest)
+            val result = client.deleteObjects(deleteObjectsRequest)
 
-        assertEquals(2, result.deleted().size)
-        assertEquals(key1, result.deleted()[0].key())
-        assertEquals(key2, result.deleted()[1].key())
+            assertEquals(2, result.deleted().size)
+            assertEquals(key1, result.deleted()[0].key())
+            assertEquals(key2, result.deleted()[1].key())
 
-        val listing = client.listObjects { it.bucket(bucketName) }
-        assertEquals(1, listing.contents().size)
-        assertEquals(key3, listing.contents()[0].key())
+            val listing = client.listObjects { it.bucket(bucketName) }
+            assertEquals(1, listing.contents().size)
+            assertEquals(key3, listing.contents()[0].key())
 
-        cleanupBuckets(client, bucketName)
-
-        client.close()
+            cleanupBuckets(client, bucketName)
+        }
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/214
@@ -452,29 +444,28 @@ abstract class BaseSdkSupportTest {
         val key1 = "$DEFAULT_KEY/Eins"
         val key2 = "$DEFAULT_KEY/Eins-Eins"
         val key3 = "$DEFAULT_KEY/Drei"
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, key1, "Eins")
-        putObjectWithContent(client, bucketName, key2, "Zwei")
-        putObjectWithContent(client, bucketName, key3, "Drei")
+            putObjectWithContent(client, bucketName, key1, "Eins")
+            putObjectWithContent(client, bucketName, key2, "Zwei")
+            putObjectWithContent(client, bucketName, key3, "Drei")
 
-        val listObjectsV2Request = ListObjectsV2Request.builder()
-            .bucket(bucketName)
-            .prefix(key1)
-            .build()
+            val listObjectsV2Request = ListObjectsV2Request.builder()
+                .bucket(bucketName)
+                .prefix(key1)
+                .build()
 
-        val result = client.listObjectsV2(listObjectsV2Request)
+            val result = client.listObjectsV2(listObjectsV2Request)
 
-        assertEquals(2, result.keyCount())
-        assertEquals(2, result.contents().size)
-        assertEquals(key1, result.contents()[0].key())
-        assertEquals(key2, result.contents()[1].key())
+            assertEquals(2, result.keyCount())
+            assertEquals(2, result.contents().size)
+            assertEquals(key1, result.contents()[0].key())
+            assertEquals(key2, result.contents()[1].key())
 
-        cleanupBuckets(client, bucketName)
-
-        client.close()
+            cleanupBuckets(client, bucketName)
+        }
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/209
@@ -483,28 +474,27 @@ abstract class BaseSdkSupportTest {
         val bucketName = "public-bucket"
         val key = "simple_test"
         val content = "I am pointless text content"
-        val client = getClient()
 
-        client.createBucket {
-            it.bucket(bucketName)
-                .acl(BucketCannedACL.PUBLIC_READ_WRITE)
+        getClient().use { client ->
+            client.createBucket {
+                it.bucket(bucketName)
+                    .acl(BucketCannedACL.PUBLIC_READ_WRITE)
+            }
+
+            putObjectWithContent(client, bucketName, key, content)
+
+            val url = URI("http://localhost:9999/$bucketName/$key").toURL()
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "HEAD"
+            }
+
+            assertEquals(200, connection.responseCode)
+            assertEquals(content.toByteArray(StandardCharsets.UTF_8).size.toLong(), connection.contentLengthLong)
+
+            connection.disconnect()
+
+            cleanupBuckets(client, bucketName)
         }
-
-        putObjectWithContent(client, bucketName, key, content)
-
-        val url = URI("http://localhost:9999/$bucketName/$key").toURL()
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "HEAD"
-        }
-
-        assertEquals(200, connection.responseCode)
-        assertEquals(content.toByteArray(StandardCharsets.UTF_8).size.toLong(), connection.contentLengthLong)
-
-        connection.disconnect()
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/230
@@ -514,35 +504,35 @@ abstract class BaseSdkSupportTest {
         val keyFrom = DEFAULT_KEY
         val keyTo = "$keyFrom-copy"
         val content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
-        val client = getClient()
 
-        createBucket(client, bucketName)
+        getClient().use { client ->
+            createBucket(client, bucketName)
 
-        putObjectWithContent(client, bucketName, keyFrom, content)
+            putObjectWithContent(client, bucketName, keyFrom, content)
 
-        client.copyObject {
-            it.sourceBucket(bucketName)
-                .sourceKey(keyFrom)
-                .destinationBucket(bucketName)
-                .destinationKey(keyTo)
+            client.copyObject {
+                it.sourceBucket(bucketName)
+                    .sourceKey(keyFrom)
+                    .destinationBucket(bucketName)
+                    .destinationKey(keyTo)
+            }
+
+            getPresigner().use { presigner ->
+                val presignedRequest = presigner.presignGetObject { builder ->
+                    builder.getObjectRequest { it.bucket(bucketName).key(keyTo) }
+                        .signatureDuration(Duration.ofMinutes(10))
+                }
+
+                val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
+                val downloadedData = connection.getInputStream().use { inputStream ->
+                    String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+                }
+
+                assertEquals(content, downloadedData)
+            }
+
+            cleanupBuckets(client, bucketName)
         }
-
-        val presigner = getPresigner()
-        val presignedRequest = presigner.presignGetObject { builder ->
-            builder.getObjectRequest { it.bucket(bucketName).key(keyTo) }
-                .signatureDuration(Duration.ofMinutes(10))
-        }
-
-        val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
-        val downloadedData = connection.getInputStream().use { inputStream ->
-            String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
-        }
-
-        assertEquals(content, downloadedData)
-
-        cleanupBuckets(client, bucketName)
-
-        client.close()
     }
 
     // reported in https://github.com/scireum/s3ninja/issues/230
@@ -552,36 +542,36 @@ abstract class BaseSdkSupportTest {
         val bucketNameTo = "$DEFAULT_BUCKET_NAME-copy"
         val key = DEFAULT_KEY
         val content = "I am pointless text content, but I deserve to exist twice and will thus be copied!"
-        val client = getClient()
 
-        createBucket(client, bucketNameFrom)
-        createBucket(client, bucketNameTo)
+        getClient().use { client ->
+            createBucket(client, bucketNameFrom)
+            createBucket(client, bucketNameTo)
 
-        putObjectWithContent(client, bucketNameFrom, key, content)
+            putObjectWithContent(client, bucketNameFrom, key, content)
 
-        client.copyObject {
-            it.sourceBucket(bucketNameFrom)
-                .sourceKey(key)
-                .destinationBucket(bucketNameTo)
-                .destinationKey(key)
+            client.copyObject {
+                it.sourceBucket(bucketNameFrom)
+                    .sourceKey(key)
+                    .destinationBucket(bucketNameTo)
+                    .destinationKey(key)
+            }
+
+            getPresigner().use { presigner ->
+                val presignedRequest = presigner.presignGetObject { builder ->
+                    builder.getObjectRequest { it.bucket(bucketNameTo).key(key) }
+                        .signatureDuration(Duration.ofMinutes(10))
+                }
+
+                val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
+                val downloadedData = connection.getInputStream().use { inputStream ->
+                    String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
+                }
+
+                assertEquals(content, downloadedData)
+            }
+
+            cleanupBuckets(client, bucketNameFrom, bucketNameTo)
         }
-
-        val presigner = getPresigner()
-        val presignedRequest = presigner.presignGetObject { builder ->
-            builder.getObjectRequest { it.bucket(bucketNameTo).key(key) }
-                .signatureDuration(Duration.ofMinutes(10))
-        }
-
-        val connection = URI(presignedRequest.url().toString()).toURL().openConnection()
-        val downloadedData = connection.getInputStream().use { inputStream ->
-            String(ByteStreams.toByteArray(inputStream), StandardCharsets.UTF_8)
-        }
-
-        assertEquals(content, downloadedData)
-
-        cleanupBuckets(client, bucketNameFrom, bucketNameTo)
-
-        client.close()
     }
 
     companion object {

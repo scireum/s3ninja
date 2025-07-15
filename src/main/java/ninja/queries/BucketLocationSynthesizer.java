@@ -25,7 +25,7 @@ public class BucketLocationSynthesizer implements S3QueryProcessor {
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,
-                             @Nullable Bucket bucket,
+                             @Nonnull Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
         XMLStructuredOutput xml = webContext.respondWith().xml();

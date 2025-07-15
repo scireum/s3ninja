@@ -30,7 +30,7 @@ public class BucketLifecycleSynthesizer implements S3QueryProcessor {
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,
-                             @Nullable Bucket bucket,
+                             @Nonnull Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
         errorSynthesizer.synthesiseError(webContext,

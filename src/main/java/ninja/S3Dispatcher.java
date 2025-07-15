@@ -68,9 +68,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 
-import static ninja.Aws4HashCalculator.AWS_AUTH4_PATTERN;
-import static ninja.AwsHashCalculator.AWS_AUTH_PATTERN;
-
 /**
  * Handles S3 API Calls.
  */
@@ -349,12 +346,12 @@ public class S3Dispatcher implements WebDispatcher {
         }
         String authentication =
                 Strings.isEmpty(authorizationHeaderValue.getString()) ? "" : authorizationHeaderValue.getString();
-        Matcher matcher = AWS_AUTH_PATTERN.matcher(authentication);
+        Matcher matcher = AwsHashCalculator.AWS_AUTH_PATTERN.matcher(authentication);
         if (matcher.matches()) {
             return matcher.group(2);
         }
 
-        matcher = AWS_AUTH4_PATTERN.matcher(authentication);
+        matcher = Aws4HashCalculator.AWS_AUTH4_PATTERN.matcher(authentication);
         if (matcher.matches()) {
             return matcher.group(7);
         }
@@ -434,7 +431,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
-     * Dispatching method handling bucket specific calls without content (HEAD, DELETE, GET and PUT)
+     * Dispatching method handling bucket-specific calls without content (HEAD, DELETE, GET, and PUT)
      *
      * @param webContext the context describing the current request
      * @param bucketName name of the bucket of interest

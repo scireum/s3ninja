@@ -28,7 +28,7 @@ public interface S3QueryProcessor {
      * @param query      the query string
      */
     void processQuery(@Nonnull WebContext webContext,
-                      @Nullable Bucket bucket,
+                      @Nonnull Bucket bucket,
                       @Nullable String key,
                       @Nonnull String query);
 }

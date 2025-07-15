@@ -431,7 +431,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
-     * Dispatching method handling bucket-specific calls without content (HEAD, DELETE, GET and PUT)
+     * Dispatching method handling bucket-specific calls without content (HEAD, DELETE, GET, and PUT)
      *
      * @param webContext the context describing the current request
      * @param bucketName name of the bucket of interest

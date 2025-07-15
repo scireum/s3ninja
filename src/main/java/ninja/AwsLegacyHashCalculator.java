@@ -21,8 +21,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 
-import static sirius.kernel.commons.Strings.join;
-
 /**
  * Hash calculator for legacy AWS signature calculation
  */
@@ -126,6 +124,6 @@ public class AwsLegacyHashCalculator {
     }
 
     private String toHeaderStringRepresentation(final String headerName, final HttpHeaders requestHeaders) {
-        return headerName.toLowerCase().trim() + ":" + join(requestHeaders.getAll(headerName), ",").trim();
+        return headerName.toLowerCase().trim() + ":" + Strings.join(requestHeaders.getAll(headerName), ",").trim();
     }
 }

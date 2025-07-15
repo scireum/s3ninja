@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.scireum</groupId>
         <artifactId>sirius-parent</artifactId>
-        <version>14.0.1</version>
+        <version>14.1.2</version>
     </parent>
 
     <artifactId>s3ninja</artifactId>
@@ -20,8 +20,8 @@
     <properties>
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
 
-        <sirius.kernel>dev-47.0.0</sirius.kernel>
-        <sirius.web>dev-90.11.0</sirius.web>
+        <sirius.kernel>dev-48.0.0</sirius.kernel>
+        <sirius.web>dev-91.0.0</sirius.web>
 
         <!-- Force build to complete with warnings, e.g.: while using deprecated code -->
         <maven.compiler.warnings></maven.compiler.warnings>

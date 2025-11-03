@@ -582,6 +582,8 @@ public class S3Dispatcher implements WebDispatcher {
                 startMultipartUpload(webContext, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
                 completeMultipartUpload(webContext, bucket, key, uploadId, in);
+            } else {
+                handlePostObject(webContext, bucket, key, in);
             }
         } else {
             throw new IllegalArgumentException(webContext.getRequest().method().name());
@@ -1186,5 +1188,70 @@ public class S3Dispatcher implements WebDispatcher {
             }
         }
         return overrides;
+    }
+
+    /**
+     * Handles a standard POST request for object creation
+     * Supports both form-based uploads and AWS policy-based uploads
+     */
+    private void handlePostObject(WebContext webContext, Bucket bucket, String key, InputStreamHandler data) throws IOException {
+        String policy = webContext.getParameter("Policy");
+        String signature = webContext.getParameter("Signature");
+
+        if (Strings.isFilled(policy)) {
+            if (!validatePolicySignature(policy, signature)) {
+                errorSynthesizer.synthesiseError(webContext,
+                        bucket.getName(),
+                        key,
+                        S3ErrorCode.SignatureDoesNotMatch,
+                        "");
+                return;
+            }
+
+            try {
+                S3Policy s3Policy = new S3Policy(policy);
+
+                if (!s3Policy.isRequestValid(webContext, bucket, key)) {
+                    errorSynthesizer.synthesiseError(webContext,
+                            bucket.getName(),
+                            key,
+                            S3ErrorCode.AccessDenied,"Policy conditions not met");
+                    return;
+                }
+
+                long maxFileSize = s3Policy.getMaxFileSize();
+                if (maxFileSize > 0 && webContext.getContentSize() > maxFileSize) {
+                    errorSynthesizer.synthesiseError(webContext,
+                            bucket.getName(),
+                            key,
+                            S3ErrorCode.InvalidDigest,
+                            "Filesize exceeds maximum allowed by policy");
+                    return;
+                }
+
+                putObject(webContext, bucket, key, data);
+
+                String redirectUrl = s3Policy.getSuccessRedirect();
+                if (Strings.isFilled(redirectUrl)) {
+                    webContext.respondWith().redirectToGet(redirectUrl);
+                } else {
+                    webContext.respondWith().status(s3Policy.getSuccessResponse());
+                }
+            } catch (IllegalArgumentException e) {
+                errorSynthesizer.synthesiseError(webContext,
+                        bucket.getName(),
+                        key,
+                        S3ErrorCode.NoSuchBucketPolicy,
+                        "Policy parsing error: " + e.getMessage());
+            }
+        } else {
+
+            putObject(webContext, bucket, key, data);
+        }
+    }
+
+    private boolean validatePolicySignature(String policy, String signature) {
+        // TODO: Implement signature validation logic
+        return true;
     }
 }

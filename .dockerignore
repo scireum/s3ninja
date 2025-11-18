@@ -1,0 +1,29 @@
+# Ignore development files
+.git
+.gitignore
+README.md
+LICENSE
+
+# Ignore test files and scripts
+test-files/
+test-scripts/
+
+# Ignore data directories
+data/
+
+# Ignore IDE files
+.idea/
+.vscode/
+*.iml
+
+# Ignore logs
+*.log
+
+# Ignore Docker files
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db

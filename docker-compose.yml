@@ -1,0 +1,33 @@
+services:
+  s3ninja:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: s3ninja-local
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./data:/app/data
+      - ./data/multipart:/app/multipart
+      - s3ninja-logs:/app/logs
+      - /mnt/c/IT/netskope/rootcacert.pem:/etc/ssl/certs/netskope.pem:ro
+    environment:
+      JAVA_OPTS: >
+        -Xmx1g -Xms512m
+        -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts
+        -Djavax.net.ssl.trustStorePassword=changeit
+      S3NINJA_PORT: 9000
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/netskope.pem
+    restart: unless-stopped
+    networks:
+      - s3ninja-network
+
+
+volumes:
+  s3ninja-logs:
+    driver: local
+
+networks:
+  s3ninja-network:
+    driver: bridge
+    name: s3ninja-local-network

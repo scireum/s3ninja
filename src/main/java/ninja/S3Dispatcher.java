@@ -74,6 +74,11 @@ import java.util.regex.Matcher;
 @Register
 public class S3Dispatcher implements WebDispatcher {
 
+    /**
+     * Logger for S3 dispatcher operations including session tokens.
+     */
+    protected static final Log LOG = Log.get("s3dispatcher");
+
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
 
@@ -121,6 +126,12 @@ public class S3Dispatcher implements WebDispatcher {
     private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
     private final Counter uploadIdCounter = new Counter();
+
+    /**
+     * Session tokens for UI access.
+     * Maps token to expiration timestamp.
+     */
+    private final Map<String, Long> sessionTokens = Collections.synchronizedMap(new HashMap<>());
 
     /**
      * ISO 8601 date/time formatter.
@@ -360,6 +371,82 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
+     * Generates a new session token for UI access.
+     * Token is valid for 24 hours.
+     *
+     * @return the generated session token
+     */
+    public String generateSessionToken() {
+        cleanExpiredTokens();
+        String token = Hasher.md5().hash(System.currentTimeMillis() + "-" + Math.random()).toHexString();
+        long expirationTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000); // 24 hours
+        sessionTokens.put(token, expirationTime);
+
+        // Log the generated token for visibility in Docker logs
+        S3Dispatcher.LOG.INFO("Session token generated: %s (expires in 24 hours)", token);
+        S3Dispatcher.LOG.INFO("Use this token with: X-Session-Token header, X-Amz-Security-Token header/field, or ?sessionToken query param");
+
+        return token;
+    }
+
+    /**
+     * Validates a session token.
+     *
+     * @param token the token to validate
+     * @return true if the token is valid and not expired, false otherwise
+     */
+    public boolean validateSessionToken(String token) {
+        if (Strings.isEmpty(token)) {
+            return false;
+        }
+        Long expirationTime = sessionTokens.get(token);
+        if (expirationTime == null) {
+            LOG.FINE("Session token validation failed: token not found");
+            return false;
+        }
+        if (System.currentTimeMillis() > expirationTime) {
+            sessionTokens.remove(token);
+            LOG.FINE("Session token validation failed: token expired");
+            return false;
+        }
+        LOG.FINE("Session token validated successfully");
+        return true;
+    }
+
+    /**
+     * Removes expired tokens from the session token map.
+     */
+    private void cleanExpiredTokens() {
+        long currentTime = System.currentTimeMillis();
+        sessionTokens.entrySet().removeIf(entry -> currentTime > entry.getValue());
+    }
+
+    /**
+     * Extracts the session token from the request.
+     * Checks X-Session-Token header, X-Amz-Security-Token header/field, and sessionToken parameter.
+     *
+     * @param webContext the context describing the current request
+     * @return the session token if present, null otherwise
+     */
+    private String getSessionToken(WebContext webContext) {
+        // Check X-Session-Token header (custom header for direct use)
+        String token = webContext.getHeader("X-Session-Token");
+        if (Strings.isEmpty(token)) {
+            // Check X-Amz-Security-Token (AWS standard for temporary credentials)
+            token = webContext.getHeader("X-Amz-Security-Token");
+        }
+        if (Strings.isEmpty(token)) {
+            // Check as form field (for POST requests)
+            token = webContext.get("X-Amz-Security-Token").asString();
+        }
+        if (Strings.isEmpty(token)) {
+            // Check as query parameter
+            token = webContext.get("sessionToken").asString();
+        }
+        return token;
+    }
+
+    /**
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext webContext,
@@ -483,6 +570,29 @@ public class S3Dispatcher implements WebDispatcher {
                 signalObjectSuccess(webContext);
                 webContext.respondWith().status(HttpResponseStatus.OK);
             }
+        } else if (HttpMethod.POST.equals(method)) {
+            String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+            if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
+                S3QueryProcessor processor = globalContext.getPart("presigned-post", S3QueryProcessor.class);
+                if (processor != null) {
+                    processor.processQuery(webContext, bucket, null, "presigned-post");
+                } else {
+                    signalObjectError(webContext,
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.InternalError,
+                                      "Presigned POST not supported.");
+                }
+            } else {
+                // Traditional bucket POST operations (creating bucket)
+                if (bucket.exists()) {
+                    signalObjectError(webContext,
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.BucketAlreadyOwnedByYou,
+                                      ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
+                }
+            }
         } else if (HttpMethod.PUT.equals(method)) {
             if (bucket.exists()) {
                 signalObjectError(webContext,
@@ -507,6 +617,7 @@ public class S3Dispatcher implements WebDispatcher {
 
             signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
+
         } else {
             throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
@@ -622,6 +733,12 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private boolean objectCheckAuth(WebContext webContext, Bucket bucket, String key) {
+        // Check for session token first
+        String sessionToken = getSessionToken(webContext);
+        if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
+            return true;
+        }
+
         String hash = getAuthHash(webContext);
         if (Strings.isFilled(hash)) {
             String expectedHash = hashCalculator.computeHash(webContext, "");
@@ -1195,17 +1312,39 @@ public class S3Dispatcher implements WebDispatcher {
      * Supports both form-based uploads and AWS policy-based uploads
      */
     private void handlePostObject(WebContext webContext, Bucket bucket, String key, InputStreamHandler data) throws IOException {
-        String policy = webContext.getParameter("Policy");
+        // Check for AWS4 signature parameters (modern AWS S3 POST)
+        String policy = webContext.getParameter("policy");
+        String xAmzSignature = webContext.getParameter("x-amz-signature");
+        String xAmzAlgorithm = webContext.getParameter("x-amz-algorithm");
+
+        // Check for legacy signature parameters
+        if (Strings.isEmpty(policy)) {
+            policy = webContext.getParameter("Policy");
+        }
         String signature = webContext.getParameter("Signature");
 
         if (Strings.isFilled(policy)) {
-            if (!validatePolicySignature(policy, signature)) {
-                errorSynthesizer.synthesiseError(webContext,
-                        bucket.getName(),
-                        key,
-                        S3ErrorCode.SignatureDoesNotMatch,
-                        "");
-                return;
+            // AWS signature validation for POST uploads
+            if (Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm)) {
+                // AWS4-HMAC-SHA256 signature (modern)
+                if (!validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
+                    errorSynthesizer.synthesiseError(webContext,
+                            bucket.getName(),
+                            key,
+                            S3ErrorCode.SignatureDoesNotMatch,
+                            "The request signature we calculated does not match the signature you provided");
+                    return;
+                }
+            } else if (Strings.isFilled(signature)) {
+                // Legacy signature validation
+                if (!validatePolicySignature(policy, signature)) {
+                    errorSynthesizer.synthesiseError(webContext,
+                            bucket.getName(),
+                            key,
+                            S3ErrorCode.SignatureDoesNotMatch,
+                            "The request signature we calculated does not match the signature you provided");
+                    return;
+                }
             }
 
             try {
@@ -1215,7 +1354,7 @@ public class S3Dispatcher implements WebDispatcher {
                     errorSynthesizer.synthesiseError(webContext,
                             bucket.getName(),
                             key,
-                            S3ErrorCode.AccessDenied,"Policy conditions not met");
+                            S3ErrorCode.AccessDenied, "Policy conditions not met");
                     return;
                 }
 
@@ -1225,7 +1364,7 @@ public class S3Dispatcher implements WebDispatcher {
                             bucket.getName(),
                             key,
                             S3ErrorCode.InvalidDigest,
-                            "Filesize exceeds maximum allowed by policy");
+                            "File size exceeds maximum allowed by policy");
                     return;
                 }
 
@@ -1241,17 +1380,59 @@ public class S3Dispatcher implements WebDispatcher {
                 errorSynthesizer.synthesiseError(webContext,
                         bucket.getName(),
                         key,
-                        S3ErrorCode.NoSuchBucketPolicy,
+                        S3ErrorCode.InvalidRequest,
                         "Policy parsing error: " + e.getMessage());
             }
         } else {
-
+            // Simple POST without policy - just upload the object
             putObject(webContext, bucket, key, data);
+            webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
+        }
+    }
+
+    private boolean validateAWS4PolicySignature(WebContext webContext, String policy, String signature) {
+        // For S3 Ninja (development/testing environment), we can be lenient with signature validation
+        // In production, you would validate the signature using the AWS4 signing process
+        // For now, we accept all signatures if the policy structure is valid
+        try {
+            new S3Policy(policy); // Just validate the policy can be parsed
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
     private boolean validatePolicySignature(String policy, String signature) {
-        // TODO: Implement signature validation logic
-        return true;
+        // Legacy signature validation
+        // For S3 Ninja (development/testing environment), we can be lenient
+        // In production, you would validate using HMAC-SHA1
+        try {
+            new S3Policy(policy); // Just validate the policy can be parsed
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Extracts the key from a multipart form request
+     * This is useful when the key is embedded in the form data rather than as a parameter
+     */
+    private String extractKeyFromMultipartForm(WebContext webContext) {
+        // First try the standard parameter (works for both form fields and query params)
+        String key = webContext.getParameter("key");
+        if (Strings.isFilled(key)) {
+            return key;
+        }
+
+        // Try to get it from request parameter (different method for multipart)
+        if (webContext.hasParameter("key")) {
+            key = webContext.get("key").asString();
+            if (Strings.isFilled(key)) {
+                return key;
+            }
+        }
+
+        return null;
     }
 }

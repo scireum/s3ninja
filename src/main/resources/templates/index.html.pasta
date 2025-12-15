@@ -100,6 +100,73 @@
                     </dl>
                 </div>
             </div>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Session Token</h5>
+                    <p class="text-muted small mb-3">
+                        Generate a session token for authenticating presigned POST requests and other operations.
+                        Token is valid for 24 hours.
+                    </p>
+                    <dl class="mb-3" id="token-container" style="display: none;">
+                        <dt>Token</dt>
+                        <dd class="mb-0">
+                            <small class="text-break" id="session-token-value"></small>
+                        </dd>
+                    </dl>
+                    <button class="btn btn-primary btn-sm" onclick="generateSessionToken()">
+                        <i class="fa-solid fa-key"></i> Generate Token
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm ms-2" onclick="copyTokenToClipboard()" id="copy-token-btn" style="display: none;">
+                        <i class="fa-solid fa-copy"></i> Copy
+                    </button>
+                    <div class="alert alert-info mt-3 small" id="token-usage" style="display: none;">
+                        <strong>Usage:</strong><br>
+                        • Header: <code>X-Session-Token: [token]</code><br>
+                        • Header (AWS): <code>X-Amz-Security-Token: [token]</code><br>
+                        • Query param: <code>?sessionToken=[token]</code><br>
+                        • Form field: <code>X-Amz-Security-Token=[token]</code>
+                    </div>
+                </div>
+            </div>
+            <script type="text/javascript">
+                let currentToken = null;
+
+                function generateSessionToken() {
+                    fetch('/session-token')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                currentToken = data.token;
+                                document.getElementById('session-token-value').textContent = data.token;
+                                document.getElementById('token-container').style.display = 'block';
+                                document.getElementById('copy-token-btn').style.display = 'inline-block';
+                                document.getElementById('token-usage').style.display = 'block';
+                            } else {
+                                alert('Failed to generate token');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Error generating token');
+                        });
+                }
+
+                function copyTokenToClipboard() {
+                    if (currentToken) {
+                        navigator.clipboard.writeText(currentToken).then(() => {
+                            const btn = document.getElementById('copy-token-btn');
+                            const originalHtml = btn.innerHTML;
+                            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+                            setTimeout(() => {
+                                btn.innerHTML = originalHtml;
+                            }, 2000);
+                        }).catch(err => {
+                            console.error('Failed to copy:', err);
+                            alert('Failed to copy token to clipboard');
+                        });
+                    }
+                }
+            </script>
         </div>
         <div class="col-md-8">
             <div class="card shadow-sm mb-4">

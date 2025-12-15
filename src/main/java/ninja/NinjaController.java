@@ -50,6 +50,9 @@ public class NinjaController extends BasicController {
     @Part
     private APILog log;
 
+    @Part
+    private S3Dispatcher s3Dispatcher;
+
     /**
      * Handles requests to <tt>/ui</tt>.
      * <p>
@@ -102,7 +105,7 @@ public class NinjaController extends BasicController {
         boolean canPagePrev = start > 0;
         boolean canPageNext = entries.size() > pageSize;
         if (canPageNext) {
-            entries.remove(entries.size() - 1);
+            entries.removeLast();
         }
         webContext.respondWith()
                   .template("/templates/log.html.pasta",
@@ -118,7 +121,7 @@ public class NinjaController extends BasicController {
         List<Bucket> buckets = Collections.emptyList();
         try {
             buckets = storage.getBuckets();
-        } catch (HandledException e) {
+        } catch ( HandledException e) {
             UserContext.message(Message.error().withTextMessage(e.getMessage()));
         }
         webContext.respondWith()
@@ -330,5 +333,34 @@ public class NinjaController extends BasicController {
             response.addHeader(entry.getKey(), entry.getValue());
         }
         response.file(object.getFile());
+    }
+
+    /**
+     * Handles requests to <tt>/session-token</tt>.
+     * <p>
+     * Generates a session token that can be used to authenticate requests.
+     * The token is valid for 24 hours.
+     * <p>
+     * Use this token in requests by adding either:
+     * <ul>
+     *     <li>Header: <tt>X-Session-Token: [token]</tt></li>
+     *     <li>Query parameter: <tt>?sessionToken=[token]</tt></li>
+     *     <li>Form field (for POST): <tt>X-Amz-Security-Token: [token]</tt></li>
+     * </ul>
+     *
+     * @param webContext the context describing the current request
+     */
+    @Routed("/session-token")
+    public void sessionToken(WebContext webContext) {
+        String token = s3Dispatcher.generateSessionToken();
+
+        webContext.respondWith()
+                  .json()
+                  .beginResult()
+                  .property("success", true)
+                  .property("token", token)
+                  .property("expiresIn", "24 hours")
+                  .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field")
+                  .endResult();
     }
 }

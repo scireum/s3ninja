@@ -11,9 +11,9 @@ RUN mvn -q -DskipTests clean package && ls -lah target/release-dir || (echo "Bui
 
 FROM scireum/sirius-runtime-jre24:78
 
-RUN mkdir /home/sirius/data && \
-    mkdir /home/sirius/multipart && \
-    mkdir /home/sirius/logs
+RUN mkdir -p /home/sirius/data && \
+    mkdir -p /home/sirius/multipart && \
+    mkdir -p /home/sirius/logs
 
 USER root
 
@@ -21,7 +21,13 @@ ADD --chown=sirius:sirius target/release-dir /home/sirius/
 
 USER sirius
 
+WORKDIR /home/sirius
+
+ENV SIRIUS_LOGGING_LEVEL=INFO
+ENV LOG_TO_CONSOLE=true
+
 VOLUME /home/sirius/data
+VOLUME /home/sirius/multipart
 VOLUME /home/sirius/logs
 
 EXPOSE 9000

@@ -1,10 +1,10 @@
 services:
   s3ninja:
+    image: devs3:1.0
     build:
       context: .
       dockerfile: Dockerfile
     container_name: s3ninja-local
-    image: devs3:1.0
     ports:
       - "9000:9000"
     volumes:

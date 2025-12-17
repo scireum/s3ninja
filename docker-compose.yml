@@ -1,6 +1,5 @@
 services:
   s3ninja:
-    image: devs3:1.0
     build:
       context: .
       dockerfile: Dockerfile

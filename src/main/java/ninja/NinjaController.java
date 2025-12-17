@@ -15,10 +15,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.health.Log;
 import sirius.kernel.nls.NLS;
 import sirius.web.controller.BasicController;
 import sirius.web.controller.DefaultRoute;
@@ -52,6 +54,9 @@ public class NinjaController extends BasicController {
 
     @Part
     private S3Dispatcher s3Dispatcher;
+
+    @Part
+    private GlobalContext globalContext;
 
     /**
      * Handles requests to <tt>/ui</tt>.
@@ -352,7 +357,42 @@ public class NinjaController extends BasicController {
      */
     @Routed("/session-token")
     public void sessionToken(WebContext webContext) {
+        // DEBUG: Log injection status
+        Log.BACKGROUND.INFO("sessionToken called - s3Dispatcher injected: %s, globalContext injected: %s",
+                           s3Dispatcher != null, globalContext != null);
+
+        if (s3Dispatcher == null) {
+            Log.BACKGROUND.WARN("s3Dispatcher is null, attempting manual resolution via GlobalContext");
+
+            if (globalContext == null) {
+                Log.BACKGROUND.SEVERE("GlobalContext is also null - DI container not initialized");
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("Dependency injection failed - GlobalContext is null")
+                                .handle();
+            }
+
+            S3Dispatcher resolved = globalContext.getPart(S3Dispatcher.class);
+            Log.BACKGROUND.INFO("GlobalContext.getPart(S3Dispatcher.class) returned: %s", resolved);
+
+            if (resolved == null) {
+                // List all registered parts for debugging
+                Log.BACKGROUND.SEVERE("S3Dispatcher not found in GlobalContext. Available WebDispatchers:");
+                globalContext.getParts(sirius.web.http.WebDispatcher.class).forEach(dispatcher ->
+                    Log.BACKGROUND.INFO("  - %s", dispatcher.getClass().getName())
+                );
+
+                throw Exceptions.createHandled()
+                                .to(Storage.LOG)
+                                .withDirectMessage("S3Dispatcher not available - check @Register annotation and component.marker file")
+                                .handle();
+            }
+            s3Dispatcher = resolved;
+            Log.BACKGROUND.INFO("S3Dispatcher resolved successfully via GlobalContext");
+        }
+
         String token = s3Dispatcher.generateSessionToken();
+        Log.BACKGROUND.INFO("Generated session token: %s", token);
 
         webContext.respondWith()
                   .json()

@@ -71,8 +71,23 @@ import java.util.regex.Matcher;
 /**
  * Handles S3 API Calls.
  */
-@Register
+@Register(classes = S3Dispatcher.class)
 public class S3Dispatcher implements WebDispatcher {
+
+    /**
+     * Singleton instance for static access (primarily for testing).
+     */
+    private static S3Dispatcher instance;
+
+    /**
+     * Returns the singleton instance of S3Dispatcher.
+     * This is primarily intended for use in tests where DI injection is not available.
+     *
+     * @return the S3Dispatcher instance, or null if not yet initialized
+     */
+    public static S3Dispatcher getInstance() {
+        return instance;
+    }
 
     /**
      * Logger for S3 dispatcher operations including session tokens.
@@ -109,7 +124,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Part
-    private static GlobalContext globalContext;
+    private GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -173,6 +188,13 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         DOMAINS = builder.build();
+    }
+
+    /**
+     * Default constructor that initializes the singleton instance.
+     */
+    public S3Dispatcher() {
+        instance = this;
     }
 
     @Part

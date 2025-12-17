@@ -17,7 +17,7 @@ RUN mkdir -p /home/sirius/data && \
 
 USER root
 
-ADD --chown=sirius:sirius target/release-dir /home/sirius/
+COPY --chown=sirius:sirius target/release-dir /home/sirius/
 
 USER sirius
 
@@ -31,4 +31,3 @@ VOLUME /home/sirius/multipart
 VOLUME /home/sirius/logs
 
 EXPOSE 9000
-

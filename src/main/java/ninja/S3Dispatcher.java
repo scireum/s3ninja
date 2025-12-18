@@ -71,7 +71,7 @@ import java.util.regex.Matcher;
 /**
  * Handles S3 API Calls.
  */
-@Register(classes = S3Dispatcher.class)
+@Register(classes = {WebDispatcher.class, S3Dispatcher.class})
 public class S3Dispatcher implements WebDispatcher {
 
     /**

@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: s3ninja-local
     ports:
-      - "9000:9000"
+      - "9444:9000"
     volumes:
       - ./multipart:/home/sirius/multipart
       - s3ninja-logs:/home/sirius/logs

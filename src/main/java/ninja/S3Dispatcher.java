@@ -409,8 +409,9 @@ public class S3Dispatcher implements WebDispatcher {
         long expirationTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000); // 24 hours
         sessionTokens.put(token, expirationTime);
 
-        // Log the generated token for visibility in Docker logs
-        S3Dispatcher.LOG.INFO("Session token generated: %s (expires in 24 hours)", token);
+        // Log only a truncated version of the generated token to avoid exposing full credentials in logs
+        String tokenPreview = token.substring(0, Math.min(8, token.length()));
+        S3Dispatcher.LOG.INFO("Session token generated: %s**** (expires in 24 hours)", tokenPreview);
         S3Dispatcher.LOG.INFO("Use this token with: X-Session-Token header, X-Amz-Security-Token header/field, or ?sessionToken query param");
 
         return token;

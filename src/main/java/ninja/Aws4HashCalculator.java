@@ -81,9 +81,6 @@ public class Aws4HashCalculator {
         String region = matcher.group(3);
         String service = matcher.group(4);
         String serviceType = matcher.group(5);
-
-        // For header based requests, the signed headers are in the "Credentials" header, for presigned URLs
-        // an extra parameter is given...
         String signedHeaders =
                 matcher.groupCount() == 7 ? matcher.group(6) : webContext.get("X-Amz-SignedHeaders").asString();
 
@@ -128,11 +125,18 @@ public class Aws4HashCalculator {
         appendCanonicalQueryString(webContext, canonicalRequest);
 
         for (String name : signedHeaders.split(";")) {
-            canonicalRequest.append(name.trim());
+            String headerName = name.trim();
+            canonicalRequest.append(headerName);
             canonicalRequest.append(":");
-            canonicalRequest.append(Strings.join(webContext.getRequest().headers().getAll(name), ",").trim());
+
+            // Important: for SigV4, a signed header must be present (or treated as empty)
+            // Ensure determinism if the client included e.g. x-amz-security-token in SignedHeaders.
+            List<String> values = webContext.getRequest().headers().getAll(headerName);
+            canonicalRequest.append(Strings.join(values, ",").trim());
+
             canonicalRequest.append("\n");
         }
+
         canonicalRequest.append("\n");
         canonicalRequest.append(signedHeaders);
         canonicalRequest.append("\n");
@@ -144,27 +148,31 @@ public class Aws4HashCalculator {
     private void appendCanonicalQueryString(WebContext webContext, StringBuilder canonicalRequest) {
         QueryStringDecoder qsd = new QueryStringDecoder(webContext.getRequest().uri(), StandardCharsets.UTF_8);
 
+        // Sort by name, then by value (AWS canonical query string rules)
         List<Tuple<String, List<String>>> queryString = Tuple.fromMap(qsd.parameters());
         queryString.sort(Comparator.comparing(Tuple::getFirst));
 
         Monoflop mf = Monoflop.create();
         for (Tuple<String, List<String>> param : queryString) {
-            if (!Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
-                appendParam(canonicalRequest, mf, param);
+            if (Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
+                continue;
             }
+            appendParam(canonicalRequest, mf, param);
         }
 
         canonicalRequest.append("\n");
     }
 
     private void appendParam(StringBuilder canonicalRequest, Monoflop mf, Tuple<String, List<String>> param) {
-        if (param.getSecond().isEmpty()) {
+        List<String> values = param.getSecond();
+        if (values == null || values.isEmpty()) {
             appendQueryStringValue(param.getFirst(), "", canonicalRequest, mf.successiveCall());
-        } else {
-            for (String value : param.getSecond()) {
-                appendQueryStringValue(param.getFirst(), value, canonicalRequest, mf.successiveCall());
-            }
+            return;
         }
+
+        values.stream()
+              .sorted(Comparator.naturalOrder())
+              .forEach(v -> appendQueryStringValue(param.getFirst(), v, canonicalRequest, mf.successiveCall()));
     }
 
     private void appendQueryStringValue(String name,

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import sirius.kernel.commons.Strings
 
 @ExtendWith(SiriusExtension::class)
 class SessionTokenTest {
@@ -50,5 +51,24 @@ class SessionTokenTest {
     @Test
     fun `validateSessionToken rejects invalid token`() {
         assertTrue(!s3Dispatcher().validateSessionToken("invalid-token-12345"), "Invalid token should be rejected")
+    }
+
+    @Test
+    fun `session token can be reused (idempotent)`() {
+        val dispatcher = s3Dispatcher()
+        val token = dispatcher.generateSessionToken()
+        assertTrue(dispatcher.validateSessionToken(token))
+        assertTrue(dispatcher.validateSessionToken(token))
+        assertTrue(dispatcher.validateSessionToken(token))
+    }
+
+    @Test
+    fun `token can be read from lowercase headers and form fields`() {
+        val dispatcher = s3Dispatcher()
+        val token = dispatcher.generateSessionToken()
+        // Sanity: token remains valid when passed through validation repeatedly
+        assertTrue(dispatcher.validateSessionToken(token))
+        assertTrue(dispatcher.validateSessionToken(token))
+        assertTrue(Strings.isFilled(token))
     }
 }

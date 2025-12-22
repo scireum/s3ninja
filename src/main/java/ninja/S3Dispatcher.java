@@ -43,6 +43,8 @@ import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.http.WebDispatcher;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileOutputStream;
@@ -50,6 +52,9 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
@@ -462,6 +467,10 @@ public class S3Dispatcher implements WebDispatcher {
             token = webContext.get("X-Amz-Security-Token").asString();
         }
         if (Strings.isEmpty(token)) {
+            // Also accept the lowercase form field commonly used by AWS clients
+            token = webContext.get("x-amz-security-token").asString(webContext.get("X-Amz-Security-Token").asString());
+        }
+        if (Strings.isEmpty(token)) {
             // Check as query parameter
             token = webContext.get("sessionToken").asString();
         }
@@ -758,6 +767,11 @@ public class S3Dispatcher implements WebDispatcher {
         // Check for session token first
         String sessionToken = getSessionToken(webContext);
         if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
+            return true;
+        }
+
+        // Allow policy-signed POST uploads without Authorization header; signature is validated later.
+        if (isPolicyBasedPost(webContext)) {
             return true;
         }
 
@@ -1339,32 +1353,55 @@ public class S3Dispatcher implements WebDispatcher {
         String xAmzSignature = webContext.getParameter("x-amz-signature");
         String xAmzAlgorithm = webContext.getParameter("x-amz-algorithm");
 
-        // Check for legacy signature parameters
+        // Also accept the common "X-Amz-*" form field casing
         if (Strings.isEmpty(policy)) {
             policy = webContext.getParameter("Policy");
         }
+        if (Strings.isEmpty(xAmzSignature)) {
+            xAmzSignature = webContext.getParameter("X-Amz-Signature");
+        }
+        if (Strings.isEmpty(xAmzAlgorithm)) {
+            xAmzAlgorithm = webContext.getParameter("X-Amz-Algorithm");
+        }
+
+        // Check for legacy signature parameters
         String signature = webContext.getParameter("Signature");
 
         if (Strings.isFilled(policy)) {
+            // If a policy is present, we must have either an AWS4 signature or a legacy signature.
+            // This matches how S3 behaves and prevents unauthenticated policy uploads.
+            boolean hasAws4 = Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm);
+            boolean hasLegacy = Strings.isFilled(signature);
+
+            if (!hasAws4 && !hasLegacy) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.AccessDenied,
+                                                 "Missing signature for policy-based POST");
+                return;
+            }
+
             // AWS signature validation for POST uploads
-            if (Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm)) {
+            if (hasAws4) {
                 // AWS4-HMAC-SHA256 signature (modern)
-                if (!validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
+                if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256")
+                    || !validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
                     errorSynthesizer.synthesiseError(webContext,
-                            bucket.getName(),
-                            key,
-                            S3ErrorCode.SignatureDoesNotMatch,
-                            "The request signature we calculated does not match the signature you provided");
+                                                     bucket.getName(),
+                                                     key,
+                                                     S3ErrorCode.SignatureDoesNotMatch,
+                                                     "The request signature we calculated does not match the signature you provided");
                     return;
                 }
-            } else if (Strings.isFilled(signature)) {
+            } else {
                 // Legacy signature validation
                 if (!validatePolicySignature(policy, signature)) {
                     errorSynthesizer.synthesiseError(webContext,
-                            bucket.getName(),
-                            key,
-                            S3ErrorCode.SignatureDoesNotMatch,
-                            "The request signature we calculated does not match the signature you provided");
+                                                     bucket.getName(),
+                                                     key,
+                                                     S3ErrorCode.SignatureDoesNotMatch,
+                                                     "The request signature we calculated does not match the signature you provided");
                     return;
                 }
             }
@@ -1412,17 +1449,65 @@ public class S3Dispatcher implements WebDispatcher {
         }
     }
 
-    private boolean validateAWS4PolicySignature(WebContext webContext, String policy, String signature) {
-        // For S3 Ninja (development/testing environment), we can be lenient with signature validation
-        // In production, you would validate the signature using the AWS4 signing process
-        // For now, we accept all signatures if the policy structure is valid
+    private boolean validateAWS4PolicySignature(WebContext webContext, String policyBase64, String providedSignature) {
         try {
-            new S3Policy(policy); // Just validate the policy can be parsed
-            return true;
+            String credential = webContext.getParameter("x-amz-credential");
+            if (Strings.isEmpty(credential)) {
+                credential = webContext.getParameter("X-Amz-Credential");
+            }
+            if (Strings.isEmpty(credential)) {
+                return false;
+            }
+
+            Matcher credMatcher = Aws4HashCalculator.X_AMZ_CREDENTIAL_PATTERN.matcher(credential);
+            if (!credMatcher.matches()) {
+                return false;
+            }
+
+            String accessKey = credMatcher.group(1);
+            String date = credMatcher.group(2);   // yyyymmdd
+            String region = credMatcher.group(3);
+            String service = credMatcher.group(4);
+            String terminal = credMatcher.group(5);
+
+            if (!Strings.areEqual(accessKey, storage.getAwsAccessKey())) {
+                return false;
+            }
+
+            String algorithm = webContext.getParameter("x-amz-algorithm");
+            if (Strings.isEmpty(algorithm)) {
+                algorithm = webContext.getParameter("X-Amz-Algorithm");
+            }
+            if (!Strings.areEqual(algorithm, "AWS4-HMAC-SHA256")) {
+                return false;
+            }
+
+            if (!Strings.areEqual(terminal, "aws4_request")) {
+                return false;
+            }
+
+            byte[] kSecret = ("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8);
+            byte[] kDate = hmacSHA256(kSecret, date);
+            byte[] kRegion = hmacSHA256(kDate, region);
+            byte[] kService = hmacSHA256(kRegion, service);
+            byte[] kSigning = hmacSHA256(kService, "aws4_request");
+
+            byte[] expectedSig = hmacSHA256(kSigning, policyBase64);
+            String expectedHex = BaseEncoding.base16().lowerCase().encode(expectedSig);
+
+            return Strings.areEqual(expectedHex, providedSignature);
         } catch (Exception e) {
             return false;
         }
     }
+
+    private byte[] hmacSHA256(byte[] key, String value) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    }
+
 
     private boolean validatePolicySignature(String policy, String signature) {
         // Legacy signature validation
@@ -1456,5 +1541,15 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         return null;
+    }
+
+    private boolean isPolicyBasedPost(WebContext webContext) {
+        if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
+            return false;
+        }
+        return webContext.hasParameter("policy")
+               || webContext.hasParameter("Policy")
+               || webContext.hasParameter("x-amz-signature")
+               || webContext.hasParameter("Signature");
     }
 }

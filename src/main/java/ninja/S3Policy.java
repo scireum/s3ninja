@@ -51,7 +51,11 @@ public class S3Policy {
                 if (condition.isArray()) {
                     Map<String, Object> conditionMap = new HashMap<>();
                     conditionMap.put("operator", condition.get(0).asText());
-                    conditionMap.put("field", condition.get(1).asText().substring(1)); // Remove '$' prefix
+                    String field = condition.get(1).asText();
+                    if (field.startsWith("$") && field.length() > 1) {
+                        field = field.substring(1); // Remove '$' prefix
+                    }
+                    conditionMap.put("field", field);
                     conditionMap.put("value", condition.get(2).asText());
                     result.add(conditionMap);
                 } else if (condition.isObject()) {

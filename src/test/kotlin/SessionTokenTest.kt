@@ -1,6 +1,6 @@
 // kotlin
-package ninja
 
+import ninja.S3Dispatcher
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension

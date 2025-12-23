@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sirius.kernel.commons.Value;
 import sirius.web.http.WebContext;
 
@@ -28,6 +30,8 @@ import java.util.Map;
  * Handles AWS S3 POST policies validation.
  */
 public class S3Policy {
+    private static final Logger LOG = LoggerFactory.getLogger(S3Policy.class);
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final JsonNode policyData;
     private final Instant expiration;
@@ -43,7 +47,6 @@ public class S3Policy {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> parseConditions(JsonNode conditionsNode) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (conditionsNode instanceof ArrayNode arrayNode) {
@@ -60,8 +63,8 @@ public class S3Policy {
                     result.add(conditionMap);
                 } else if (condition.isObject()) {
                     Map<String, Object> conditionMap = new HashMap<>();
-                    condition.fields().forEachRemaining(entry ->
-                        conditionMap.put(entry.getKey(), entry.getValue().asText()));
+                    condition.properties().forEach(entry ->
+                                                           conditionMap.put(entry.getKey(), entry.getValue().asText()));
                     result.add(conditionMap);
                 }
             });
@@ -143,14 +146,18 @@ public class S3Policy {
      */
     public HttpResponseStatus getSuccessResponse() {
         String status = conditions.stream()
-                .filter(condition -> condition.containsKey("success_action_status"))
-                .findFirst()
-                .map(condition -> (String) condition.get("success_action_status"))
-                .orElse("204");
+                                  .filter(condition -> condition.containsKey("success_action_status"))
+                                  .findFirst()
+                                  .map(condition -> (String) condition.get("success_action_status"))
+                                  .orElse("204");
 
         return switch (status) {
             case "200", "201", "204" -> HttpResponseStatus.valueOf(Integer.parseInt(status));
-            default -> HttpResponseStatus.NO_CONTENT;
+            default -> {
+                LOG.warn("Success values\\_action\\_status unsupported: `{}`. 204\\(NO\\_CONTENT\\). " +
+                         "Allow values: 200\\, 201\\, 204\\.", status);
+                yield HttpResponseStatus.NO_CONTENT;
+            }
         };
     }
 

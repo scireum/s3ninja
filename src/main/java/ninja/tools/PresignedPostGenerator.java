@@ -10,6 +10,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 
 /**
  * Generates a presigned POST policy and signature for testing.
@@ -20,11 +21,11 @@ public class PresignedPostGenerator {
         String bucket = "test";
         String key = "okok.txt";
         String region = "eu-west-3";
-        String accessKey = "AKIAIOSFODNN7=EXAMPLE";
+        String accessKey = "AKIAIOSFODNN7EXAMPLE";
         String secretKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
         // TODO: Paste your session token here if testing with temporary credentials
-        String sessionToken = "";
+        String sessionToken = "047b688c0be3e87dcda3e07";
 
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
         String date = DateTimeFormatter.ofPattern("yyyyMMdd").format(now);
@@ -38,20 +39,16 @@ public class PresignedPostGenerator {
         // Build Policy JSON
         StringBuilder policyJson = new StringBuilder();
         policyJson.append("{\n");
-        policyJson.append("  \"expiration\": \"" + expiration + "\",\n");
-        policyJson.append("  \"conditions\": [\n");
-        policyJson.append("    {\"bucket\": \"" + bucket + "\"},\n");
-        policyJson.append("    [\"eq\", \"$key\", \"" + key + "\"],\n");
-        policyJson.append("    {\"x-amz-algorithm\": \"AWS4-HMAC-SHA256\"},\n");
-        policyJson.append("    {\"x-amz-credential\": \"" + credential + "\"},");
-        policyJson.append("    {\"x-amz-date\": \"" + xAmzDate + "\"}");
-
-        if (sessionToken != null && !sessionToken.isEmpty()) {
-            policyJson.append(",\n    {\"x-amz-security-token\": \"" + sessionToken + "\"}");
+        for (String s : Arrays.asList("  \"expiration\": \"" + expiration + "\",\n",
+                                      "  \"conditions\": [\n",
+                                      "    {\"bucket\": \"" + bucket + "\"},\n",
+                                      "    [\"eq\", \"$key\", \"" + key + "\"],\n",
+                                      "    {\"x-amz-algorithm\": \"AWS4-HMAC-SHA256\"},\n",
+                                      "    {\"x-amz-credential\": \"" + credential + "\"},",
+                                      "    {\"x-amz-date\": \"" + xAmzDate + "\"}",
+                                      " {\"x-amz-security-token\": \"" + sessionToken + "\"}\n]\n}")) {
+            policyJson.append(s);
         }
-
-        policyJson.append("\n  ]\n");
-        policyJson.append("}");
 
         String policyBase64 = BaseEncoding.base64().encode(policyJson.toString().getBytes(StandardCharsets.UTF_8));
 
@@ -61,21 +58,13 @@ public class PresignedPostGenerator {
         byte[] kRegion = hmacSHA256(kDate, region);
         byte[] kService = hmacSHA256(kRegion, "s3");
         byte[] kSigning = hmacSHA256(kService, "aws4_request");
-        byte[] signatureBytes = hmacSHA256(kSigning, policyBase64);
+
+        // Per AWS S3 SigV4 POST, sign the *decoded* policy document bytes (not the base64 string).
+        byte[] signatureBytes = hmacSHA256(kSigning, policyJson.toString().getBytes(StandardCharsets.UTF_8));
         String signatureHex = BaseEncoding.base16().lowerCase().encode(signatureBytes);
 
         System.out.println("Policy JSON:");
         System.out.println(policyJson);
-        System.out.println("\nGenerated Parameters:");
-        System.out.println("key=" + key);
-        System.out.println("policy=" + policyBase64);
-        System.out.println("x-amz-algorithm=AWS4-HMAC-SHA256");
-        System.out.println("x-amz-credential=" + credential);
-        System.out.println("x-amz-date=" + xAmzDate);
-        if (sessionToken != null && !sessionToken.isEmpty()) {
-            System.out.println("x-amz-security-token=" + sessionToken);
-        }
-        System.out.println("x-amz-signature=" + signatureHex);
 
         System.out.println("\nFull URL (for testing):");
         System.out.print("http://localhost:9444/" + bucket + "/" + key + "?");
@@ -84,9 +73,7 @@ public class PresignedPostGenerator {
         System.out.print("&x-amz-algorithm=AWS4-HMAC-SHA256");
         System.out.print("&x-amz-credential=" + credential);
         System.out.print("&x-amz-date=" + xAmzDate);
-        if (sessionToken != null && !sessionToken.isEmpty()) {
-            System.out.print("&x-amz-security-token=" + sessionToken);
-        }
+        System.out.print("&x-amz-security-token=" + sessionToken);
         System.out.println("&x-amz-signature=" + signatureHex);
     }
 
@@ -95,5 +82,12 @@ public class PresignedPostGenerator {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(keySpec);
         return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static byte[] hmacSHA256(byte[] key, byte[] value) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value);
     }
 }

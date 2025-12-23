@@ -129,7 +129,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Part
-    private GlobalContext globalContext;
+    private static GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -1493,10 +1493,24 @@ public class S3Dispatcher implements WebDispatcher {
             byte[] kService = hmacSHA256(kRegion, service);
             byte[] kSigning = hmacSHA256(kService, "aws4_request");
 
-            byte[] expectedSig = hmacSHA256(kSigning, policyBase64);
+            byte[] policyBytes = java.util.Base64.getDecoder().decode(policyBase64);
+            byte[] expectedSig = hmacSHA256(kSigning, policyBytes);
             String expectedHex = BaseEncoding.base16().lowerCase().encode(expectedSig);
 
-            return Strings.areEqual(expectedHex, providedSignature);
+            // Backward compatibility: some tools mistakenly sign the base64 string.
+            // We accept this only if explicitly enabled.
+            if (Strings.areEqual(expectedHex, providedSignature)) {
+                return true;
+            }
+
+            boolean allowBase64PolicySigning = webContext.get("allowBase64PolicySigning").asBoolean(false);
+            if (allowBase64PolicySigning) {
+                byte[] expectedSigBase64 = hmacSHA256(kSigning, policyBase64.getBytes(StandardCharsets.UTF_8));
+                String expectedHexBase64 = BaseEncoding.base16().lowerCase().encode(expectedSigBase64);
+                return Strings.areEqual(expectedHexBase64, providedSignature);
+            }
+
+            return false;
         } catch (Exception e) {
             return false;
         }
@@ -1509,19 +1523,46 @@ public class S3Dispatcher implements WebDispatcher {
         return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
     }
 
+    private byte[] hmacSHA256(byte[] key, byte[] value) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value);
+    }
 
+
+    /**
+     * Validates legacy AWS S3 POST policy signatures using HMAC-SHA1.
+     * This implements proper cryptographic validation to prevent security vulnerabilities.
+     *
+     * @param policy The Base64-encoded policy document
+     * @param signature The signature to validate against
+     * @return true if signature is valid, false otherwise
+     */
     private boolean validatePolicySignature(String policy, String signature) {
-        // Legacy signature validation
-        // For S3 Ninja (development/testing environment), we can be lenient
-        // In production, you would validate using HMAC-SHA1
         try {
-            new S3Policy(policy); // Just validate the policy can be parsed
-            return true;
+            new S3Policy(policy);
+
+            String secretKey = storage.getAwsSecretKey();
+            if (Strings.isEmpty(secretKey)) {
+                return false;
+            }
+
+            SecretKeySpec keySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA1");
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(keySpec);
+
+            byte[] expectedSig = mac.doFinal(policy.getBytes(StandardCharsets.UTF_8));
+            String expectedSignature = BaseEncoding.base64().encode(expectedSig);
+
+            return Strings.areEqual(expectedSignature, signature);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            Exceptions.handle(e);
+            return false;
         } catch (Exception e) {
             return false;
         }
     }
-
     /**
      * Extracts the key from a multipart form request
      * This is useful when the key is embedded in the form data rather than as a parameter

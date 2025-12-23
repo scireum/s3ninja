@@ -357,15 +357,11 @@ public class NinjaController extends BasicController {
      */
     @Routed("/session-token")
     public void sessionToken(WebContext webContext) {
-        // DEBUG: Log injection status
-        Log.BACKGROUND.INFO("sessionToken called - s3Dispatcher injected: %s, globalContext injected: %s",
+        Log.BACKGROUND.FINE("sessionToken called - s3Dispatcher injected: %s, globalContext injected: %s",
                            s3Dispatcher != null, globalContext != null);
 
         if (s3Dispatcher == null) {
-            Log.BACKGROUND.WARN("s3Dispatcher is null, attempting manual resolution via GlobalContext");
-
             if (globalContext == null) {
-                Log.BACKGROUND.SEVERE("GlobalContext is also null - DI container not initialized");
                 throw Exceptions.createHandled()
                                 .to(Storage.LOG)
                                 .withDirectMessage("Dependency injection failed - GlobalContext is null")
@@ -373,13 +369,13 @@ public class NinjaController extends BasicController {
             }
 
             S3Dispatcher resolved = globalContext.getPart(S3Dispatcher.class);
-            Log.BACKGROUND.INFO("GlobalContext.getPart(S3Dispatcher.class) returned: %s", resolved);
+            Log.BACKGROUND.FINE("GlobalContext.getPart(S3Dispatcher.class) returned: %s", resolved);
 
             if (resolved == null) {
                 // List all registered parts for debugging
                 Log.BACKGROUND.SEVERE("S3Dispatcher not found in GlobalContext. Available WebDispatchers:");
                 globalContext.getParts(sirius.web.http.WebDispatcher.class).forEach(dispatcher ->
-                    Log.BACKGROUND.INFO("  - %s", dispatcher.getClass().getName())
+                    Log.BACKGROUND.FINE("  - %s", dispatcher.getClass().getName())
                 );
 
                 throw Exceptions.createHandled()
@@ -388,11 +384,10 @@ public class NinjaController extends BasicController {
                                 .handle();
             }
             s3Dispatcher = resolved;
-            Log.BACKGROUND.INFO("S3Dispatcher resolved successfully via GlobalContext");
         }
 
         String token = s3Dispatcher.generateSessionToken();
-        Log.BACKGROUND.INFO("Generated session token: %s", token);
+        Log.BACKGROUND.FINE("Generated session token: %s", token);
 
         webContext.respondWith()
                   .json()

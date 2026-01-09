@@ -20,7 +20,6 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
-import sirius.kernel.health.Log;
 import sirius.kernel.nls.NLS;
 import sirius.web.controller.BasicController;
 import sirius.web.controller.DefaultRoute;
@@ -31,6 +30,8 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
+import sirius.web.services.InternalService;
+import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -126,7 +127,7 @@ public class NinjaController extends BasicController {
         List<Bucket> buckets = Collections.emptyList();
         try {
             buckets = storage.getBuckets();
-        } catch ( HandledException e) {
+        } catch (HandledException e) {
             UserContext.message(Message.error().withTextMessage(e.getMessage()));
         }
         webContext.respondWith()
@@ -341,7 +342,7 @@ public class NinjaController extends BasicController {
     }
 
     /**
-     * Handles requests to <tt>/session-token</tt>.
+     * Handles requests to <tt>/.api/generate-session-token</tt>.
      * <p>
      * Generates a session token that can be used to authenticate requests.
      * The token is valid for 24 hours.
@@ -354,48 +355,16 @@ public class NinjaController extends BasicController {
      * </ul>
      *
      * @param webContext the context describing the current request
+     * @param output the JSON output to write the response to
      */
-    @Routed("/session-token")
-    public void sessionToken(WebContext webContext) {
-        Log.BACKGROUND.FINE("sessionToken called - s3Dispatcher injected: %s, globalContext injected: %s",
-                           s3Dispatcher != null, globalContext != null);
-
-        if (s3Dispatcher == null) {
-            if (globalContext == null) {
-                throw Exceptions.createHandled()
-                                .to(Storage.LOG)
-                                .withDirectMessage("Dependency injection failed - GlobalContext is null")
-                                .handle();
-            }
-
-            S3Dispatcher resolved = globalContext.getPart(S3Dispatcher.class);
-            Log.BACKGROUND.FINE("GlobalContext.getPart(S3Dispatcher.class) returned: %s", resolved);
-
-            if (resolved == null) {
-                // List all registered parts for debugging
-                Log.BACKGROUND.SEVERE("S3Dispatcher not found in GlobalContext. Available WebDispatchers:");
-                globalContext.getParts(sirius.web.http.WebDispatcher.class).forEach(dispatcher ->
-                    Log.BACKGROUND.FINE("  - %s", dispatcher.getClass().getName())
-                );
-
-                throw Exceptions.createHandled()
-                                .to(Storage.LOG)
-                                .withDirectMessage("S3Dispatcher not available - check @Register annotation and component.marker file")
-                                .handle();
-            }
-            s3Dispatcher = resolved;
-        }
-
+    @InternalService
+    @Routed("/.api/generate-session-token")
+    public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
         String token = s3Dispatcher.generateSessionToken();
-        Log.BACKGROUND.FINE("Generated session token: %s", token);
 
-        webContext.respondWith()
-                  .json()
-                  .beginResult()
-                  .property("success", true)
-                  .property("token", token)
-                  .property("expiresIn", "24 hours")
-                  .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field")
-                  .endResult();
+        output.property("success", true)
+              .property("token", token)
+              .property("expiresIn", "24 hours")
+              .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field");
     }
 }

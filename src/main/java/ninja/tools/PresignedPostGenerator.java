@@ -14,7 +14,12 @@ import java.util.Arrays;
 
 /**
  * Generates a presigned POST policy and signature for testing.
+ *
+ * @deprecated This manual generator has been replaced by {@code PresignedPostGeneratorTest}
+ *             which uses Jackson for proper JSON construction and runs as an automated test.
+ *             See {@code src/test/kotlin/PresignedPostGeneratorTest.kt}
  */
+@Deprecated
 public class PresignedPostGenerator {
 
     public static void main(String[] args) throws Exception {

@@ -132,7 +132,7 @@
                 let currentToken = null;
 
                 function generateSessionToken() {
-                    fetch('/session-token')
+                    fetch('/.api/generate-session-token')
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {

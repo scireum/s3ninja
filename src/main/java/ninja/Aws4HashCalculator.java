@@ -154,11 +154,11 @@ public class Aws4HashCalculator {
 
         Monoflop mf = Monoflop.create();
         for (Tuple<String, List<String>> param : queryString) {
-            if (Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
-                continue;
+            if (!Strings.areEqual(param.getFirst(), "X-Amz-Signature")) {
+                appendParam(canonicalRequest, mf, param);
             }
-            appendParam(canonicalRequest, mf, param);
         }
+
 
         canonicalRequest.append("\n");
     }

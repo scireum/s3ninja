@@ -118,21 +118,36 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             // Return success response
             String successActionStatus = webContext.get("success_action_status").asString("204");
             HttpResponseStatus status;
-            try {
-                int statusCode = Integer.parseInt(successActionStatus);
-                status = HttpResponseStatus.valueOf(statusCode);
-            } catch (NumberFormatException e) {
-                status = HttpResponseStatus.NO_CONTENT;
+
+            switch (successActionStatus) {
+                case "200":
+                    status = HttpResponseStatus.OK;
+                    break;
+                case "201":
+                    status = HttpResponseStatus.CREATED;
+                    break;
+                case "204":
+                    status = HttpResponseStatus.NO_CONTENT;
+                    break;
+                default:
+                    // Invalid success_action_status - AWS S3 would reject this
+                    errorSynthesizer.synthesiseError(webContext,
+                                                   bucket.getName(),
+                                                   objectKey,
+                                                   S3ErrorCode.InvalidRequest,
+                                                   "Invalid success_action_status: " + successActionStatus +
+                                                   ". Must be 200, 201, or 204.");
+                    return;
             }
 
             webContext.respondWith().status(status);
 
-        } catch (IOException e) {
+        } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
                                            bucket.getName(),
                                            key,
                                            S3ErrorCode.InternalError,
-                                           "Internal error processing POST upload: " + Exceptions.handle(e).getMessage());
+                                           "Internal error processing POST upload: " + Exceptions.handle(exception).getMessage());
         }
     }
 

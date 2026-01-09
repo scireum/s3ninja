@@ -20,6 +20,8 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QueryProcessor;
 import sirius.kernel.async.CallContext;
+import sirius.kernel.cache.Cache;
+import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
@@ -79,20 +81,6 @@ import java.util.regex.Matcher;
 @Register(classes = {WebDispatcher.class, S3Dispatcher.class})
 public class S3Dispatcher implements WebDispatcher {
 
-    /**
-     * Singleton instance for static access (primarily for testing).
-     */
-    private static S3Dispatcher instance;
-
-    /**
-     * Returns the singleton instance of S3Dispatcher.
-     * This is primarily intended for use in tests where DI injection is not available.
-     *
-     * @return the S3Dispatcher instance, or null if not yet initialized
-     */
-    public static S3Dispatcher getInstance() {
-        return instance;
-    }
 
     /**
      * Logger for S3 dispatcher operations including session tokens.
@@ -149,9 +137,10 @@ public class S3Dispatcher implements WebDispatcher {
 
     /**
      * Session tokens for UI access.
-     * Maps token to expiration timestamp.
+     * LocalCache handles automatic expiration after 24 hours.
      */
-    private final Map<String, Long> sessionTokens = Collections.synchronizedMap(new HashMap<>());
+    private static final Cache<String, Long> sessionTokens =
+            CacheManager.createLocalCache("session-tokens");
 
     /**
      * ISO 8601 date/time formatter.
@@ -193,13 +182,6 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         DOMAINS = builder.build();
-    }
-
-    /**
-     * Default constructor that initializes the singleton instance.
-     */
-    public S3Dispatcher() {
-        instance = this;
     }
 
     @Part
@@ -404,15 +386,9 @@ public class S3Dispatcher implements WebDispatcher {
      * @return the generated session token
      */
     public String generateSessionToken() {
-        cleanExpiredTokens();
         String token = Hasher.md5().hash(System.currentTimeMillis() + "-" + Math.random()).toHexString();
         long expirationTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000); // 24 hours
         sessionTokens.put(token, expirationTime);
-
-        // Log only a truncated version of the generated token to avoid exposing full credentials in logs
-        String tokenPreview = token.substring(0, Math.min(8, token.length()));
-        S3Dispatcher.LOG.INFO("Session token generated: %s**** (expires in 24 hours)", tokenPreview);
-        S3Dispatcher.LOG.INFO("Use this token with: X-Session-Token header, X-Amz-Security-Token header/field, or ?sessionToken query param");
 
         return token;
     }
@@ -429,11 +405,10 @@ public class S3Dispatcher implements WebDispatcher {
         }
         Long expirationTime = sessionTokens.get(token);
         if (expirationTime == null) {
-            LOG.FINE("Session token validation failed: token not found");
+            LOG.FINE("Session token validation failed: token not found or expired");
             return false;
         }
         if (System.currentTimeMillis() > expirationTime) {
-            sessionTokens.remove(token);
             LOG.FINE("Session token validation failed: token expired");
             return false;
         }
@@ -441,13 +416,6 @@ public class S3Dispatcher implements WebDispatcher {
         return true;
     }
 
-    /**
-     * Removes expired tokens from the session token map.
-     */
-    private void cleanExpiredTokens() {
-        long currentTime = System.currentTimeMillis();
-        sessionTokens.entrySet().removeIf(entry -> currentTime > entry.getValue());
-    }
 
     /**
      * Extracts the session token from the request.
@@ -456,7 +424,7 @@ public class S3Dispatcher implements WebDispatcher {
      * @param webContext the context describing the current request
      * @return the session token if present, null otherwise
      */
-    private String getSessionToken(WebContext webContext) {
+    private String extractSessionToken(WebContext webContext) {
         // Check X-Session-Token header (custom header for direct use)
         String token = webContext.getHeader("X-Session-Token");
         if (Strings.isEmpty(token)) {
@@ -766,7 +734,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     private boolean objectCheckAuth(WebContext webContext, Bucket bucket, String key) {
         // Check for session token first
-        String sessionToken = getSessionToken(webContext);
+        String sessionToken = extractSessionToken(webContext);
         if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
             return true;
         }
@@ -1368,85 +1336,86 @@ public class S3Dispatcher implements WebDispatcher {
         // Check for legacy signature parameters
         String signature = webContext.getParameter("Signature");
 
-        if (Strings.isFilled(policy)) {
-            // If a policy is present, we must have either an AWS4 signature or a legacy signature.
-            // This matches how S3 behaves and prevents unauthenticated policy uploads.
-            boolean hasAws4 = Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm);
-            boolean hasLegacy = Strings.isFilled(signature);
-
-            if (!hasAws4 && !hasLegacy) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 key,
-                                                 S3ErrorCode.AccessDenied,
-                                                 "Missing signature for policy-based POST");
-                return;
-            }
-
-            // AWS signature validation for POST uploads
-            if (hasAws4) {
-                // AWS4-HMAC-SHA256 signature (modern)
-                if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256")
-                    || !validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
-                    errorSynthesizer.synthesiseError(webContext,
-                                                     bucket.getName(),
-                                                     key,
-                                                     S3ErrorCode.SignatureDoesNotMatch,
-                                                     "The request signature we calculated does not match the signature you provided");
-                    return;
-                }
-            } else {
-                // Legacy signature validation
-                if (!validatePolicySignature(policy, signature)) {
-                    errorSynthesizer.synthesiseError(webContext,
-                                                     bucket.getName(),
-                                                     key,
-                                                     S3ErrorCode.SignatureDoesNotMatch,
-                                                     "The request signature we calculated does not match the signature you provided");
-                    return;
-                }
-            }
-
-            try {
-                S3Policy s3Policy = new S3Policy(policy);
-
-                if (!s3Policy.isRequestValid(webContext, bucket, key)) {
-                    errorSynthesizer.synthesiseError(webContext,
-                            bucket.getName(),
-                            key,
-                            S3ErrorCode.AccessDenied, "Policy conditions not met");
-                    return;
-                }
-
-                long maxFileSize = s3Policy.getMaxFileSize();
-                if (maxFileSize > 0 && webContext.getContentSize() > maxFileSize) {
-                    errorSynthesizer.synthesiseError(webContext,
-                            bucket.getName(),
-                            key,
-                            S3ErrorCode.InvalidDigest,
-                            "File size exceeds maximum allowed by policy");
-                    return;
-                }
-
-                putObject(webContext, bucket, key, data);
-
-                String redirectUrl = s3Policy.getSuccessRedirect();
-                if (Strings.isFilled(redirectUrl)) {
-                    webContext.respondWith().redirectToGet(redirectUrl);
-                } else {
-                    webContext.respondWith().status(s3Policy.getSuccessResponse());
-                }
-            } catch (IllegalArgumentException e) {
-                errorSynthesizer.synthesiseError(webContext,
-                        bucket.getName(),
-                        key,
-                        S3ErrorCode.InvalidRequest,
-                        "Policy parsing error: " + e.getMessage());
-            }
-        } else {
+        if (!Strings.isFilled(policy)) {
             // Simple POST without policy - just upload the object
             putObject(webContext, bucket, key, data);
             webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
+            return;
+        }
+
+        // If a policy is present, we must have either an AWS4 signature or a legacy signature.
+        // This matches how S3 behaves and prevents unauthenticated policy uploads.
+        boolean hasAws4 = Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm);
+        boolean hasLegacy = Strings.isFilled(signature);
+
+        if (!hasAws4 && !hasLegacy) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.AccessDenied,
+                                             "Missing signature for policy-based POST");
+            return;
+        }
+
+        // AWS signature validation for POST uploads
+        if (hasAws4) {
+            // AWS4-HMAC-SHA256 signature (modern)
+            if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256")
+                || !validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 "The request signature we calculated does not match the signature you provided");
+                return;
+            }
+        } else {
+            // Legacy signature validation
+            if (!validatePolicySignature(policy, signature)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 "The request signature we calculated does not match the signature you provided");
+                return;
+            }
+        }
+
+        try {
+            S3Policy s3Policy = new S3Policy(policy);
+
+            if (!s3Policy.isRequestValid(webContext, bucket, key)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.AccessDenied, "Policy conditions not met");
+                return;
+            }
+
+            long maxFileSize = s3Policy.getMaxFileSize();
+            if (maxFileSize > 0 && webContext.getContentSize() > maxFileSize) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.InvalidDigest,
+                                                 "File size exceeds maximum allowed by policy");
+                return;
+            }
+
+            putObject(webContext, bucket, key, data);
+
+            String redirectUrl = s3Policy.getSuccessRedirect();
+            if (Strings.isFilled(redirectUrl)) {
+                webContext.respondWith().redirectToGet(redirectUrl);
+            } else {
+                webContext.respondWith().status(s3Policy.getSuccessResponse());
+            }
+        } catch (IllegalArgumentException e) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.InvalidRequest,
+                                             "Policy parsing error: " + e.getMessage());
         }
     }
 

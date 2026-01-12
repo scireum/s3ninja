@@ -81,6 +81,8 @@ public class Aws4HashCalculator {
         String region = matcher.group(3);
         String service = matcher.group(4);
         String serviceType = matcher.group(5);
+        // For header based requests, the signed headers are in the "Credentials" header, for presigned URLs
+        // an extra parameter is given
         String signedHeaders =
                 matcher.groupCount() == 7 ? matcher.group(6) : webContext.get("X-Amz-SignedHeaders").asString();
 
@@ -158,7 +160,6 @@ public class Aws4HashCalculator {
                 appendParam(canonicalRequest, mf, param);
             }
         }
-
 
         canonicalRequest.append("\n");
     }

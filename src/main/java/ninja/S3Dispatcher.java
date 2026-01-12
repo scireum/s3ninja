@@ -617,7 +617,6 @@ public class S3Dispatcher implements WebDispatcher {
 
             signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
-
         } else {
             throw new IllegalArgumentException(webContext.getRequest().method().name());
         }

@@ -13,7 +13,12 @@ updates:
     - dependency-name: org.apache.maven:*
     # ignore sirius libs as we want to use current dev versions
     - dependency-name: com.scireum:*
+  labels:
+    - "⬆️ Dependencies"
+    - "🛠️ Maintenance"
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:
     interval: "daily"
+  labels:
+    - "🛠️ Maintenance"

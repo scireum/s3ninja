@@ -52,30 +52,30 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             String objectKey = extractKeyFromMultipartForm(webContext);
             if (Strings.isEmpty(objectKey)) {
                 errorSynthesizer.synthesiseError(webContext,
-                                               bucket.getName(),
-                                               null,
-                                               S3ErrorCode.InvalidRequest,
-                                               "Missing key in form data");
+                                                 bucket.getName(),
+                                                 null,
+                                                 S3ErrorCode.InvalidRequest,
+                                                 "Missing key in form data");
                 return;
             }
 
             // Check if we have content to upload
             if (webContext.getContent() == null) {
                 errorSynthesizer.synthesiseError(webContext,
-                                               bucket.getName(),
-                                               objectKey,
-                                               S3ErrorCode.InvalidRequest,
-                                               "Missing file content in form data");
+                                                 bucket.getName(),
+                                                 objectKey,
+                                                 S3ErrorCode.InvalidRequest,
+                                                 "Missing file content in form data");
                 return;
             }
 
             // Create bucket if it doesn't exist
             if (!bucket.exists() && !bucket.create()) {
                 errorSynthesizer.synthesiseError(webContext,
-                                               bucket.getName(),
-                                               objectKey,
-                                               S3ErrorCode.InternalError,
-                                               "Failed to create bucket");
+                                                 bucket.getName(),
+                                                 objectKey,
+                                                 S3ErrorCode.InternalError,
+                                                 "Failed to create bucket");
                 return;
             }
 
@@ -103,9 +103,13 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
             // Store additional form parameters as metadata (excluding AWS and internal parameters)
             for (String paramName : webContext.getParameterNames()) {
-                if (!"policy".equals(paramName) && !"X-Amz-Signature".equals(paramName) &&
-                    !"X-Amz-Algorithm".equals(paramName) && !"X-Amz-Credential".equals(paramName) &&
-                    !"X-Amz-Date".equals(paramName) && !"key".equals(paramName) && !"file".equals(paramName)) {
+                if (!"policy".equals(paramName)
+                    && !"X-Amz-Signature".equals(paramName)
+                    && !"X-Amz-Algorithm".equals(paramName)
+                    && !"X-Amz-Credential".equals(paramName)
+                    && !"X-Amz-Date".equals(paramName)
+                    && !"key".equals(paramName)
+                    && !"file".equals(paramName)) {
                     String value = webContext.get(paramName).asString();
                     if (Strings.isFilled(value)) {
                         properties.put(paramName, value);
@@ -132,22 +136,23 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                 default:
                     // Invalid success_action_status - AWS S3 would reject this
                     errorSynthesizer.synthesiseError(webContext,
-                                                   bucket.getName(),
-                                                   objectKey,
-                                                   S3ErrorCode.InvalidRequest,
-                                                   "Invalid success_action_status: " + successActionStatus +
-                                                   ". Must be 200, 201, or 204.");
+                                                     bucket.getName(),
+                                                     objectKey,
+                                                     S3ErrorCode.InvalidRequest,
+                                                     "Invalid success_action_status: "
+                                                     + successActionStatus
+                                                     + ". Must be 200, 201, or 204.");
                     return;
             }
 
             webContext.respondWith().status(status);
-
         } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
-                                           bucket.getName(),
-                                           key,
-                                           S3ErrorCode.InternalError,
-                                           "Internal error processing POST upload: " + Exceptions.handle(exception).getMessage());
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.InternalError,
+                                             "Internal error processing POST upload: " + Exceptions.handle(exception)
+                                                                                                   .getMessage());
         }
     }
 

@@ -163,10 +163,10 @@ public class S3Policy {
      *
      * @param conditionsNode the JSON node containing the conditions array from the policy
      * @return a list of maps, each representing a parsed condition with keys:
-     *         <ul>
-     *             <li>{@code operator}, {@code field}, {@code value} for array-format conditions</li>
-     *             <li>Direct field-value pairs for object-format conditions</li>
-     *         </ul>
+     * <ul>
+     *     <li>{@code operator}, {@code field}, {@code value} for array-format conditions</li>
+     *     <li>Direct field-value pairs for object-format conditions</li>
+     * </ul>
      */
     private List<Map<String, Object>> parseConditions(JsonNode conditionsNode) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -184,8 +184,8 @@ public class S3Policy {
                     result.add(conditionMap);
                 } else if (condition.isObject()) {
                     Map<String, Object> conditionMap = new HashMap<>();
-                    condition.properties().forEach(entry ->
-                                                           conditionMap.put(entry.getKey(), entry.getValue().asText()));
+                    condition.properties()
+                             .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asText()));
                     result.add(conditionMap);
                 }
             });
@@ -217,8 +217,8 @@ public class S3Policy {
      * </ul>
      *
      * @param webContext the HTTP request context containing headers, form fields, and parameters
-     * @param bucket the target bucket for the upload
-     * @param key the object key (file path) for the upload
+     * @param bucket     the target bucket for the upload
+     * @param key        the object key (file path) for the upload
      * @return true if the request satisfies all policy conditions and has not expired, false otherwise
      */
     public boolean isRequestValid(WebContext webContext, Bucket bucket, String key) {
@@ -260,10 +260,10 @@ public class S3Policy {
      * // Validates that the bucket name is exactly "my-bucket"
      * }</pre>
      *
-     * @param condition a map representing the condition (parsed by {@link #parseConditions(JsonNode)})
+     * @param condition  a map representing the condition (parsed by {@link #parseConditions(JsonNode)})
      * @param webContext the HTTP request context
-     * @param bucket the target bucket
-     * @param key the object key
+     * @param bucket     the target bucket
+     * @param key        the object key
      * @return true if the condition is satisfied, false otherwise
      */
     private boolean validateCondition(Map<String, Object> condition, WebContext webContext, Bucket bucket, String key) {
@@ -306,10 +306,10 @@ public class S3Policy {
      * For all other fields (including AWS signature fields like x-amz-algorithm, x-amz-credential, etc.),
      * the method attempts to extract the value from form parameters or request parameters.
      *
-     * @param field the field name to extract (without '$' prefix, which was already removed by {@link #parseConditions(JsonNode)})
+     * @param field      the field name to extract (without '$' prefix, which was already removed by {@link #parseConditions(JsonNode)})
      * @param webContext the HTTP request context
-     * @param bucket the target bucket
-     * @param key the object key
+     * @param bucket     the target bucket
+     * @param key        the object key
      * @return the field value as a string, or null if not present
      */
     private String getFieldValue(String field, WebContext webContext, Bucket bucket, String key) {
@@ -341,11 +341,11 @@ public class S3Policy {
      */
     public long getMaxFileSize() {
         return conditions.stream()
-                .filter(condition -> condition.containsKey("operator") &&
-                        "content-length-range".equals(condition.get("field")))
-                .findFirst()
-                .map(condition -> Value.of(condition.get("value")).asLong(-1))
-                .orElse(-1L);
+                         .filter(condition -> condition.containsKey("operator") && "content-length-range".equals(
+                                 condition.get("field")))
+                         .findFirst()
+                         .map(condition -> Value.of(condition.get("value")).asLong(-1))
+                         .orElse(-1L);
     }
 
     /**
@@ -383,8 +383,8 @@ public class S3Policy {
         return switch (status) {
             case "200", "201", "204" -> HttpResponseStatus.valueOf(Integer.parseInt(status));
             default -> {
-                LOG.warn("Success values\\_action\\_status unsupported: `{}`. 204\\(NO\\_CONTENT\\). " +
-                         "Allow values: 200\\, 201\\, 204\\.", status);
+                LOG.warn("Success values\\_action\\_status unsupported: `{}`. 204\\(NO\\_CONTENT\\). "
+                         + "Allow values: 200\\, 201\\, 204\\.", status);
                 yield HttpResponseStatus.NO_CONTENT;
             }
         };
@@ -422,9 +422,9 @@ public class S3Policy {
      */
     public String getSuccessRedirect() {
         return conditions.stream()
-                .filter(condition -> condition.containsKey("success_action_redirect"))
-                .findFirst()
-                .map(condition -> (String) condition.get("success_action_redirect"))
-                .orElse(null);
+                         .filter(condition -> condition.containsKey("success_action_redirect"))
+                         .findFirst()
+                         .map(condition -> (String) condition.get("success_action_redirect"))
+                         .orElse(null);
     }
 }

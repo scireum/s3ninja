@@ -1,0 +1,35 @@
+services:
+  s3ninja:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: s3ninja-local
+    ports:
+      - "9444:9000"
+    volumes:
+      - ./multipart:/home/sirius/multipart
+      - s3ninja-logs:/home/sirius/logs
+    environment:
+      JAVA_XMX: "1g"
+      JAVA_OPTS: >
+        -Xmx1g -Xms512m
+        -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts
+        -Djavax.net.ssl.trustStorePassword=changeit
+      S3NINJA_PORT: 9000
+    networks:
+      - s3ninja-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/ui"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  s3ninja-logs:
+    driver: local
+
+networks:
+  s3ninja-network:
+    driver: bridge
+    name: s3ninja-local-network

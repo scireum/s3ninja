@@ -20,6 +20,8 @@ import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import ninja.queries.S3QueryProcessor;
 import sirius.kernel.async.CallContext;
+import sirius.kernel.cache.Cache;
+import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
@@ -43,6 +45,8 @@ import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.http.WebDispatcher;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileOutputStream;
@@ -50,6 +54,9 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.chrono.IsoChronology;
@@ -71,8 +78,14 @@ import java.util.regex.Matcher;
 /**
  * Handles S3 API Calls.
  */
-@Register
+@Register(classes = {WebDispatcher.class, S3Dispatcher.class})
 public class S3Dispatcher implements WebDispatcher {
+
+
+    /**
+     * Logger for S3 dispatcher operations including session tokens.
+     */
+    protected static final Log LOG = Log.get("s3dispatcher");
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
@@ -121,6 +134,13 @@ public class S3Dispatcher implements WebDispatcher {
     private final Set<String> multipartUploads = Collections.synchronizedSet(new TreeSet<>());
 
     private final Counter uploadIdCounter = new Counter();
+
+    /**
+     * Session tokens for UI access.
+     * LocalCache handles automatic expiration after 24 hours.
+     */
+    private static final Cache<String, Long> sessionTokens =
+            CacheManager.createLocalCache("session-tokens");
 
     /**
      * ISO 8601 date/time formatter.
@@ -360,6 +380,73 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     /**
+     * Generates a new session token for UI access.
+     * Token is valid for 24 hours.
+     *
+     * @return the generated session token
+     */
+    public String generateSessionToken() {
+        String token = Hasher.md5().hash(System.currentTimeMillis() + "-" + Math.random()).toHexString();
+        long expirationTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000); // 24 hours
+        sessionTokens.put(token, expirationTime);
+
+        return token;
+    }
+
+    /**
+     * Validates a session token.
+     *
+     * @param token the token to validate
+     * @return true if the token is valid and not expired, false otherwise
+     */
+    public boolean validateSessionToken(String token) {
+        if (Strings.isEmpty(token)) {
+            return false;
+        }
+        Long expirationTime = sessionTokens.get(token);
+        if (expirationTime == null) {
+            LOG.FINE("Session token validation failed: token not found or expired");
+            return false;
+        }
+        if (System.currentTimeMillis() > expirationTime) {
+            LOG.FINE("Session token validation failed: token expired");
+            return false;
+        }
+        LOG.FINE("Session token validated successfully");
+        return true;
+    }
+
+
+    /**
+     * Extracts the session token from the request.
+     * Checks X-Session-Token header, X-Amz-Security-Token header/field, and sessionToken parameter.
+     *
+     * @param webContext the context describing the current request
+     * @return the session token if present, null otherwise
+     */
+    private String extractSessionToken(WebContext webContext) {
+        // Check X-Session-Token header (custom header for direct use)
+        String token = webContext.getHeader("X-Session-Token");
+        if (Strings.isEmpty(token)) {
+            // Check X-Amz-Security-Token (AWS standard for temporary credentials)
+            token = webContext.getHeader("X-Amz-Security-Token");
+        }
+        if (Strings.isEmpty(token)) {
+            // Check as form field (for POST requests)
+            token = webContext.get("X-Amz-Security-Token").asString();
+        }
+        if (Strings.isEmpty(token)) {
+            // Also accept the lowercase form field commonly used by AWS clients
+            token = webContext.get("x-amz-security-token").asString(webContext.get("X-Amz-Security-Token").asString());
+        }
+        if (Strings.isEmpty(token)) {
+            // Check as query parameter
+            token = webContext.get("sessionToken").asString();
+        }
+        return token;
+    }
+
+    /**
      * Writes an API error to the log
      */
     private void signalObjectError(WebContext webContext,
@@ -483,6 +570,29 @@ public class S3Dispatcher implements WebDispatcher {
                 signalObjectSuccess(webContext);
                 webContext.respondWith().status(HttpResponseStatus.OK);
             }
+        } else if (HttpMethod.POST.equals(method)) {
+            String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+            if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
+                S3QueryProcessor processor = globalContext.getPart("presigned-post", S3QueryProcessor.class);
+                if (processor != null) {
+                    processor.processQuery(webContext, bucket, null, "presigned-post");
+                } else {
+                    signalObjectError(webContext,
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.InternalError,
+                                      "Presigned POST not supported.");
+                }
+            } else {
+                // Traditional bucket POST operations (creating bucket)
+                if (bucket.exists()) {
+                    signalObjectError(webContext,
+                                      bucketName,
+                                      null,
+                                      S3ErrorCode.BucketAlreadyOwnedByYou,
+                                      ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
+                }
+            }
         } else if (HttpMethod.PUT.equals(method)) {
             if (bucket.exists()) {
                 signalObjectError(webContext,
@@ -582,6 +692,8 @@ public class S3Dispatcher implements WebDispatcher {
                 startMultipartUpload(webContext, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
                 completeMultipartUpload(webContext, bucket, key, uploadId, in);
+            } else {
+                handlePostObject(webContext, bucket, key, in);
             }
         } else {
             throw new IllegalArgumentException(webContext.getRequest().method().name());
@@ -620,6 +732,17 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     private boolean objectCheckAuth(WebContext webContext, Bucket bucket, String key) {
+        // Check for session token first
+        String sessionToken = extractSessionToken(webContext);
+        if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
+            return true;
+        }
+
+        // Allow policy-signed POST uploads without Authorization header; signature is validated later.
+        if (isPolicyBasedPost(webContext)) {
+            return true;
+        }
+
         String hash = getAuthHash(webContext);
         if (Strings.isFilled(hash)) {
             String expectedHash = hashCalculator.computeHash(webContext, "");
@@ -1186,5 +1309,257 @@ public class S3Dispatcher implements WebDispatcher {
             }
         }
         return overrides;
+    }
+
+    /**
+     * Handles a standard POST request for object creation
+     * Supports both form-based uploads and AWS policy-based uploads
+     */
+    private void handlePostObject(WebContext webContext, Bucket bucket, String key, InputStreamHandler data) throws IOException {
+        // Check for AWS4 signature parameters (modern AWS S3 POST)
+        String policy = webContext.getParameter("policy");
+        String xAmzSignature = webContext.getParameter("x-amz-signature");
+        String xAmzAlgorithm = webContext.getParameter("x-amz-algorithm");
+
+        // Also accept the common "X-Amz-*" form field casing
+        if (Strings.isEmpty(policy)) {
+            policy = webContext.getParameter("Policy");
+        }
+        if (Strings.isEmpty(xAmzSignature)) {
+            xAmzSignature = webContext.getParameter("X-Amz-Signature");
+        }
+        if (Strings.isEmpty(xAmzAlgorithm)) {
+            xAmzAlgorithm = webContext.getParameter("X-Amz-Algorithm");
+        }
+
+        // Check for legacy signature parameters
+        String signature = webContext.getParameter("Signature");
+
+        if (!Strings.isFilled(policy)) {
+            // Simple POST without policy - just upload the object
+            putObject(webContext, bucket, key, data);
+            webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
+            return;
+        }
+
+        // If a policy is present, we must have either an AWS4 signature or a legacy signature.
+        // This matches how S3 behaves and prevents unauthenticated policy uploads.
+        boolean hasAws4 = Strings.isFilled(xAmzSignature) && Strings.isFilled(xAmzAlgorithm);
+        boolean hasLegacy = Strings.isFilled(signature);
+
+        if (!hasAws4 && !hasLegacy) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.AccessDenied,
+                                             "Missing signature for policy-based POST");
+            return;
+        }
+
+        // AWS signature validation for POST uploads
+        if (hasAws4) {
+            // AWS4-HMAC-SHA256 signature (modern)
+            if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256")
+                || !validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 "The request signature we calculated does not match the signature you provided");
+                return;
+            }
+        } else {
+            // Legacy signature validation
+            if (!validatePolicySignature(policy, signature)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.SignatureDoesNotMatch,
+                                                 "The request signature we calculated does not match the signature you provided");
+                return;
+            }
+        }
+
+        try {
+            S3Policy s3Policy = new S3Policy(policy);
+
+            if (!s3Policy.isRequestValid(webContext, bucket, key)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.AccessDenied, "Policy conditions not met");
+                return;
+            }
+
+            long maxFileSize = s3Policy.getMaxFileSize();
+            if (maxFileSize > 0 && webContext.getContentSize() > maxFileSize) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 S3ErrorCode.InvalidDigest,
+                                                 "File size exceeds maximum allowed by policy");
+                return;
+            }
+
+            putObject(webContext, bucket, key, data);
+
+            String redirectUrl = s3Policy.getSuccessRedirect();
+            if (Strings.isFilled(redirectUrl)) {
+                webContext.respondWith().redirectToGet(redirectUrl);
+            } else {
+                webContext.respondWith().status(s3Policy.getSuccessResponse());
+            }
+        } catch (IllegalArgumentException e) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.InvalidRequest,
+                                             "Policy parsing error: " + e.getMessage());
+        }
+    }
+
+    private boolean validateAWS4PolicySignature(WebContext webContext, String policyBase64, String providedSignature) {
+        try {
+            String credential = webContext.getParameter("x-amz-credential");
+            if (Strings.isEmpty(credential)) {
+                credential = webContext.getParameter("X-Amz-Credential");
+            }
+            if (Strings.isEmpty(credential)) {
+                return false;
+            }
+
+            Matcher credMatcher = Aws4HashCalculator.X_AMZ_CREDENTIAL_PATTERN.matcher(credential);
+            if (!credMatcher.matches()) {
+                return false;
+            }
+
+            String accessKey = credMatcher.group(1);
+            String date = credMatcher.group(2);   // yyyymmdd
+            String region = credMatcher.group(3);
+            String service = credMatcher.group(4);
+            String terminal = credMatcher.group(5);
+
+            if (!Strings.areEqual(accessKey, storage.getAwsAccessKey())) {
+                return false;
+            }
+
+            String algorithm = webContext.getParameter("x-amz-algorithm");
+            if (Strings.isEmpty(algorithm)) {
+                algorithm = webContext.getParameter("X-Amz-Algorithm");
+            }
+            if (!Strings.areEqual(algorithm, "AWS4-HMAC-SHA256")) {
+                return false;
+            }
+
+            if (!Strings.areEqual(terminal, "aws4_request")) {
+                return false;
+            }
+
+            byte[] kSecret = ("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8);
+            byte[] kDate = hmacSHA256(kSecret, date);
+            byte[] kRegion = hmacSHA256(kDate, region);
+            byte[] kService = hmacSHA256(kRegion, service);
+            byte[] kSigning = hmacSHA256(kService, "aws4_request");
+
+            byte[] policyBytes = java.util.Base64.getDecoder().decode(policyBase64);
+            byte[] expectedSig = hmacSHA256(kSigning, policyBytes);
+            String expectedHex = BaseEncoding.base16().lowerCase().encode(expectedSig);
+
+            // Backward compatibility: some tools mistakenly sign the base64 string.
+            // We accept this only if explicitly enabled.
+            if (Strings.areEqual(expectedHex, providedSignature)) {
+                return true;
+            }
+
+            boolean allowBase64PolicySigning = webContext.get("allowBase64PolicySigning").asBoolean(false);
+            if (allowBase64PolicySigning) {
+                byte[] expectedSigBase64 = hmacSHA256(kSigning, policyBase64.getBytes(StandardCharsets.UTF_8));
+                String expectedHexBase64 = BaseEncoding.base16().lowerCase().encode(expectedSigBase64);
+                return Strings.areEqual(expectedHexBase64, providedSignature);
+            }
+
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private byte[] hmacSHA256(byte[] key, String value) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private byte[] hmacSHA256(byte[] key, byte[] value) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(keySpec);
+        return mac.doFinal(value);
+    }
+
+
+    /**
+     * Validates legacy AWS S3 POST policy signatures using HMAC-SHA1.
+     * This implements proper cryptographic validation to prevent security vulnerabilities.
+     *
+     * @param policy The Base64-encoded policy document
+     * @param signature The signature to validate against
+     * @return true if signature is valid, false otherwise
+     */
+    private boolean validatePolicySignature(String policy, String signature) {
+        try {
+            new S3Policy(policy);
+
+            String secretKey = storage.getAwsSecretKey();
+            if (Strings.isEmpty(secretKey)) {
+                return false;
+            }
+
+            SecretKeySpec keySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA1");
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(keySpec);
+
+            byte[] expectedSig = mac.doFinal(policy.getBytes(StandardCharsets.UTF_8));
+            String expectedSignature = BaseEncoding.base64().encode(expectedSig);
+
+            return Strings.areEqual(expectedSignature, signature);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            Exceptions.handle(e);
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    /**
+     * Extracts the key from a multipart form request
+     * This is useful when the key is embedded in the form data rather than as a parameter
+     */
+    private String extractKeyFromMultipartForm(WebContext webContext) {
+        // First try the standard parameter (works for both form fields and query params)
+        String key = webContext.getParameter("key");
+        if (Strings.isFilled(key)) {
+            return key;
+        }
+
+        // Try to get it from request parameter (different method for multipart)
+        if (webContext.hasParameter("key")) {
+            key = webContext.get("key").asString();
+            if (Strings.isFilled(key)) {
+                return key;
+            }
+        }
+
+        return null;
+    }
+
+    private boolean isPolicyBasedPost(WebContext webContext) {
+        if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
+            return false;
+        }
+        return webContext.hasParameter("policy")
+               || webContext.hasParameter("Policy")
+               || webContext.hasParameter("x-amz-signature")
+               || webContext.hasParameter("Signature");
     }
 }

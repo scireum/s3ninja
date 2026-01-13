@@ -15,6 +15,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.PriorityCollector;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.di.GlobalContext;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
@@ -29,6 +30,8 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
+import sirius.web.services.InternalService;
+import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -49,6 +52,12 @@ public class NinjaController extends BasicController {
 
     @Part
     private APILog log;
+
+    @Part
+    private S3Dispatcher s3Dispatcher;
+
+    @Part
+    private GlobalContext globalContext;
 
     /**
      * Handles requests to <tt>/ui</tt>.
@@ -102,7 +111,7 @@ public class NinjaController extends BasicController {
         boolean canPagePrev = start > 0;
         boolean canPageNext = entries.size() > pageSize;
         if (canPageNext) {
-            entries.remove(entries.size() - 1);
+            entries.removeLast();
         }
         webContext.respondWith()
                   .template("/templates/log.html.pasta",
@@ -330,5 +339,32 @@ public class NinjaController extends BasicController {
             response.addHeader(entry.getKey(), entry.getValue());
         }
         response.file(object.getFile());
+    }
+
+    /**
+     * Handles requests to <tt>/.api/generate-session-token</tt>.
+     * <p>
+     * Generates a session token that can be used to authenticate requests.
+     * The token is valid for 24 hours.
+     * <p>
+     * Use this token in requests by adding either:
+     * <ul>
+     *     <li>Header: <tt>X-Session-Token: [token]</tt></li>
+     *     <li>Query parameter: <tt>?sessionToken=[token]</tt></li>
+     *     <li>Form field (for POST): <tt>X-Amz-Security-Token: [token]</tt></li>
+     * </ul>
+     *
+     * @param webContext the context describing the current request
+     * @param output the JSON output to write the response to
+     */
+    @InternalService
+    @Routed("/.api/generate-session-token")
+    public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
+        String token = s3Dispatcher.generateSessionToken();
+
+        output.property("success", true)
+              .property("token", token)
+              .property("expiresIn", "24 hours")
+              .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field");
     }
 }

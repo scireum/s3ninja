@@ -7,6 +7,71 @@ S3 ninja emulates the Amazon S3 API for development and test purposes.
 
 See https://s3ninja.net for more details.
 
+## Development with Docker
+
+### Quick Start with Docker Compose
+To run S3 Ninja using Docker Compose for development:
+
+1. Ensure you have Docker and Docker Compose installed.
+2. From the project root, run:
+   ```
+   docker-compose up --build
+   ```
+   This will build the image and start the service on port 9444, with data persisted in the `./data` directory.
+
+### Manual Docker Commands
+- Build the image (requires Maven artifacts in `target/`):
+  ```
+  docker build -t s3ninja:local .
+  ```
+- Run the container:
+  ```
+  docker run --rm -p 9444:9000 -v %cd%/data:/data s3ninja:local
+  ```
+  - Access the UI at: http://localhost:9444/ui
+  - S3 API endpoint: http://localhost:9444/
+
+### Development Workflow
+- Mount your local `data/` directory to persist buckets and objects across container restarts.
+- For code changes, rebuild the image after running `mvn clean package -DskipTests`.
+
+## Using S3 Presigned POST URLs
+
+S3 Ninja supports AWS S3-compatible presigned POST requests for secure file uploads.
+
+### Generating Presigned POST Fields
+Use the built-in tool to generate the required form fields:
+
+```
+mvn -q -Dexec.mainClass=ninja.tools.PresignedPostGenerator exec:java
+```
+
+This outputs the necessary fields: `key`, `policy`, `x-amz-algorithm`, `x-amz-credential`, `x-amz-date`, `x-amz-signature`, and optionally `x-amz-security-token` if using a session token.
+
+### Making the Request
+- **URL**: `POST http://localhost:9444/<bucket>/<key>`
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**: Include the generated fields plus the file to upload as `file=@/path/to/file`.
+
+Example `curl` command:
+```
+curl -X POST "http://localhost:9444/test/example.txt" \
+  -F "key=example.txt" \
+  -F "policy=<BASE64_POLICY>" \
+  -F "x-amz-algorithm=AWS4-HMAC-SHA256" \
+  -F "x-amz-credential=<ACCESS_KEY>/<DATE>/<REGION>/s3/aws4_request" \
+  -F "x-amz-date=<YYYYMMDDTHHMMSSZ>" \
+  -F "x-amz-signature=<HEX_SIGNATURE>" \
+  -F "file=@example.txt"
+```
+
+If using a session token (from `/session-token` endpoint), add:
+```
+-F "x-amz-security-token=<SESSION_TOKEN>"
+```
+
+The policy enforces conditions like bucket, key, expiration, and optional security token. On success, the file is uploaded; on failure, an XML error is returned.
+
 ## Contributions
 
 Contributions as issues or pull requests are always welcome. Please [sign off](https://developercertificate.org) 

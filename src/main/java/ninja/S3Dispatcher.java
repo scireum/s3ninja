@@ -24,6 +24,7 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Callback;
 import sirius.kernel.commons.Hasher;
+import sirius.kernel.commons.Outcall;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Urls;
@@ -36,7 +37,6 @@ import sirius.kernel.health.Counter;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.Log;
 import sirius.kernel.xml.Attribute;
-import sirius.kernel.xml.Outcall;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.InputStreamHandler;
@@ -80,7 +80,6 @@ import java.util.regex.Matcher;
  */
 @Register(classes = {WebDispatcher.class, S3Dispatcher.class})
 public class S3Dispatcher implements WebDispatcher {
-
 
     /**
      * Logger for S3 dispatcher operations including session tokens.
@@ -139,8 +138,7 @@ public class S3Dispatcher implements WebDispatcher {
      * Session tokens for UI access.
      * LocalCache handles automatic expiration after 24 hours.
      */
-    private static final Cache<String, Long> sessionTokens =
-            CacheManager.createLocalCache("session-tokens");
+    private static final Cache<String, Long> sessionTokens = CacheManager.createLocalCache("session-tokens");
 
     /**
      * ISO 8601 date/time formatter.
@@ -415,7 +413,6 @@ public class S3Dispatcher implements WebDispatcher {
         LOG.FINE("Session token validated successfully");
         return true;
     }
-
 
     /**
      * Extracts the session token from the request.
@@ -1315,7 +1312,8 @@ public class S3Dispatcher implements WebDispatcher {
      * Handles a standard POST request for object creation
      * Supports both form-based uploads and AWS policy-based uploads
      */
-    private void handlePostObject(WebContext webContext, Bucket bucket, String key, InputStreamHandler data) throws IOException {
+    private void handlePostObject(WebContext webContext, Bucket bucket, String key, InputStreamHandler data)
+            throws IOException {
         // Check for AWS4 signature parameters (modern AWS S3 POST)
         String policy = webContext.getParameter("policy");
         String xAmzSignature = webContext.getParameter("x-amz-signature");
@@ -1359,8 +1357,9 @@ public class S3Dispatcher implements WebDispatcher {
         // AWS signature validation for POST uploads
         if (hasAws4) {
             // AWS4-HMAC-SHA256 signature (modern)
-            if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256")
-                || !validateAWS4PolicySignature(webContext, policy, xAmzSignature)) {
+            if (!Strings.areEqual(xAmzAlgorithm, "AWS4-HMAC-SHA256") || !validateAWS4PolicySignature(webContext,
+                                                                                                     policy,
+                                                                                                     xAmzSignature)) {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
                                                  key,
@@ -1387,7 +1386,8 @@ public class S3Dispatcher implements WebDispatcher {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
                                                  key,
-                                                 S3ErrorCode.AccessDenied, "Policy conditions not met");
+                                                 S3ErrorCode.AccessDenied,
+                                                 "Policy conditions not met");
                 return;
             }
 
@@ -1498,12 +1498,11 @@ public class S3Dispatcher implements WebDispatcher {
         return mac.doFinal(value);
     }
 
-
     /**
      * Validates legacy AWS S3 POST policy signatures using HMAC-SHA1.
      * This implements proper cryptographic validation to prevent security vulnerabilities.
      *
-     * @param policy The Base64-encoded policy document
+     * @param policy    The Base64-encoded policy document
      * @param signature The signature to validate against
      * @return true if signature is valid, false otherwise
      */
@@ -1531,6 +1530,7 @@ public class S3Dispatcher implements WebDispatcher {
             return false;
         }
     }
+
     /**
      * Extracts the key from a multipart form request
      * This is useful when the key is embedded in the form data rather than as a parameter
@@ -1557,9 +1557,7 @@ public class S3Dispatcher implements WebDispatcher {
         if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
             return false;
         }
-        return webContext.hasParameter("policy")
-               || webContext.hasParameter("Policy")
-               || webContext.hasParameter("x-amz-signature")
-               || webContext.hasParameter("Signature");
+        return webContext.hasParameter("policy") || webContext.hasParameter("Policy") || webContext.hasParameter(
+                "x-amz-signature") || webContext.hasParameter("Signature");
     }
 }

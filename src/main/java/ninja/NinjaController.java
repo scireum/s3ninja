@@ -355,7 +355,7 @@ public class NinjaController extends BasicController {
      * </ul>
      *
      * @param webContext the context describing the current request
-     * @param output the JSON output to write the response to
+     * @param output     the JSON output to write the response to
      */
     @InternalService
     @Routed("/.api/generate-session-token")
@@ -365,6 +365,11 @@ public class NinjaController extends BasicController {
         output.property("success", true)
               .property("token", token)
               .property("expiresIn", "24 hours")
-              .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field");
+              .property("usage",
+                        "Add 'X-Session-Token: "
+                        + token
+                        + "' header or 'X-Amz-Security-Token="
+                        + token
+                        + "' form field");
     }
 }

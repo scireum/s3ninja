@@ -88,7 +88,8 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
-
+    private static final String API_PATH= ".api/";
+    private static final String API_PATH_PREFIX = "./api";
     private static final String TEMPORARY_PROPERTIES_FILENAME = "properties";
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
@@ -200,7 +201,9 @@ public class S3Dispatcher implements WebDispatcher {
         if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
             return null;
         }
-
+        if (request.uri.equals(API_PATH) || request.uri.startsWith(API_PATH_PREFIX)) {
+            return null;
+        }
         if (Strings.isFilled(request.query)
             && !Strings.areEqual(request.query, "uploads")
             && !Strings.areEqual(request.query, "delete")) {

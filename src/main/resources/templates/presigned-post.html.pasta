@@ -1,0 +1,348 @@
+<i:arg name="accessKey" type="String"/>
+<i:arg name="secretKey" type="String"/>
+
+<t:page title="Presigned POST Generator">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="/ui?presignedPost">Presigned POST Generator</a>
+        </li>
+    </i:block>
+
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="Presigned POST Generator"
+                  subtitle="Generate and test presigned POST requests for S3 uploads"/>
+    </i:block>
+
+    <style>
+        .code-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+
+    <div class="row">
+        <!-- Configuration Panel -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-cog"></i> Configuration
+                    </h5>
+
+                    <div class="mb-3">
+                        <label for="bucket" class="form-label">Bucket Name</label>
+                        <input type="text" class="form-control" id="bucket" value="test"
+                               placeholder="Enter bucket name">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="key" class="form-label">Object Key</label>
+                        <input type="text" class="form-control" id="key" value="test-upload.txt"
+                               placeholder="Enter object key">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="region" class="form-label">Region</label>
+                        <input type="text" class="form-control" id="region" value="eu-west-3"
+                               placeholder="Enter AWS region">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="expiration" class="form-label">Expiration (hours)</label>
+                        <input type="number" class="form-control" id="expiration" value="24"
+                               min="1" max="168" placeholder="Hours until expiration">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="sessionToken" class="form-label">
+                            Session Token
+                            <small class="text-muted">(optional)</small>
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="sessionToken"
+                                   placeholder="Generate token from main page">
+                            <button class="btn btn-outline-secondary" type="button"
+                                    onclick="generateAndFillToken()">
+                                <i class="fa-solid fa-key"></i> Generate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Access Credentials</label>
+                        <div class="small text-muted">
+                            <div><strong>Access Key:</strong> @accessKey</div>
+                            <div><strong>Secret Key:</strong> @secretKey</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="generatePresignedPost()">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Presigned POST
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Panel -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4" id="resultsPanel" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-code"></i> Generated Form HTML
+                    </h5>
+
+                    <div style="position: relative;">
+                        <button class="btn btn-sm btn-outline-secondary copy-btn"
+                                onclick="copyFormHtml()">
+                            <i class="fa-solid fa-copy"></i> Copy
+                        </button>
+                        <div class="code-display" id="formHtmlDisplay"></div>
+                    </div>
+
+                    <div class="mt-3">
+                        <h6>Policy Details</h6>
+                        <div class="code-display" id="policyDisplay"></div>
+                    </div>
+
+                    <div class="mt-3">
+                        <h6>Form Fields</h6>
+                        <div class="small">
+                            <div><strong>URL:</strong> <span id="actionUrl"></span></div>
+                            <div><strong>Signature:</strong> <code id="signature"></code></div>
+                            <div><strong>Policy (Base64):</strong> <code id="policyBase64"></code></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Upload Panel -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm" id="testPanel" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-upload"></i> Test Upload
+                    </h5>
+
+                    <form id="testUploadForm" onsubmit="testUpload(event)">
+                        <div class="mb-3">
+                            <label for="fileInput" class="form-label">Select File to Upload</label>
+                            <input type="file" class="form-control" id="fileInput" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-success">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload File
+                        </button>
+                    </form>
+
+                    <div class="mt-3" id="uploadResult" style="display: none;">
+                        <div class="alert" role="alert" id="uploadResultMessage"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        const accessKey = '@accessKey';
+        // Secret key stays server-side; the UI never uses it.
+        let currentFormData = null;
+
+        async function generateAndFillToken() {
+            try {
+                const response = await fetch('/.api/generate-session-token');
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('sessionToken').value = data.token;
+                } else {
+                    alert('Failed to generate token');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error generating token');
+            }
+        }
+
+        async function generatePresignedPost() {
+            const bucket = document.getElementById('bucket').value;
+            const key = document.getElementById('key').value;
+            const region = document.getElementById('region').value;
+            const expirationHours = parseInt(document.getElementById('expiration').value);
+            const sessionToken = document.getElementById('sessionToken').value;
+
+            if (!bucket || !key || !region) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/.api/generate-presigned-post', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        bucket: bucket,
+                        key: key,
+                        region: region,
+                        expirationHours: expirationHours,
+                        sessionToken: sessionToken || null,
+                        accessKey: accessKey,
+                        secretKey: secretKey
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error generating presigned POST: ' + error.message);
+            }
+        }
+
+        function displayResults(data) {
+            currentFormData = data;
+
+            // Display form HTML
+            const formHtml = generateFormHtml(data);
+            document.getElementById('formHtmlDisplay').textContent = formHtml;
+
+            // Display policy
+            document.getElementById('policyDisplay').textContent = data.policyJson;
+
+            // Display details
+            document.getElementById('actionUrl').textContent = data.url;
+            document.getElementById('signature').textContent = data.signature;
+            document.getElementById('policyBase64').textContent = data.policy;
+
+            // Show panels
+            document.getElementById('resultsPanel').style.display = 'block';
+            document.getElementById('testPanel').style.display = 'block';
+        }
+
+        function generateFormHtml(data) {
+            const fields = data.fields;
+            let html = '<form action="' + data.url + '" method="post" enctype="multipart/form-data">\n';
+
+            for (const [name, value] of Object.entries(fields)) {
+                html += '  <input type="hidden" name="' + name + '" value="' + escapeHtml(value) + '" />\n';
+            }
+
+            html += '  <input type="file" name="file" />\n';
+            html += '  <button type="submit">Upload</button>\n';
+            html += '</form>';
+
+            return html;
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function copyFormHtml() {
+            const formHtml = document.getElementById('formHtmlDisplay').textContent;
+            navigator.clipboard.writeText(formHtml).then(() => {
+                const btn = event.target.closest('button');
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+
+        async function testUpload(event) {
+            event.preventDefault();
+
+            if (!currentFormData) {
+                alert('Please generate a presigned POST first');
+                return;
+            }
+
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                alert('Please select a file');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+
+            // Add all form fields
+            for (const [name, value] of Object.entries(currentFormData.fields)) {
+                formData.append(name, value);
+            }
+
+            // Add file
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(currentFormData.url, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const resultDiv = document.getElementById('uploadResult');
+                const messageDiv = document.getElementById('uploadResultMessage');
+
+                resultDiv.style.display = 'block';
+
+                if (response.ok) {
+                    messageDiv.className = 'alert alert-success';
+                    messageDiv.innerHTML = '<i class="fa-solid fa-check-circle"></i> Upload successful! ' +
+                                          'Status: ' + response.status + ' ' + response.statusText;
+                } else {
+                    const responseText = await response.text();
+                    messageDiv.className = 'alert alert-danger';
+                    messageDiv.innerHTML = '<i class="fa-solid fa-exclamation-circle"></i> Upload failed! ' +
+                                          'Status: ' + response.status + '<br>' +
+                                          'Response: ' + escapeHtml(responseText);
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById('uploadResult');
+                const messageDiv = document.getElementById('uploadResultMessage');
+
+                resultDiv.style.display = 'block';
+                messageDiv.className = 'alert alert-danger';
+                messageDiv.innerHTML = '<i class="fa-solid fa-exclamation-circle"></i> Error: ' +
+                                      escapeHtml(error.message);
+            }
+        }
+    </script>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta"/>
+    </i:block>
+</t:page>
+

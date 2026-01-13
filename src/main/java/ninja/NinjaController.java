@@ -59,6 +59,9 @@ public class NinjaController extends BasicController {
     @Part
     private GlobalContext globalContext;
 
+    @Part
+    private PresignedPostService presignedPostService;
+
     /**
      * Handles requests to <tt>/ui</tt>.
      * <p>
@@ -371,5 +374,23 @@ public class NinjaController extends BasicController {
                         + "' header or 'X-Amz-Security-Token="
                         + token
                         + "' form field");
+    }
+
+    @InternalService
+    @Routed(value = "/.api/generate-presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY)
+    public void generatePresignedPost(WebContext webContext, JSONStructuredOutput output) {
+        try {
+            PresignedPostRequest request = PresignedPostRequest.from(webContext);
+            PresignedPostResponse response = presignedPostService.generate(request);
+
+            output.property("success", true)
+                  .property("url", response.url())
+                  .property("fields", response.fields())
+                  .property("policyJson", response.policyJson())
+                  .property("policy", response.policyBase64())
+                  .property("signature", response.signature());
+        } catch (HandledException handled) {
+            output.property("success", false).property("message", handled.getMessage());
+        }
     }
 }

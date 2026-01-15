@@ -184,7 +184,7 @@
                             </ul>
                         </div>
                         <div class="text-md-end">
-                            <a class="btn btn-primary" href="/ui?presignedPost">
+                            <a class="btn btn-primary" href="/ui/presigned-post">
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> Open Presigned POST UI
                             </a>
                         </div>

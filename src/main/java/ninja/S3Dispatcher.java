@@ -88,8 +88,8 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
-    private static final String API_PATH= ".api/";
-    private static final String API_PATH_PREFIX = "./api";
+    private static final String API_PATH = ".api/";
+    private static final String API_PATH_PREFIX = ".api/";
     private static final String TEMPORARY_PROPERTIES_FILENAME = "properties";
 
     private static final String HTTP_HEADER_NAME_ETAG = "ETag";
@@ -117,7 +117,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Part
-    private static GlobalContext globalContext;
+    private GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -240,7 +240,8 @@ public class S3Dispatcher implements WebDispatcher {
     public DispatchDecision dispatch(WebContext webContext) throws Exception {
         S3Request request = parseRequest(webContext);
 
-        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
+        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX) || request.uri.equals(API_PATH)
+            || request.uri.startsWith(API_PATH_PREFIX)) {
             return DispatchDecision.CONTINUE;
         }
 

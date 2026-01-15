@@ -8,6 +8,7 @@
 
 package ninja;
 
+import sirius.kernel.commons.Strings;
 import sirius.kernel.health.Exceptions;
 import sirius.web.http.WebContext;
 
@@ -26,10 +27,13 @@ public record PresignedPostRequest(String bucket,
         String key = ctx.get("key").asString();
         String region = ctx.get("region").asString();
         int expiration = ctx.get("expirationHours").asInt(24);
-        String sessionToken = ctx.get("sessionToken").asString(null);
+        String sessionToken = ctx.get("sessionToken").asString();
+        if (Strings.isEmpty(sessionToken)) {
+            sessionToken = null;
+        }
         String accessKey = ctx.get("accessKey").asString();
 
-        if (bucket == null || key == null || region == null || accessKey == null) {
+        if (Strings.isEmpty(bucket) || Strings.isEmpty(key) || Strings.isEmpty(region) || Strings.isEmpty(accessKey)) {
             throw Exceptions.createHandled().withDirectMessage("Missing required fields").handle();
         }
 

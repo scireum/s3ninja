@@ -30,8 +30,6 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
-import sirius.web.services.InternalService;
-import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -61,6 +59,13 @@ public class NinjaController extends BasicController {
 
     @Part
     private PresignedPostService presignedPostService;
+
+    @Routed(value = "/ui/presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
+    public void presignedPostUI(WebContext webContext) {
+        webContext.respondWith().template("/templates/presigned-post.html.pasta",
+                                        storage.getAwsAccessKey(),
+                                        storage.getAwsSecretKey());
+    }
 
     /**
      * Handles requests to <tt>/ui</tt>.
@@ -358,39 +363,44 @@ public class NinjaController extends BasicController {
      * </ul>
      *
      * @param webContext the context describing the current request
-     * @param output     the JSON output to write the response to
      */
-    @InternalService
-    @Routed("/.api/generate-session-token")
-    public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
+   @Routed("/.api/generate-session-token")
+    public void generateSessionToken(WebContext webContext) {
         String token = s3Dispatcher.generateSessionToken();
 
-        output.property("success", true)
-              .property("token", token)
-              .property("expiresIn", "24 hours")
-              .property("usage",
-                        "Add 'X-Session-Token: "
-                        + token
-                        + "' header or 'X-Amz-Security-Token="
-                        + token
-                        + "' form field");
+        webContext.respondWith()
+                  .json()
+                  .beginResult()
+                  .property("success", true)
+                  .property("token", token)
+                  .property("expiresIn", "24 hours")
+                  .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field")
+                  .endResult();
     }
 
-    @InternalService
-    @Routed(value = "/.api/generate-presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY)
-    public void generatePresignedPost(WebContext webContext, JSONStructuredOutput output) {
+    @Routed("/.api/generate-presigned-post")
+    public void generatePresignedPost(WebContext webContext) {
         try {
             PresignedPostRequest request = PresignedPostRequest.from(webContext);
             PresignedPostResponse response = presignedPostService.generate(request);
 
-            output.property("success", true)
-                  .property("url", response.url())
-                  .property("fields", response.fields())
-                  .property("policyJson", response.policyJson())
-                  .property("policy", response.policyBase64())
-                  .property("signature", response.signature());
+            webContext.respondWith()
+                      .json()
+                      .beginResult()
+                      .property("success", true)
+                      .property("url", response.url())
+                      .property("fields", response.fields())
+                      .property("policyJson", response.policyJson())
+                      .property("policy", response.policyBase64())
+                      .property("signature", response.signature())
+                      .endResult();
         } catch (HandledException handled) {
-            output.property("success", false).property("message", handled.getMessage());
+            webContext.respondWith()
+                      .json()
+                      .beginResult()
+                      .property("success", false)
+                      .property("message", handled.getMessage())
+                      .endResult();
         }
     }
 }

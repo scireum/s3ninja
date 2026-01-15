@@ -19,7 +19,6 @@ import sirius.kernel.health.Exceptions;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -42,13 +41,10 @@ public class PresignedPostService {
     @Part
     private Storage storage;
 
-    @Part
-    private Clock clock;
-
     public PresignedPostResponse generate(PresignedPostRequest request) {
         validate(request);
 
-        Instant now = clock.instant();
+        Instant now = Instant.now();
         Instant expiration = now.plus(Duration.ofHours(request.expirationHours()));
         String date = DATE_FORMAT.format(now);
         String xAmzDate = DATE_TIME_FORMAT.format(now);
@@ -70,7 +66,7 @@ public class PresignedPostService {
             fields.put("x-amz-security-token", request.sessionToken());
         }
 
-        return new PresignedPostResponse("http://localhost:9444/" + request.bucket(),
+        return new PresignedPostResponse("/" + request.bucket(),
                                          fields,
                                          policyString,
                                          policyBase64,

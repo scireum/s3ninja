@@ -384,13 +384,20 @@ public class NinjaController extends BasicController {
             PresignedPostRequest request = PresignedPostRequest.from(webContext);
             PresignedPostResponse response = presignedPostService.generate(request);
 
-            webContext.respondWith()
-                      .json()
-                      .beginResult()
-                      .property("success", true)
-                      .property("url", response.url())
-                      .property("fields", response.fields())
-                      .property("policyJson", response.policyJson())
+            var jsonBuilder = webContext.respondWith()
+                                       .json()
+                                       .beginResult()
+                                       .property("success", true)
+                                       .property("url", response.url());
+            
+            // Properly serialize the fields map as a JSON object
+            jsonBuilder.beginObject("fields");
+            for (var entry : response.fields().entrySet()) {
+                jsonBuilder.property(entry.getKey(), entry.getValue());
+            }
+            jsonBuilder.endObject();
+            
+            jsonBuilder.property("policyJson", response.policyJson())
                       .property("policy", response.policyBase64())
                       .property("signature", response.signature())
                       .endResult();

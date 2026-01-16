@@ -66,7 +66,7 @@ public class PresignedPostService {
             fields.put("x-amz-security-token", request.sessionToken());
         }
 
-        return new PresignedPostResponse("/" + request.bucket(),
+        return new PresignedPostResponse("/" + request.bucket() + "/" + request.key(),
                                          fields,
                                          policyString,
                                          policyBase64,

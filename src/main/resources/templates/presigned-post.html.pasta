@@ -147,27 +147,9 @@
                     <!-- Format Tabs -->
                     <ul class="nav nav-tabs format-tabs mb-3" id="formatTabs" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="html-tab" data-bs-toggle="tab"
-                                    data-bs-target="#html-content" type="button" role="tab">
-                                <i class="fa-brands fa-html5"></i> HTML Form
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="curl-tab" data-bs-toggle="tab"
+                            <button class="nav-link active" id="curl-tab" data-bs-toggle="tab"
                                     data-bs-target="#curl-content" type="button" role="tab">
                                 <i class="fa-solid fa-terminal"></i> cURL
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="js-tab" data-bs-toggle="tab"
-                                    data-bs-target="#js-content" type="button" role="tab">
-                                <i class="fa-brands fa-js"></i> JavaScript
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="python-tab" data-bs-toggle="tab"
-                                    data-bs-target="#python-content" type="button" role="tab">
-                                <i class="fa-brands fa-python"></i> Python
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -180,36 +162,12 @@
 
                     <!-- Tab Contents -->
                     <div class="tab-content" id="formatTabsContent">
-                        <!-- HTML Form Tab -->
-                        <div class="tab-pane fade show active code-tab-content" id="html-content" role="tabpanel">
-                            <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('formHtmlDisplay')">
-                                <i class="fa-solid fa-copy"></i> Copy
-                            </button>
-                            <div class="code-display" id="formHtmlDisplay"></div>
-                        </div>
-
                         <!-- cURL Tab -->
-                        <div class="tab-pane fade code-tab-content" id="curl-content" role="tabpanel">
+                        <div class="tab-pane fade show active code-tab-content" id="curl-content" role="tabpanel">
                             <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('curlDisplay')">
                                 <i class="fa-solid fa-copy"></i> Copy
                             </button>
                             <div class="code-display" id="curlDisplay"></div>
-                        </div>
-
-                        <!-- JavaScript Tab -->
-                        <div class="tab-pane fade code-tab-content" id="js-content" role="tabpanel">
-                            <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('jsDisplay')">
-                                <i class="fa-solid fa-copy"></i> Copy
-                            </button>
-                            <div class="code-display" id="jsDisplay"></div>
-                        </div>
-
-                        <!-- Python Tab -->
-                        <div class="tab-pane fade code-tab-content" id="python-content" role="tabpanel">
-                            <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('pythonDisplay')">
-                                <i class="fa-solid fa-copy"></i> Copy
-                            </button>
-                            <div class="code-display" id="pythonDisplay"></div>
                         </div>
 
                         <!-- Fields Tab -->
@@ -319,6 +277,9 @@
         const accessKey = '@accessKey';
         let currentFormData = null;
         let selectedFile = null;
+        let generatedCode = {
+            curl: false
+        };
 
         // Initialize drag and drop
         document.addEventListener('DOMContentLoaded', function() {
@@ -439,11 +400,14 @@
         function displayResults(data) {
             currentFormData = data;
 
-            // Generate all code formats
-            document.getElementById('formHtmlDisplay').textContent = generateFormHtml(data);
+            // Reset generation cache - only generate cURL initially
+            generatedCode = {
+                curl: false
+            };
+
+            // Generate cURL command (most commonly used)
             document.getElementById('curlDisplay').textContent = generateCurlCommand(data);
-            document.getElementById('jsDisplay').textContent = generateJavaScript(data);
-            document.getElementById('pythonDisplay').textContent = generatePython(data);
+            generatedCode.curl = true;
 
             // Display policy (pretty printed)
             try {
@@ -464,103 +428,27 @@
             document.getElementById('uploadBtn').disabled = !selectedFile;
         }
 
-        function generateFormHtml(data) {
-            const fields = data.fields;
-            let html = '<!-- AWS S3 Presigned POST Form -->\n';
-            html += '<form action="' + data.url + '" method="post" enctype="multipart/form-data">\n';
-
-            for (const [name, value] of Object.entries(fields)) {
-                html += '  <input type="hidden" name="' + name + '" value="' + escapeHtml(value) + '" />\n';
-            }
-
-            html += '  \n';
-            html += '  <!-- File input (must be last) -->\n';
-            html += '  <input type="file" name="file" required />\n';
-            html += '  <button type="submit">Upload to S3</button>\n';
-            html += '</form>';
-
-            return html;
-        }
 
         function generateCurlCommand(data) {
             const fields = data.fields;
             let cmd = '# cURL command for presigned POST upload\n';
-            cmd += 'curl -X POST "' + window.location.origin + data.url + '" \\\n';
+            cmd += '# AWS S3 presigned POST with parameters in URL\n';
 
+            // Build URL with all presigned POST parameters
+            const params = new URLSearchParams();
             for (const [name, value] of Object.entries(fields)) {
-                cmd += '  -F "' + name + '=' + value + '" \\\n';
+                params.append(name, value);
             }
 
-            cmd += '  -F "file=@@/path/to/your/file.txt"';
+            const fullUrl = window.location.origin + data.url + '?' + params.toString();
+
+            cmd += 'curl -X POST "' + fullUrl + '" \\\n';
+            cmd += '  -H "Content-Type: application/octet-stream" \\\n';
+            cmd += '  --data-binary "@@/path/to/your/file.txt"';
 
             return cmd;
         }
 
-        function generateJavaScript(data) {
-            const fields = data.fields;
-            let js = '// JavaScript fetch API - Presigned POST upload\n';
-            js += 'async function uploadToS3(file) {\n';
-            js += '  const formData = new FormData();\n';
-            js += '  \n';
-            js += '  // Required presigned POST fields\n';
-
-            for (const [name, value] of Object.entries(fields)) {
-                js += '  formData.append(\'' + name + '\', \'' + escapeJs(value) + '\');\n';
-            }
-
-            js += '  \n';
-            js += '  // Add the file (must be last)\n';
-            js += '  formData.append(\'file\', file);\n';
-            js += '  \n';
-            js += '  const response = await fetch(\'' + window.location.origin + data.url + '\', {\n';
-            js += '    method: \'POST\',\n';
-            js += '    body: formData\n';
-            js += '  });\n';
-            js += '  \n';
-            js += '  if (!response.ok) {\n';
-            js += '    throw new Error(\'Upload failed: \' + response.status);\n';
-            js += '  }\n';
-            js += '  \n';
-            js += '  return response;\n';
-            js += '}\n';
-            js += '\n';
-            js += '// Usage example:\n';
-            js += '// const fileInput = document.querySelector(\'input[type="file"]\');\n';
-            js += '// uploadToS3(fileInput.files[0]).then(() => console.log(\'Upload successful\'));';
-
-            return js;
-        }
-
-        function generatePython(data) {
-            const fields = data.fields;
-            let py = '# Python requests - Presigned POST upload\n';
-            py += 'import requests\n';
-            py += '\n';
-            py += 'def upload_to_s3(file_path):\n';
-            py += '    url = \'' + window.location.origin + data.url + '\'\n';
-            py += '    \n';
-            py += '    # Presigned POST fields\n';
-            py += '    fields = {\n';
-
-            for (const [name, value] of Object.entries(fields)) {
-                py += '        \'' + name + '\': \'' + escapeJs(value) + '\',\n';
-            }
-
-            py += '    }\n';
-            py += '    \n';
-            py += '    # Open and upload the file\n';
-            py += '    with open(file_path, \'rb\') as f:\n';
-            py += '        files = {\'file\': f}\n';
-            py += '        response = requests.post(url, data=fields, files=files)\n';
-            py += '    \n';
-            py += '    response.raise_for_status()\n';
-            py += '    return response\n';
-            py += '\n';
-            py += '# Usage:\n';
-            py += '# upload_to_s3(\'/path/to/your/file.txt\')';
-
-            return py;
-        }
 
         function populateFieldsTable(data) {
             const tbody = document.getElementById('fieldsTable');
@@ -643,28 +531,32 @@
                 return;
             }
 
-            const formData = new FormData();
-
-            // Add all form fields
+            // Build URL with presigned POST parameters
+            const params = new URLSearchParams();
             for (const [name, value] of Object.entries(currentFormData.fields)) {
-                formData.append(name, value);
+                params.append(name, value);
             }
 
-            // Add file
-            formData.append('file', selectedFile);
+            const uploadUrl = currentFormData.url + '?' + params.toString();
 
             // Show progress
             document.getElementById('uploadProgress').style.display = 'block';
             document.getElementById('uploadBtn').disabled = true;
             document.getElementById('requestDetailsCard').style.display = 'block';
-            document.getElementById('requestEndpoint').textContent = window.location.origin + currentFormData.url;
+            document.getElementById('requestEndpoint').textContent = window.location.origin + uploadUrl;
 
             const startTime = performance.now();
 
             try {
-                const response = await fetch(currentFormData.url, {
+                // Read file as binary
+                const fileData = await selectedFile.arrayBuffer();
+
+                const response = await fetch(uploadUrl, {
                     method: 'POST',
-                    body: formData
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: fileData
                 });
 
                 const endTime = performance.now();

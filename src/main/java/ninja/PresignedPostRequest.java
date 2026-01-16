@@ -15,11 +15,7 @@ import sirius.web.http.WebContext;
 /**
  * DTO describing the presigned POST generation request.
  */
-public record PresignedPostRequest(String bucket,
-                                   String key,
-                                   String region,
-                                   int expirationHours,
-                                   String sessionToken,
+public record PresignedPostRequest(String bucket, String key, String region, int expirationHours, String sessionToken,
                                    String accessKey) {
 
     public static PresignedPostRequest from(WebContext ctx) {

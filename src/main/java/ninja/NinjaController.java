@@ -62,9 +62,10 @@ public class NinjaController extends BasicController {
 
     @Routed(value = "/ui/presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void presignedPostUI(WebContext webContext) {
-        webContext.respondWith().template("/templates/presigned-post.html.pasta",
-                                        storage.getAwsAccessKey(),
-                                        storage.getAwsSecretKey());
+        webContext.respondWith()
+                  .template("/templates/presigned-post.html.pasta",
+                            storage.getAwsAccessKey(),
+                            storage.getAwsSecretKey());
     }
 
     /**
@@ -364,7 +365,7 @@ public class NinjaController extends BasicController {
      *
      * @param webContext the context describing the current request
      */
-   @Routed("/.api/generate-session-token")
+    @Routed("/.api/generate-session-token")
     public void generateSessionToken(WebContext webContext) {
         String token = s3Dispatcher.generateSessionToken();
 
@@ -374,7 +375,12 @@ public class NinjaController extends BasicController {
                   .property("success", true)
                   .property("token", token)
                   .property("expiresIn", "24 hours")
-                  .property("usage", "Add 'X-Session-Token: " + token + "' header or 'X-Amz-Security-Token=" + token + "' form field")
+                  .property("usage",
+                            "Add 'X-Session-Token: "
+                            + token
+                            + "' header or 'X-Amz-Security-Token="
+                            + token
+                            + "' form field")
                   .endResult();
     }
 
@@ -385,22 +391,22 @@ public class NinjaController extends BasicController {
             PresignedPostResponse response = presignedPostService.generate(request);
 
             var jsonBuilder = webContext.respondWith()
-                                       .json()
-                                       .beginResult()
-                                       .property("success", true)
-                                       .property("url", response.url());
-            
+                                        .json()
+                                        .beginResult()
+                                        .property("success", true)
+                                        .property("url", response.url());
+
             // Properly serialize the fields map as a JSON object
             jsonBuilder.beginObject("fields");
             for (var entry : response.fields().entrySet()) {
                 jsonBuilder.property(entry.getKey(), entry.getValue());
             }
             jsonBuilder.endObject();
-            
+
             jsonBuilder.property("policyJson", response.policyJson())
-                      .property("policy", response.policyBase64())
-                      .property("signature", response.signature())
-                      .endResult();
+                       .property("policy", response.policyBase64())
+                       .property("signature", response.signature())
+                       .endResult();
         } catch (HandledException handled) {
             webContext.respondWith()
                       .json()

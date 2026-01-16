@@ -117,7 +117,7 @@ public class S3Dispatcher implements WebDispatcher {
     }
 
     @Part
-    private GlobalContext globalContext;
+    private static GlobalContext globalContext;
 
     @Part
     private APILog log;
@@ -240,7 +240,9 @@ public class S3Dispatcher implements WebDispatcher {
     public DispatchDecision dispatch(WebContext webContext) throws Exception {
         S3Request request = parseRequest(webContext);
 
-        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX) || request.uri.equals(API_PATH)
+        if (request.uri.equals(UI_PATH)
+            || request.uri.startsWith(UI_PATH_PREFIX)
+            || request.uri.equals(API_PATH)
             || request.uri.startsWith(API_PATH_PREFIX)) {
             return DispatchDecision.CONTINUE;
         }

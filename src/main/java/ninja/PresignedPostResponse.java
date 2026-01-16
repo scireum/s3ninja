@@ -13,10 +13,7 @@ import java.util.Map;
 /**
  * DTO returned to the UI for presigned POST generation.
  */
-public record PresignedPostResponse(String url,
-                                    Map<String, String> fields,
-                                    String policyJson,
-                                    String policyBase64,
+public record PresignedPostResponse(String url, Map<String, String> fields, String policyJson, String policyBase64,
                                     String signature) {
 }
 

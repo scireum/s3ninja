@@ -10,8 +10,8 @@ package ninja.queries;
 
 import com.google.common.collect.Maps;
 import com.google.common.io.BaseEncoding;
-import com.google.common.io.ByteStreams;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.multipart.FileUpload;
 import ninja.Bucket;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
@@ -27,7 +27,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Map;
 
 /**
@@ -59,16 +58,6 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                 return;
             }
 
-            // Check if we have content to upload
-            if (webContext.getContent() == null) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 objectKey,
-                                                 S3ErrorCode.InvalidRequest,
-                                                 "Missing file content in form data");
-                return;
-            }
-
             // Create bucket if it doesn't exist
             if (!bucket.exists() && !bucket.create()) {
                 errorSynthesizer.synthesiseError(webContext,
@@ -82,9 +71,13 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             // Create object and store content
             StoredObject object = bucket.getObject(objectKey);
 
-            try (FileOutputStream out = new FileOutputStream(object.getFile());
-                 InputStream inputStream = webContext.getContent()) {
-                ByteStreams.copy(inputStream, out);
+            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
+                Object fileObj = webContext.get("file").get();
+                if (fileObj instanceof FileUpload fileUpload) {
+                    byte[] content = fileUpload.get();
+                    out.write(content);
+                }
+                // If no content was written, create an empty file (valid for S3)
             }
 
             // Calculate MD5 hash and ETag
@@ -180,4 +173,3 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
         return null;
     }
 }
-

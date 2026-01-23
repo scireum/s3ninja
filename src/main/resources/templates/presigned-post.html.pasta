@@ -28,15 +28,6 @@
             overflow-y: auto;
             color: #d4d4d4;
         }
-        .code-display .keyword { color: #569cd6; }
-        .code-display .string { color: #ce9178; }
-        .code-display .comment { color: #6a9955; }
-        .copy-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 10;
-        }
         .code-tab-content {
             position: relative;
         }
@@ -164,9 +155,6 @@
                     <div class="tab-content" id="formatTabsContent">
                         <!-- cURL Tab -->
                         <div class="tab-pane fade show active code-tab-content" id="curl-content" role="tabpanel">
-                            <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('curlDisplay')">
-                                <i class="fa-solid fa-copy"></i> Copy
-                            </button>
                             <div class="code-display" id="curlDisplay"></div>
                         </div>
 
@@ -178,7 +166,6 @@
                                         <tr>
                                             <th>Field Name</th>
                                             <th>Value</th>
-                                            <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="fieldsTable"></tbody>
@@ -460,9 +447,6 @@
             urlRow.innerHTML =
                 '<td><span class="badge bg-primary field-badge">URL</span></td>' +
                 '<td class="text-break"><code>' + fullUrl + '</code></td>' +
-                '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard(\'' + fullUrl + '\')">' +
-                '    <i class="fa-solid fa-copy"></i>' +
-                '</button></td>';
             tbody.appendChild(urlRow);
 
             // Add field rows
@@ -472,9 +456,6 @@
                 row.innerHTML =
                     '<td><span class="badge bg-secondary field-badge">' + escapeHtml(name) + '</span></td>' +
                     '<td class="text-break"><code title="' + escapeHtml(value) + '">' + escapeHtml(displayValue) + '</code></td>' +
-                    '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard(\'' + escapeJs(value) + '\')">' +
-                    '    <i class="fa-solid fa-copy"></i>' +
-                    '</button></td>';
                 tbody.appendChild(row);
             }
         }
@@ -492,32 +473,6 @@
 
         function escapeJs(text) {
             return String(text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-        }
-
-        function copyCode(elementId) {
-            const code = document.getElementById(elementId).textContent;
-            copyToClipboard(code);
-        }
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                // Show brief success feedback
-                const btn = event.target.closest('button');
-                if (btn) {
-                    const originalHtml = btn.innerHTML;
-                    btn.innerHTML = '<i class="fa-solid fa-check"></i>';
-                    btn.classList.add('btn-success');
-                    btn.classList.remove('btn-outline-secondary', 'btn-outline-light');
-                    setTimeout(() => {
-                        btn.innerHTML = originalHtml;
-                        btn.classList.remove('btn-success');
-                        btn.classList.add('btn-outline-secondary');
-                    }, 1500);
-                }
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                alert('Failed to copy to clipboard');
-            });
         }
 
         async function testUpload() {

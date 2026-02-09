@@ -61,6 +61,7 @@ public class NinjaController extends BasicController {
 
     @Part
     private PresignedPostService presignedPostService;
+
     /**
      * Handles requests to <tt>/ui/presigned-post</tt>.
      * <p>
@@ -390,6 +391,7 @@ public class NinjaController extends BasicController {
                         + token
                         + "' form field");
     }
+
     /**
      * Handles requests to <tt>/.api/generate-presigned-post</tt>.
      * <p>

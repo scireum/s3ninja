@@ -40,6 +40,7 @@ public class PresignedPostService {
 
     @Part
     private Storage storage;
+
     /**
      * Generate presigned POST DTO and concatenate all the below fields.
      *  "key"

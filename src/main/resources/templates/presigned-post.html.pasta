@@ -1,0 +1,612 @@
+<i:arg name="accessKey" type="String"/>
+<i:arg name="secretKey" type="String"/>
+
+<t:page title="Presigned POST Generator">
+    <i:block name="breadcrumbs">
+        <li>
+            <a href="/ui/presigned-post">Presigned POST Generator</a>
+        </li>
+    </i:block>
+
+    <i:block name="page-header">
+        <i:invoke template="/templates/header.html.pasta"
+                  title="Presigned POST Generator"
+                  subtitle="Generate and test presigned POST requests for S3 uploads"/>
+    </i:block>
+
+    <style>
+        .code-display {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+            color: #d4d4d4;
+        }
+        .code-display .keyword { color: #569cd6; }
+        .code-display .string { color: #ce9178; }
+        .code-display .comment { color: #6a9955; }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+        }
+        .code-tab-content {
+            position: relative;
+        }
+        .format-tabs .nav-link {
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+        }
+        .format-tabs .nav-link.active {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .upload-drop-zone {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .upload-drop-zone:hover, .upload-drop-zone.dragover {
+            border-color: #0d6efd;
+            background-color: #f0f7ff;
+        }
+        .upload-drop-zone.dragover {
+            transform: scale(1.02);
+        }
+        .upload-progress {
+            height: 6px;
+            border-radius: 3px;
+        }
+        .field-badge {
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+    </style>
+
+    <div class="row">
+        <!-- Configuration Panel -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-cog"></i> Configuration
+                    </h5>
+
+                    <div class="mb-3">
+                        <label for="bucket" class="form-label">Bucket Name</label>
+                        <input type="text" class="form-control" id="bucket" value="test"
+                               placeholder="Enter bucket name">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="key" class="form-label">Object Key</label>
+                        <input type="text" class="form-control" id="key" value="test-upload.txt"
+                               placeholder="Enter object key">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="region" class="form-label">Region</label>
+                        <input type="text" class="form-control" id="region" value="eu-west-3"
+                               placeholder="Enter AWS region">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="expiration" class="form-label">Expiration (hours)</label>
+                        <input type="number" class="form-control" id="expiration" value="24"
+                               min="1" max="168" placeholder="Hours until expiration">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="sessionToken" class="form-label">
+                            Session Token
+                            <small class="text-muted">(optional)</small>
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="sessionToken"
+                                   placeholder="Generate token from main page">
+                            <button class="btn btn-outline-secondary" type="button"
+                                    onclick="generateAndFillToken()">
+                                <i class="fa-solid fa-key"></i> Generate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Access Credentials</label>
+                        <div class="small text-muted">
+                            <div><strong>Access Key:</strong> @accessKey</div>
+                            <div><strong>Secret Key:</strong> @secretKey</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="generatePresignedPost()">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Presigned POST
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Panel -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4" id="resultsPanel" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-code"></i> Generated Code Snippets
+                    </h5>
+
+                    <!-- Format Tabs -->
+                    <ul class="nav nav-tabs format-tabs mb-3" id="formatTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="curl-tab" data-bs-toggle="tab"
+                                    data-bs-target="#curl-content" type="button" role="tab">
+                                <i class="fa-solid fa-terminal"></i> cURL
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="fields-tab" data-bs-toggle="tab"
+                                    data-bs-target="#fields-content" type="button" role="tab">
+                                <i class="fa-solid fa-list"></i> Fields
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Contents -->
+                    <div class="tab-content" id="formatTabsContent">
+                        <!-- cURL Tab -->
+                        <div class="tab-pane fade show active code-tab-content" id="curl-content" role="tabpanel">
+                            <button class="btn btn-sm btn-outline-light copy-btn" onclick="copyCode('curlDisplay')">
+                                <i class="fa-solid fa-copy"></i> Copy
+                            </button>
+                            <div class="code-display" id="curlDisplay"></div>
+                        </div>
+
+                        <!-- Fields Tab -->
+                        <div class="tab-pane fade" id="fields-content" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Field Name</th>
+                                            <th>Value</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fieldsTable"></tbody>
+                                </table>
+                            </div>
+                            <div class="mt-3 p-3 bg-light rounded">
+                                <h6 class="mb-2"><i class="fa-solid fa-info-circle"></i> Policy Details</h6>
+                                <div class="code-display" style="background-color: #f8f9fa; color: #333; max-height: 200px;" id="policyDisplay"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Upload Panel -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm" id="testPanel" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fa-solid fa-upload"></i> Direct Upload Test
+                    </h5>
+                    <p class="text-muted small mb-3">
+                        Test your presigned POST by uploading a file directly to the S3 endpoint.
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="upload-drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                                <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(this)">
+                                <i class="fa-solid fa-cloud-arrow-up fa-3x text-muted mb-3"></i>
+                                <p class="mb-1"><strong>Drop file here or click to browse</strong></p>
+                                <p class="text-muted small mb-0">Supports any file type</p>
+                            </div>
+
+                            <div id="selectedFileInfo" class="mt-3" style="display: none;">
+                                <div class="d-flex align-items-center p-2 bg-light rounded">
+                                    <i class="fa-solid fa-file fa-2x text-primary me-3"></i>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold" id="selectedFileName">-</div>
+                                        <small class="text-muted" id="selectedFileSize">-</small>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="clearSelectedFile()">
+                                        <i class="fa-solid fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-3">
+                                <button class="btn btn-success w-100" id="uploadBtn" onclick="testUpload()" disabled>
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload File
+                                </button>
+                            </div>
+
+                            <div class="mt-3" id="uploadProgress" style="display: none;">
+                                <div class="progress upload-progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                         id="progressBar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <small class="text-muted" id="progressText">Uploading...</small>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div id="uploadResult" style="display: none;">
+                                <div class="alert" role="alert" id="uploadResultMessage"></div>
+                            </div>
+
+                            <div class="card bg-light" id="requestDetailsCard" style="display: none;">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fa-solid fa-network-wired"></i> Request Details
+                                    </h6>
+                                    <dl class="row mb-0 small">
+                                        <dt class="col-4">Endpoint:</dt>
+                                        <dd class="col-8 text-break" id="requestEndpoint">-</dd>
+                                        <dt class="col-4">Method:</dt>
+                                        <dd class="col-8"><span class="badge bg-success">POST</span></dd>
+                                        <dt class="col-4">Status:</dt>
+                                        <dd class="col-8" id="responseStatus">-</dd>
+                                        <dt class="col-4">Time:</dt>
+                                        <dd class="col-8" id="responseTime">-</dd>
+                                    </dl>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        const accessKey = '@accessKey';
+        let currentFormData = null;
+        let selectedFile = null;
+        let generatedCode = {
+            curl: false
+        };
+
+        // Initialize drag and drop
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.getElementById('dropZone');
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+        });
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                handleFileSelect({ files: files });
+            }
+        }
+
+        function handleFileSelect(input) {
+            if (input.files && input.files.length > 0) {
+                selectedFile = input.files[0];
+                document.getElementById('selectedFileName').textContent = selectedFile.name;
+                document.getElementById('selectedFileSize').textContent = formatFileSize(selectedFile.size);
+                document.getElementById('selectedFileInfo').style.display = 'block';
+                document.getElementById('uploadBtn').disabled = !currentFormData;
+            }
+        }
+
+        function clearSelectedFile() {
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('selectedFileInfo').style.display = 'none';
+            document.getElementById('uploadBtn').disabled = true;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function generateAndFillToken() {
+            try {
+                    const response = await fetch('/.api/generate-session-token');
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('sessionToken').value = data.token;
+                } else {
+                    alert('Failed to generate token');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error generating token');
+            }
+        }
+
+        async function generatePresignedPost() {
+            const bucket = document.getElementById('bucket').value;
+            const key = document.getElementById('key').value;
+            const region = document.getElementById('region').value;
+            const expirationHours = parseInt(document.getElementById('expiration').value);
+            const sessionToken = document.getElementById('sessionToken').value;
+
+            if (!bucket || !key || !region) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams();
+                params.append('bucket', bucket);
+                params.append('key', key);
+                params.append('region', region);
+                params.append('expirationHours', expirationHours);
+                if (sessionToken) {
+                    params.append('sessionToken', sessionToken);
+                }
+                params.append('accessKey', accessKey);
+
+                const response = await fetch('/.api/generate-presigned-post', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: params
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error generating presigned POST: ' + error.message);
+            }
+        }
+
+        function displayResults(data) {
+            currentFormData = data;
+
+            // Reset generation cache - only generate cURL initially
+            generatedCode = {
+                curl: false
+            };
+
+            // Generate cURL command (most commonly used)
+            document.getElementById('curlDisplay').textContent = generateCurlCommand(data);
+            generatedCode.curl = true;
+
+            // Display policy (pretty printed)
+            try {
+                const policyObj = JSON.parse(data.policyJson);
+                document.getElementById('policyDisplay').textContent = JSON.stringify(policyObj, null, 2);
+            } catch {
+                document.getElementById('policyDisplay').textContent = data.policyJson;
+            }
+
+            // Populate fields table
+            populateFieldsTable(data);
+
+            // Show panels
+            document.getElementById('resultsPanel').style.display = 'block';
+            document.getElementById('testPanel').style.display = 'block';
+
+            // Enable upload button if file is selected
+            document.getElementById('uploadBtn').disabled = !selectedFile;
+        }
+
+
+        function generateCurlCommand(data) {
+            const fields = data.fields;
+            let cmd = '# cURL command for presigned POST upload\n';
+            cmd += '# AWS S3 presigned POST with parameters in URL\n';
+
+            // Build URL with all presigned POST parameters
+            const params = new URLSearchParams();
+            for (const [name, value] of Object.entries(fields)) {
+                params.append(name, value);
+            }
+
+            const fullUrl = window.location.origin + data.url + '?' + params.toString();
+
+            cmd += 'curl -X POST "' + fullUrl + '" \\\n';
+            cmd += '  -H "Content-Type: application/octet-stream" \\\n';
+            cmd += '  --data-binary "@@/path/to/your/file.txt"';
+
+            return cmd;
+        }
+
+
+        function populateFieldsTable(data) {
+            const tbody = document.getElementById('fieldsTable');
+            tbody.innerHTML = '';
+
+            // Add URL row
+            const urlRow = document.createElement('tr');
+            const fullUrl = window.location.origin + data.url;
+            urlRow.innerHTML =
+                '<td><span class="badge bg-primary field-badge">URL</span></td>' +
+                '<td class="text-break"><code>' + fullUrl + '</code></td>' +
+                '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard(\'' + fullUrl + '\')">' +
+                '    <i class="fa-solid fa-copy"></i>' +
+                '</button></td>';
+            tbody.appendChild(urlRow);
+
+            // Add field rows
+            for (const [name, value] of Object.entries(data.fields)) {
+                const row = document.createElement('tr');
+                const displayValue = value.length > 60 ? value.substring(0, 60) + '...' : value;
+                row.innerHTML =
+                    '<td><span class="badge bg-secondary field-badge">' + escapeHtml(name) + '</span></td>' +
+                    '<td class="text-break"><code title="' + escapeHtml(value) + '">' + escapeHtml(displayValue) + '</code></td>' +
+                    '<td><button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard(\'' + escapeJs(value) + '\')">' +
+                    '    <i class="fa-solid fa-copy"></i>' +
+                    '</button></td>';
+                tbody.appendChild(row);
+            }
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function escapeJs(text) {
+            return String(text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+
+        function copyCode(elementId) {
+            const code = document.getElementById(elementId).textContent;
+            copyToClipboard(code);
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Show brief success feedback
+                const btn = event.target.closest('button');
+                if (btn) {
+                    const originalHtml = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                    btn.classList.add('btn-success');
+                    btn.classList.remove('btn-outline-secondary', 'btn-outline-light');
+                    setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                        btn.classList.remove('btn-success');
+                        btn.classList.add('btn-outline-secondary');
+                    }, 1500);
+                }
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+
+        async function testUpload() {
+            if (!currentFormData) {
+                alert('Please generate a presigned POST first');
+                return;
+            }
+
+            if (!selectedFile) {
+                alert('Please select a file');
+                return;
+            }
+
+            // Build URL with presigned POST parameters
+            const params = new URLSearchParams();
+            for (const [name, value] of Object.entries(currentFormData.fields)) {
+                params.append(name, value);
+            }
+
+            const uploadUrl = currentFormData.url + '?' + params.toString();
+
+            // Show progress
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('uploadBtn').disabled = true;
+            document.getElementById('requestDetailsCard').style.display = 'block';
+            document.getElementById('requestEndpoint').textContent = window.location.origin + uploadUrl;
+
+            const startTime = performance.now();
+
+            try {
+                // Read file as binary
+                const fileData = await selectedFile.arrayBuffer();
+
+                const response = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: fileData
+                });
+
+                const endTime = performance.now();
+                const duration = Math.round(endTime - startTime);
+
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('responseTime').textContent = duration + 'ms';
+                document.getElementById('responseStatus').innerHTML = response.ok
+                    ? '<span class="badge bg-success">' + response.status + ' ' + response.statusText + '</span>'
+                    : '<span class="badge bg-danger">' + response.status + ' ' + response.statusText + '</span>';
+
+                const resultDiv = document.getElementById('uploadResult');
+                const messageDiv = document.getElementById('uploadResultMessage');
+
+                resultDiv.style.display = 'block';
+
+                if (response.ok) {
+                    messageDiv.className = 'alert alert-success';
+                    messageDiv.innerHTML =
+                        '<i class="fa-solid fa-check-circle"></i> <strong>Upload successful!</strong><br>' +
+                        '<small>File "' + selectedFile.name + '" uploaded to ' + currentFormData.fields.key + '</small>';
+                } else {
+                    const responseText = await response.text();
+                    messageDiv.className = 'alert alert-danger';
+                    messageDiv.innerHTML =
+                        '<i class="fa-solid fa-exclamation-circle"></i> <strong>Upload failed!</strong><br>' +
+                        '<small>Status: ' + response.status + ' ' + response.statusText + '</small>' +
+                        (responseText ? '<br><pre class="mt-2 mb-0 small">' + escapeHtml(responseText) + '</pre>' : '');
+                }
+            } catch (error) {
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('responseStatus').innerHTML = '<span class="badge bg-danger">Error</span>';
+                document.getElementById('responseTime').textContent = '-';
+
+                const resultDiv = document.getElementById('uploadResult');
+                const messageDiv = document.getElementById('uploadResultMessage');
+
+                resultDiv.style.display = 'block';
+                messageDiv.className = 'alert alert-danger';
+                messageDiv.innerHTML =
+                    '<i class="fa-solid fa-exclamation-circle"></i> <strong>Network Error</strong><br>' +
+                    '<small>' + escapeHtml(error.message) + '</small>';
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+    </script>
+
+    <i:block name="footer">
+        <i:invoke template="/templates/footer.html.pasta"/>
+    </i:block>
+</t:page>
+

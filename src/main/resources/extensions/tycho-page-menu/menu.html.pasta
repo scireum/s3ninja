@@ -7,6 +7,7 @@
         <t:menuItem label="Access Logs" url="/ui?log" />
         <t:menuItem label="License" url="/ui?license" />
         <t:menuItem label="Supported API" url="/ui?api"/>
+        <t:menuItem label="Presigned POST" url="/ui/presigned-post"/>
     </i:block>
     <i:block name="right">
         <t:menuItem label="F**k me on GitHub" url="https://github.com/scireum/s3ninja" />

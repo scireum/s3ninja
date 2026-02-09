@@ -39,14 +39,12 @@ To run S3 Ninja using Docker Compose for development:
 
 S3 Ninja supports AWS S3-compatible presigned POST requests for secure file uploads.
 
-### Generating Presigned POST Fields
-Use the built-in tool to generate the required form fields:
+### Generate via UI (docker-friendly)
 
-```
-mvn -q -Dexec.mainClass=ninja.tools.PresignedPostGenerator exec:java
-```
-
-This outputs the necessary fields: `key`, `policy`, `x-amz-algorithm`, `x-amz-credential`, `x-amz-date`, `x-amz-signature`, and optionally `x-amz-security-token` if using a session token.
+1. Launch the web UI (default: `http://localhost:9444/ui`) and click **Presigned POST Workbench** or go directly to `http://localhost:9444/ui/presigned-post`.
+2. Fill bucket/key/region plus optional session token (generate it inline) and hit **Generate Presigned POST**.
+3. Copy the auto-generated HTML form or use the embedded **Test Upload** panel to POST a file against your running instance, no Maven needed.
+4. Inspect the policy JSON, Base64 policy, and signature in the results card for debugging or automation.
 
 ### Making the Request
 - **URL**: `POST http://localhost:9444/<bucket>/<key>`

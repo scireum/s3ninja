@@ -59,6 +59,25 @@ public class NinjaController extends BasicController {
     @Part
     private GlobalContext globalContext;
 
+    @Part
+    private PresignedPostService presignedPostService;
+
+    /**
+     * Handles requests to <tt>/ui/presigned-post</tt>.
+     * <p>
+     * Show the UI to edit / launch and copy a Presign Post.
+     * <p>
+     *
+     * @param webContext the context describing the current request
+     */
+    @Routed(value = "/ui/presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
+    public void presignedPostUI(WebContext webContext) {
+        webContext.respondWith()
+                  .template("/templates/presigned-post.html.pasta",
+                            storage.getAwsAccessKey(),
+                            storage.getAwsSecretKey());
+    }
+
     /**
      * Handles requests to <tt>/ui</tt>.
      * <p>
@@ -371,5 +390,53 @@ public class NinjaController extends BasicController {
                         + "' header or 'X-Amz-Security-Token="
                         + token
                         + "' form field");
+    }
+
+    /**
+     * Handles requests to <tt>/.api/generate-presigned-post</tt>.
+     * <p>
+     * Genenrate a presigned post following AWS guideline.
+     * The presigned post output several fields that should match AWS accepted Policy.
+     * <p>
+     * <ul>
+     *     <li>PolicyJson</li>
+     *     <li>Policy</li>
+     *     <li>Signature</li>
+     *     <li>Signature</li>
+     * </ul>
+     *
+     * @param webContext the context describing the current request
+     */
+    @Routed("/.api/generate-presigned-post")
+    public void generatePresignedPost(WebContext webContext) {
+        try {
+            PresignedPostRequest request = PresignedPostRequest.from(webContext);
+            PresignedPostResponse response = presignedPostService.generate(request);
+
+            var jsonBuilder = webContext.respondWith()
+                                        .json()
+                                        .beginResult()
+                                        .property("success", true)
+                                        .property("url", response.url());
+
+            // Properly serialize the fields map as a JSON object
+            jsonBuilder.beginObject("fields");
+            for (var entry : response.fields().entrySet()) {
+                jsonBuilder.property(entry.getKey(), entry.getValue());
+            }
+            jsonBuilder.endObject();
+
+            jsonBuilder.property("policyJson", response.policyJson())
+                       .property("policy", response.policyBase64())
+                       .property("signature", response.signature())
+                       .endResult();
+        } catch (HandledException handled) {
+            webContext.respondWith()
+                      .json()
+                      .beginResult()
+                      .property("success", false)
+                      .property("message", handled.getMessage())
+                      .endResult();
+        }
     }
 }

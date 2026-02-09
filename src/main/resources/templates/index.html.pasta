@@ -171,6 +171,25 @@
         <div class="col-md-8">
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center mb-3">
+                        <div class="flex-grow-1">
+                            <h5 class="mb-1">Presigned POST Workbench</h5>
+                            <p class="text-muted small mb-2">
+                                Generate presigned POST payloads and fire real uploads without Maven tooling.
+                            </p>
+                            <ul class="text-muted small ps-3 mb-3">
+                                <li>Fills policy, signature, and fields automatically</li>
+                                <li>Allows one-click token generation</li>
+                                <li>Includes an inline upload tester hitting this instance</li>
+                            </ul>
+                        </div>
+                        <div class="text-md-end">
+                            <a class="btn btn-primary" href="/ui/presigned-post">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Open Presigned POST UI
+                            </a>
+                        </div>
+                    </div>
+                    <hr class="my-4"/>
                     <div class="row">
                         <div class="col-8 col-xl-9">
                             <form id="create-bucket"

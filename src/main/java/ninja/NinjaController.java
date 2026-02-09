@@ -30,6 +30,8 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 import sirius.web.security.UserContext;
+import sirius.web.services.InternalService;
+import sirius.web.services.JSONStructuredOutput;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -374,20 +376,18 @@ public class NinjaController extends BasicController {
      */
     @InternalService
     @Routed("/.api/generate-session-token")
-    public void generateSessionToken(WebContext webContext) {
-        try {
-            String token = s3Dispatcher.generateSessionToken();
-            webContext.respondWith()
-                    .json()
-                    .beginResult()
-                    .property("success", true)
-                    .property("token", token)
-                    .property("expiresIn", "24 hours")
-                    .property("usage", "Add 'X-Session-Token: " + token + "' header...")
-                    .endResult();
-        } catch (Exception e) {
-            throw Exceptions.handle(e);
-        }
+    public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
+        String token = s3Dispatcher.generateSessionToken();
+
+        output.property("success", true)
+              .property("token", token)
+              .property("expiresIn", "24 hours")
+              .property("usage",
+                        "Add 'X-Session-Token: "
+                        + token
+                        + "' header or 'X-Amz-Security-Token="
+                        + token
+                        + "' form field");
     }
     /**
      * Handles requests to <tt>/.api/generate-presigned-post</tt>.

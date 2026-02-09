@@ -41,6 +41,17 @@ public class PresignedPostService {
     @Part
     private Storage storage;
 
+    /**
+     * Generate presigned POST DTO and concatenate all the below fields.
+     *  "key"
+     *  "policy"
+     *  "x-amz-algorithm"
+     *  "x-amz-credential"
+     *  "x-amz-date"
+     *  "x-amz-signature",
+     *  "x-amz-security-token"
+     *
+     */
     public PresignedPostResponse generate(PresignedPostRequest request) {
         validate(request);
 

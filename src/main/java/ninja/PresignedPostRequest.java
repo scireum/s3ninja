@@ -18,20 +18,16 @@ import sirius.web.http.WebContext;
 public record PresignedPostRequest(String bucket, String key, String region, int expirationHours, String sessionToken,
                                    String accessKey) {
 
-    public static PresignedPostRequest from(WebContext ctx) {
-        String bucket = ctx.get("bucket").asString();
-        String key = ctx.get("key").asString();
-        String region = ctx.get("region").asString();
-        int expiration = ctx.get("expirationHours").asInt(24);
-        String sessionToken = ctx.get("sessionToken").asString();
+    public static PresignedPostRequest from(WebContext context) {
+        String bucket = context.require("bucket").asString();
+        String key = context.require("key").asString();
+        String region = context.require("region").asString();
+        int expiration = context.require("expirationHours").asInt(24);
+        String sessionToken = context.require("sessionToken").asString();
         if (Strings.isEmpty(sessionToken)) {
             sessionToken = null;
         }
-        String accessKey = ctx.get("accessKey").asString();
-
-        if (Strings.isEmpty(bucket) || Strings.isEmpty(key) || Strings.isEmpty(region) || Strings.isEmpty(accessKey)) {
-            throw Exceptions.createHandled().withDirectMessage("Missing required fields").handle();
-        }
+        String accessKey = context.require("accessKey").asString();
 
         return new PresignedPostRequest(bucket, key, region, expiration, sessionToken, accessKey);
     }

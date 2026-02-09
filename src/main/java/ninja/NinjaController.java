@@ -373,6 +373,7 @@ public class NinjaController extends BasicController {
      * </ul>
      *
      * @param webContext the context describing the current request
+     * @param output     the JSON output to write the response to
      */
     @InternalService
     @Routed("/.api/generate-session-token")

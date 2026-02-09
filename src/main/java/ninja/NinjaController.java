@@ -59,7 +59,14 @@ public class NinjaController extends BasicController {
 
     @Part
     private PresignedPostService presignedPostService;
-
+    /**
+     * Handles requests to <tt>/ui/presigned-post</tt>.
+     * <p>
+     * Show the UI to edit / launch and copy a Presign Post.
+     * <p>
+     *
+     * @param webContext the context describing the current request
+     */
     @Routed(value = "/ui/presigned-post", priority = PriorityCollector.DEFAULT_PRIORITY - 1)
     public void presignedPostUI(WebContext webContext) {
         webContext.respondWith()
@@ -365,25 +372,38 @@ public class NinjaController extends BasicController {
      *
      * @param webContext the context describing the current request
      */
+    @InternalService
     @Routed("/.api/generate-session-token")
     public void generateSessionToken(WebContext webContext) {
-        String token = s3Dispatcher.generateSessionToken();
-
-        webContext.respondWith()
-                  .json()
-                  .beginResult()
-                  .property("success", true)
-                  .property("token", token)
-                  .property("expiresIn", "24 hours")
-                  .property("usage",
-                            "Add 'X-Session-Token: "
-                            + token
-                            + "' header or 'X-Amz-Security-Token="
-                            + token
-                            + "' form field")
-                  .endResult();
+        try {
+            String token = s3Dispatcher.generateSessionToken();
+            webContext.respondWith()
+                    .json()
+                    .beginResult()
+                    .property("success", true)
+                    .property("token", token)
+                    .property("expiresIn", "24 hours")
+                    .property("usage", "Add 'X-Session-Token: " + token + "' header...")
+                    .endResult();
+        } catch (Exception e) {
+            throw Exceptions.handle(e);
+        }
     }
-
+    /**
+     * Handles requests to <tt>/.api/generate-presigned-post</tt>.
+     * <p>
+     * Genenrate a presigned post following AWS guideline.
+     * The presigned post output several fields that should match AWS accepted Policy.
+     * <p>
+     * <ul>
+     *     <li>PolicyJson</li>
+     *     <li>Policy</li>
+     *     <li>Signature</li>
+     *     <li>Signature</li>
+     * </ul>
+     *
+     * @param webContext the context describing the current request
+     */
     @Routed("/.api/generate-presigned-post")
     public void generatePresignedPost(WebContext webContext) {
         try {

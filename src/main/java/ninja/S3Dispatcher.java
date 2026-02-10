@@ -214,7 +214,7 @@ public class S3Dispatcher implements WebDispatcher {
         // Check for presigned POST to set content handler
         if (HttpMethod.POST.equals(webContext.getRequest().method())) {
             String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-            if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
+            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
                 if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
                     InputStreamHandler handler = createInputStreamHandler(webContext);
                     webContext.setContentHandler(handler);
@@ -272,7 +272,7 @@ public class S3Dispatcher implements WebDispatcher {
             // Check for presigned POST
             if (HttpMethod.POST.equals(webContext.getRequest().method())) {
                 String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-                if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
+                if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
                     if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
                         request.query = "presigned-post";
                         forwardQueryToProcessor(webContext, request);
@@ -360,7 +360,7 @@ public class S3Dispatcher implements WebDispatcher {
 
     private void forwardQueryToProcessor(WebContext webContext, S3Request request) {
         Bucket bucket = storage.getBucket(request.bucket);
-        if (!bucket.exists() && !"presigned-post".equals(request.query)) {
+        if (!bucket.exists()) {
             errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
                                              request.key,
@@ -597,7 +597,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.POST.equals(method)) {
             String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-            if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
+            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
                 // Start multipart upload
                 if (bucket.exists()) {
                     String objectKey = extractKeyFromMultipartForm(webContext);

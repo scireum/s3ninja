@@ -211,6 +211,17 @@ public class S3Dispatcher implements WebDispatcher {
             return null;
         }
 
+        // Check for presigned POST to set content handler
+        if (HttpMethod.POST.equals(webContext.getRequest().method())) {
+            String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
+                if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
+                    InputStreamHandler handler = createInputStreamHandler(webContext);
+                    webContext.setContentHandler(handler);
+                }
+            }
+        }
+
         if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
             return null;
         }
@@ -258,6 +269,17 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isEmpty(request.key)) {
+            // Check for presigned POST
+            if (HttpMethod.POST.equals(webContext.getRequest().method())) {
+                String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+                if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
+                    if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
+                        request.query = "presigned-post";
+                        forwardQueryToProcessor(webContext, request);
+                        return DispatchDecision.DONE;
+                    }
+                }
+            }
             bucket(webContext, request.bucket);
             return DispatchDecision.DONE;
         }
@@ -575,10 +597,19 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.POST.equals(method)) {
             String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-            if (contentType != null && contentType.toLowerCase().startsWith("multipart/form-data")) {
-                S3QueryProcessor processor = globalContext.getPart("presigned-post", S3QueryProcessor.class);
-                if (processor != null) {
-                    processor.processQuery(webContext, bucket, null, "presigned-post");
+            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
+                // Start multipart upload
+                if (bucket.exists()) {
+                    String objectKey = extractKeyFromMultipartForm(webContext);
+                    if (!Strings.isFilled(objectKey)) {
+                        signalObjectError(webContext,
+                                          bucketName,
+                                          null,
+                                          S3ErrorCode.InvalidRequest,
+                                          "Please provide an object key.");
+                        return;
+                    }
+                    startMultipartUpload(webContext, bucket, objectKey);
                 } else {
                     signalObjectError(webContext,
                                       bucketName,
@@ -623,6 +654,24 @@ public class S3Dispatcher implements WebDispatcher {
         } else {
             throw new IllegalArgumentException(webContext.getRequest().method().name());
         }
+    }
+
+    private String extractKeyFromMultipartForm(WebContext webContext) {
+        // First try the standard parameter (works for both form fields and query params)
+        String key = webContext.getParameter("key");
+        if (Strings.isFilled(key)) {
+            return key;
+        }
+
+        // Try to get it from request parameter (different method for multipart)
+        if (webContext.hasParameter("key")) {
+            key = webContext.get("key").asString();
+            if (Strings.isFilled(key)) {
+                return key;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -686,16 +735,21 @@ public class S3Dispatcher implements WebDispatcher {
             if (copy.isFilled()) {
                 copyObject(webContext, bucket, key, copy.asString());
             } else if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
+                // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
                 multiObject(webContext, uploadId, webContext.get("partNumber").asString(), in);
             } else {
                 putObject(webContext, bucket, key, in);
             }
         } else if (HttpMethod.POST.equals(method)) {
+            // S3 Multipart Upload API endpoints (different from Browser-Based Presigned POST)
             if (webContext.hasParameter("uploads")) {
+                // POST /bucket/key?uploads - Initiate Multipart Upload
                 startMultipartUpload(webContext, bucket, key);
             } else if (Strings.isFilled(uploadId)) {
+                // POST /bucket/key?uploadId=X - Complete Multipart Upload
                 completeMultipartUpload(webContext, bucket, key, uploadId, in);
             } else {
+                // POST /bucket/key - Policy-based POST upload (with key in URL)
                 handlePostObject(webContext, bucket, key, in);
             }
         } else {
@@ -1535,28 +1589,6 @@ public class S3Dispatcher implements WebDispatcher {
         } catch (Exception e) {
             return false;
         }
-    }
-
-    /**
-     * Extracts the key from a multipart form request
-     * This is useful when the key is embedded in the form data rather than as a parameter
-     */
-    private String extractKeyFromMultipartForm(WebContext webContext) {
-        // First try the standard parameter (works for both form fields and query params)
-        String key = webContext.getParameter("key");
-        if (Strings.isFilled(key)) {
-            return key;
-        }
-
-        // Try to get it from request parameter (different method for multipart)
-        if (webContext.hasParameter("key")) {
-            key = webContext.get("key").asString();
-            if (Strings.isFilled(key)) {
-                return key;
-            }
-        }
-
-        return null;
     }
 
     private boolean isPolicyBasedPost(WebContext webContext) {

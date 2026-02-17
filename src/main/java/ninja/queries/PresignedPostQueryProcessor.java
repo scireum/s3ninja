@@ -1,17 +1,11 @@
-/*
- * Made with all the love in the world
- * by scireum in Stuttgart, Germany
- *
- * Copyright by scireum GmbH
- * https://www.scireum.de - info@scireum.de
- */
-
 package ninja.queries;
 
 import com.google.common.collect.Maps;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
+import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.multipart.HttpData;
 import ninja.Bucket;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
@@ -25,6 +19,8 @@ import sirius.web.http.WebContext;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,8 +55,25 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                 return;
             }
 
-            // Check if we have content to upload
-            if (webContext.getContent() == null) {
+            // Obtain file content: getContent() for raw body, or multipart "file" part when getContent() is null
+            InputStream contentStream = null;
+            HttpData filePart = webContext.getHttpData("file");
+            if (webContext.getContent() != null) {
+                contentStream = webContext.getContent();
+            } else if (filePart != null) {
+                // Try to get file first, but fall back to ByteBuf if getFile() throws IOException
+                // (happens when data is stored in memory, not as a file)
+                try {
+                    File partFile = filePart.getFile();
+                    if (partFile != null && partFile.exists()) {
+                        contentStream = new FileInputStream(partFile);
+                    }
+                } catch (IOException ignored) {
+                    // Data is not stored in a file, will use getByteBuf() later
+                }
+            }
+
+            if (contentStream == null && (filePart == null || filePart.getByteBuf() == null)) {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
                                                  objectKey,
@@ -82,9 +95,22 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             // Create object and store content
             StoredObject object = bucket.getObject(objectKey);
 
-            try (FileOutputStream out = new FileOutputStream(object.getFile());
-                 InputStream inputStream = webContext.getContent()) {
-                ByteStreams.copy(inputStream, out);
+            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
+                if (contentStream != null) {
+                    ByteStreams.copy(contentStream, out);
+                } else {
+                    ByteBuf buf = filePart.getByteBuf();
+                    if (buf != null && buf.readableBytes() > 0) {
+                        buf.getBytes(buf.readerIndex(), out, buf.readableBytes());
+                    }
+                }
+            } finally {
+                if (contentStream instanceof FileInputStream) {
+                    try {
+                        contentStream.close();
+                    } catch (IOException ignored) {
+                    }
+                }
             }
 
             // Calculate MD5 hash and ETag

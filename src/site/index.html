@@ -76,7 +76,9 @@
                     </li>
                     <li>
                         Run S3 API-Calls against <b>http://localhost:9444/</b> (e.g.
-                        http://localhost:9444/test-bucket/test-object)
+                        http://localhost:9444/test-bucket/test-object). If your application generates URLs like
+                        http://test-bucket.localhost:9444/test-object, you will need to configure your S3 client to use
+                        path-style endpoints.
                     </li>
                     <li>
                         Provide an volume for <b>/home/sirius/data</b> to persist data across restarts.

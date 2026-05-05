@@ -3,19 +3,27 @@
 # Please see the documentation for all configuration options:
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 version: 2
+registries:
+  scireum-mvn:
+    type: maven-repository
+    url: https://mvn.scireum.com
 updates:
 - package-ecosystem: maven
   directory: "/"
+  registries:
+    - scireum-mvn
   schedule:
     interval: daily
   ignore:
     # ignore Maven APIs/SPIs
     - dependency-name: org.apache.maven:*
-    # ignore sirius libs as we want to use current dev versions
-    - dependency-name: com.scireum:*
   labels:
     - "⬆️ Dependencies"
     - "🛠️ Maintenance"
+  groups:
+    sirius:
+      patterns:
+        - "com.scireum:sirius-*"
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:

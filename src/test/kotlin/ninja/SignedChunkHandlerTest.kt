@@ -16,13 +16,15 @@ class SignedChunkHandlerTest {
         every { webContext.getHeader("x-amz-content-sha256") } returns "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER"
 
         val handler = SignedChunkHandler(webContext)
-        val firstContent = """
-            |5;chunk-signature=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-            |hello
-            |0;chunk-signature=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-            |
-        """.trimMargin().replace("\n", "\r\n")
-        val trailerContent = "x-amz-trailer-signature:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\r\n\r\n"
+        val firstContent = listOf(
+            "5;chunk-signature=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hello",
+            "0;chunk-signature=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ).joinToString(separator = "\r\n", postfix = "\r\n")
+        val trailerContent = listOf(
+            "x-amz-trailer-signature:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            ""
+        ).joinToString(separator = "\r\n", postfix = "\r\n")
 
         assertDoesNotThrow {
             handler.handle(Unpooled.copiedBuffer(firstContent, StandardCharsets.UTF_8), false)

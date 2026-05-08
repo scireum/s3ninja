@@ -16,8 +16,6 @@ import sirius.web.http.WebContext;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -42,6 +40,8 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
     private final ByteBuf chunkBuffer = Unpooled.buffer();
 
     private final WebContext webContext;
+
+    private boolean readingTrailingHeaders;
 
     SignedChunkHandler(@Nullable WebContext webContext) {
         this.webContext = webContext;
@@ -70,12 +70,21 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
      * more data has been received.
      */
     private boolean tryToCompleteTransfer() throws IOException {
+        if (readingTrailingHeaders) {
+            return tryToCompleteTrailingHeaders();
+        }
+
         while (true) {
             int sizeOfChunk = transferNextChunk();
 
             if (sizeOfChunk == 0) {
                 // we have read the last chunk and completed the transfer hence
-                readTrailingHeaders();
+                if (expectsTrailingHeaders()) {
+                    readingTrailingHeaders = true;
+                    return tryToCompleteTrailingHeaders();
+                }
+
+                skipOptionalEmptyTrailingLine();
                 return true;
             } else if (sizeOfChunk < 0) {
                 // the last chunk could not be read entirely, we need more data
@@ -146,24 +155,32 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         super.handle(Unpooled.EMPTY_BUFFER, true);
     }
 
-    private void readTrailingHeaders() {
+    private boolean expectsTrailingHeaders() {
         String contentSHA256Header =
                 Optional.ofNullable(webContext).map(context -> context.getHeader("x-amz-content-sha256")).orElse("");
-        if (TRAILING_HEADER_MARKERS.contains(contentSHA256Header)) {
-            List<String> trailingHeaders = new ArrayList<>();
-            while (true) {
-                Optional<String> header = readRawSignature(chunkBuffer);
-                if (header.isEmpty() || Strings.isEmpty(header.get())) {
-                    break;
-                }
-                trailingHeaders.add(header.get());
+        return TRAILING_HEADER_MARKERS.contains(contentSHA256Header);
+    }
 
-                // note that for now, we don't do anything with the trailing headers; we could check the signature here
+    private boolean tryToCompleteTrailingHeaders() {
+        while (true) {
+            chunkBuffer.markReaderIndex();
+            Optional<String> header = readRawLine(chunkBuffer);
+            if (header.isEmpty()) {
+                chunkBuffer.resetReaderIndex();
+                return false;
             }
 
-            return;
-        }
+            if (Strings.isEmpty(header.get())) {
+                readingTrailingHeaders = false;
+                chunkBuffer.discardReadBytes();
+                return true;
+            }
 
+            // Note that for now, we don't do anything with the trailing headers; we could check the signature here.
+        }
+    }
+
+    private void skipOptionalEmptyTrailingLine() {
         if (chunkBuffer.readableBytes() >= 2) {
             byte supposedCR = chunkBuffer.getByte(0);
             byte supposedLF = chunkBuffer.getByte(1);
@@ -236,21 +253,29 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
      * @return an optional containing the raw chunk signature string.
      */
     private Optional<String> readRawSignature(ByteBuf content) {
+        return readRawLine(content).filter(Strings::isFilled);
+    }
+
+    private Optional<String> readRawLine(ByteBuf content) {
         StringBuilder signatureString = new StringBuilder();
         boolean previousWasCR = false;
         while (content.isReadable()) {
             byte data = content.readByte();
-            if (data == CARRIAGE_RETURN_CHARACTER) {
-                previousWasCR = true;
-            } else if (previousWasCR && data == LINE_FEED_CHARACTER) {
-                // extract the string, skipping the trailing <CR> character
-                return Optional.of(signatureString.substring(0, signatureString.length() - 1))
-                               .filter(Strings::isFilled);
-            } else {
+
+            if (previousWasCR) {
                 previousWasCR = false;
+                if (data == LINE_FEED_CHARACTER) {
+                    return Optional.of(signatureString.toString());
+                }
+
+                signatureString.append(CARRIAGE_RETURN_CHARACTER);
             }
 
-            signatureString.append((char) data);
+            if (data == CARRIAGE_RETURN_CHARACTER) {
+                previousWasCR = true;
+            } else {
+                signatureString.append((char) data);
+            }
         }
 
         // reaching this point, we ran out of data prematurely

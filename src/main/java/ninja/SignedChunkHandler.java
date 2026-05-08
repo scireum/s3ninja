@@ -64,7 +64,8 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     /**
      * Extracts all complete chunks from {@link #chunkBuffer} and returns a flag indicating whether the entire transfer
-     * is complete. The latter case is given when receiving a zero-length chunk.
+     * is complete. A zero-length chunk completes the data portion, but trailer-capable requests may still have trailing
+     * headers to consume before the transfer is finished.
      *
      * @return flag indicating whether the transfer is complete. If <b>false</b>, continue to invoke the method after
      * more data has been received.
@@ -78,7 +79,7 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
             int sizeOfChunk = transferNextChunk();
 
             if (sizeOfChunk == 0) {
-                // we have read the last chunk and completed the transfer hence
+                // The last data chunk has been read; trailer-capable requests can still send trailing headers.
                 if (expectsTrailingHeaders()) {
                     readingTrailingHeaders = true;
                     return tryToCompleteTrailingHeaders();
@@ -161,6 +162,12 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         return TRAILING_HEADER_MARKERS.contains(contentSHA256Header);
     }
 
+    /**
+     * Consumes trailing headers after the final zero-length chunk. These headers may be split across network reads, so
+     * an incomplete line keeps the handler in trailer mode until more data arrives.
+     *
+     * @return <tt>true</tt> if the blank trailer terminator has been consumed, <tt>false</tt> if more data is needed.
+     */
     private boolean tryToCompleteTrailingHeaders() {
         while (true) {
             chunkBuffer.markReaderIndex();
@@ -256,6 +263,12 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         return readRawLine(content).filter(Strings::isFilled);
     }
 
+    /**
+     * Reads a CRLF-terminated line from the buffer.
+     *
+     * @param content the buffer to read from.
+     * @return an optional containing the line without CRLF, or an empty optional if the line is incomplete.
+     */
     private Optional<String> readRawLine(ByteBuf content) {
         StringBuilder signatureString = new StringBuilder();
         boolean previousWasCR = false;

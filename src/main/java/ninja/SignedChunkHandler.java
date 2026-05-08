@@ -16,8 +16,6 @@ import sirius.web.http.WebContext;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -43,6 +41,8 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     private final WebContext webContext;
 
+    private boolean readingTrailingHeaders;
+
     SignedChunkHandler(@Nullable WebContext webContext) {
         this.webContext = webContext;
     }
@@ -64,18 +64,28 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
 
     /**
      * Extracts all complete chunks from {@link #chunkBuffer} and returns a flag indicating whether the entire transfer
-     * is complete. The latter case is given when receiving a zero-length chunk.
+     * is complete. A zero-length chunk completes the data portion, but trailer-capable requests may still have trailing
+     * headers to consume before the transfer is finished.
      *
      * @return flag indicating whether the transfer is complete. If <b>false</b>, continue to invoke the method after
      * more data has been received.
      */
     private boolean tryToCompleteTransfer() throws IOException {
+        if (readingTrailingHeaders) {
+            return tryToCompleteTrailingHeaders();
+        }
+
         while (true) {
             int sizeOfChunk = transferNextChunk();
 
             if (sizeOfChunk == 0) {
-                // we have read the last chunk and completed the transfer hence
-                readTrailingHeaders();
+                // The last data chunk has been read; trailer-capable requests can still send trailing headers.
+                if (expectsTrailingHeaders()) {
+                    readingTrailingHeaders = true;
+                    return tryToCompleteTrailingHeaders();
+                }
+
+                skipOptionalEmptyTrailingLine();
                 return true;
             } else if (sizeOfChunk < 0) {
                 // the last chunk could not be read entirely, we need more data
@@ -146,24 +156,38 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
         super.handle(Unpooled.EMPTY_BUFFER, true);
     }
 
-    private void readTrailingHeaders() {
+    private boolean expectsTrailingHeaders() {
         String contentSHA256Header =
                 Optional.ofNullable(webContext).map(context -> context.getHeader("x-amz-content-sha256")).orElse("");
-        if (TRAILING_HEADER_MARKERS.contains(contentSHA256Header)) {
-            List<String> trailingHeaders = new ArrayList<>();
-            while (true) {
-                Optional<String> header = readRawSignature(chunkBuffer);
-                if (header.isEmpty() || Strings.isEmpty(header.get())) {
-                    break;
-                }
-                trailingHeaders.add(header.get());
+        return TRAILING_HEADER_MARKERS.contains(contentSHA256Header);
+    }
 
-                // note that for now, we don't do anything with the trailing headers; we could check the signature here
+    /**
+     * Consumes trailing headers after the final zero-length chunk. These headers may be split across network reads, so
+     * an incomplete line keeps the handler in trailer mode until more data arrives.
+     *
+     * @return <tt>true</tt> if the blank trailer terminator has been consumed, <tt>false</tt> if more data is needed.
+     */
+    private boolean tryToCompleteTrailingHeaders() {
+        while (true) {
+            chunkBuffer.markReaderIndex();
+            Optional<String> header = readRawLine(chunkBuffer);
+            if (header.isEmpty()) {
+                chunkBuffer.resetReaderIndex();
+                return false;
             }
 
-            return;
-        }
+            if (Strings.isEmpty(header.get())) {
+                readingTrailingHeaders = false;
+                chunkBuffer.discardReadBytes();
+                return true;
+            }
 
+            // Note that for now, we don't do anything with the trailing headers; we could check the signature here.
+        }
+    }
+
+    private void skipOptionalEmptyTrailingLine() {
         if (chunkBuffer.readableBytes() >= 2) {
             byte supposedCR = chunkBuffer.getByte(0);
             byte supposedLF = chunkBuffer.getByte(1);
@@ -236,21 +260,35 @@ class SignedChunkHandler extends sirius.web.http.InputStreamHandler {
      * @return an optional containing the raw chunk signature string.
      */
     private Optional<String> readRawSignature(ByteBuf content) {
+        return readRawLine(content).filter(Strings::isFilled);
+    }
+
+    /**
+     * Reads a CRLF-terminated line from the buffer.
+     *
+     * @param content the buffer to read from.
+     * @return an optional containing the line without CRLF, or an empty optional if the line is incomplete.
+     */
+    private Optional<String> readRawLine(ByteBuf content) {
         StringBuilder signatureString = new StringBuilder();
         boolean previousWasCR = false;
         while (content.isReadable()) {
             byte data = content.readByte();
-            if (data == CARRIAGE_RETURN_CHARACTER) {
-                previousWasCR = true;
-            } else if (previousWasCR && data == LINE_FEED_CHARACTER) {
-                // extract the string, skipping the trailing <CR> character
-                return Optional.of(signatureString.substring(0, signatureString.length() - 1))
-                               .filter(Strings::isFilled);
-            } else {
+
+            if (previousWasCR) {
                 previousWasCR = false;
+                if (data == LINE_FEED_CHARACTER) {
+                    return Optional.of(signatureString.toString());
+                }
+
+                signatureString.append(CARRIAGE_RETURN_CHARACTER);
             }
 
-            signatureString.append((char) data);
+            if (data == CARRIAGE_RETURN_CHARACTER) {
+                previousWasCR = true;
+            } else {
+                signatureString.append((char) data);
+            }
         }
 
         // reaching this point, we ran out of data prematurely

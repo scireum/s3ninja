@@ -462,7 +462,7 @@ public class NinjaController extends BasicController {
      * @param webContext the context describing the current request
      */
     private void assertPostRequest(WebContext webContext) {
-        if (io.netty.handler.codec.http.HttpMethod.POST.equals(webContext.getRequest().method())) {
+        if (webContext.isPostRequest()) {
             return;
         }
 

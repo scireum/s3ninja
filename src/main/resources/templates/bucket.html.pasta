@@ -21,17 +21,29 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
                     <i:if test="bucket.isPrivate()">
-                        <a class="btn btn-success w-100"
-                           href="/ui/@bucket.getEncodedName()?make-public">
-                            <i class="fa-solid fa-lock-open"></i>
-                            <span class="ps-2">Make public</span>
-                        </a>
+                        <form method="post"
+                              action="/ui/@bucket.getEncodedName()?make-public">
+                            <input name="CSRFToken"
+                                   value="@part(CSRFHelper.class).getCSRFToken()"
+                                   type="hidden"/>
+                            <button class="btn btn-success w-100"
+                                    type="submit">
+                                <i class="fa-solid fa-lock-open"></i>
+                                <span class="ps-2">Make public</span>
+                            </button>
+                        </form>
                         <i:else>
-                            <a class="btn btn-danger w-100"
-                               href="/ui/@bucket.getEncodedName()?make-private">
-                                <i class="fa-solid fa-lock"></i>
-                                <span class="ps-2">Make private</span>
-                            </a>
+                            <form method="post"
+                                  action="/ui/@bucket.getEncodedName()?make-private">
+                                <input name="CSRFToken"
+                                       value="@part(CSRFHelper.class).getCSRFToken()"
+                                       type="hidden"/>
+                                <button class="btn btn-danger w-100"
+                                        type="submit">
+                                    <i class="fa-solid fa-lock"></i>
+                                    <span class="ps-2">Make private</span>
+                                </button>
+                            </form>
                         </i:else>
                     </i:if>
                 </div>

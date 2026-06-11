@@ -262,6 +262,7 @@
 
     <script type="text/javascript">
         const accessKey = '@accessKey';
+        const CSRF_TOKEN = '@escapeJS(part(CSRFHelper.class).getCSRFToken())';
         let currentFormData = null;
         let selectedFile = null;
         let generatedCode = {
@@ -327,7 +328,16 @@
 
         async function generateAndFillToken() {
             try {
-                    const response = await fetch('/.api/generate-session-token');
+                const params = new URLSearchParams();
+                params.append('CSRFToken', CSRF_TOKEN);
+
+                const response = await fetch('/.api/generate-session-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: params
+                });
                 const data = await response.json();
                 if (data.success) {
                     document.getElementById('sessionToken').value = data.token;
@@ -362,6 +372,7 @@
                     params.append('sessionToken', sessionToken);
                 }
                 params.append('accessKey', accessKey);
+                params.append('CSRFToken', CSRF_TOKEN);
 
                 const response = await fetch('/.api/generate-presigned-post', {
                     method: 'POST',

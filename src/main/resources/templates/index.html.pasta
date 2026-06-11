@@ -17,6 +17,7 @@
     </i:block>
 
     <script type="text/javascript">
+        const CSRF_TOKEN = '@escapeJS(part(CSRFHelper.class).getCSRFToken())';
 
         function resolveTextfield() {
             return document.querySelector('#create-bucket div input[name=bucketName]')
@@ -68,7 +69,18 @@
          */
         function submitForm() {
             checkBucketName().then(name => {
-                location.href = '/ui/' + encodeURIComponent(name) + '?create'
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '/ui/' + encodeURIComponent(name) + '?create';
+
+                const csrfToken = document.createElement('input');
+                csrfToken.type = 'hidden';
+                csrfToken.name = 'CSRFToken';
+                csrfToken.value = CSRF_TOKEN;
+                form.appendChild(csrfToken);
+
+                document.body.appendChild(form);
+                form.submit();
             }).catch(() => {
                 // ignore, error has already been indicated while typing
             });
@@ -132,7 +144,16 @@
                 let currentToken = null;
 
                 function generateSessionToken() {
-                    fetch('/.api/generate-session-token')
+                    const params = new URLSearchParams();
+                    params.append('CSRFToken', CSRF_TOKEN);
+
+                    fetch('/.api/generate-session-token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: params
+                    })
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
@@ -255,10 +276,12 @@
                                     <t:additionalActions label="Actions">
                                         <i:if test="bucket.isPrivate()">
                                             <t:dropdownItem url="@apply('/ui/%s?make-public&return=%%2Fui', bucket.getEncodedName())"
+                                                            sendPostRequest="true"
                                                             icon="fa-solid fa-lock-open"
                                                             label="Make public" />
                                             <i:else>
                                                 <t:dropdownItem url="@apply('/ui/%s?make-private&return=%%2Fui', bucket.getEncodedName())"
+                                                                sendPostRequest="true"
                                                                 icon="fa-solid fa-lock"
                                                                 label="Make private" />
                                             </i:else>

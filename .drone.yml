@@ -55,7 +55,7 @@ steps:
       - tag
 
   - name: publish
-    image: plugins/docker
+    image: owncloudci/drone-docker-buildx:4.0.0
     settings:
       repo: scireum/s3-ninja
       platforms:

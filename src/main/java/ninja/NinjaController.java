@@ -409,13 +409,11 @@ public class NinjaController extends BasicController {
     /**
      * Handles requests to <tt>/.api/generate-presigned-post</tt>.
      * <p>
-     * Genenrate a presigned post following AWS guideline.
-     * The presigned post output several fields that should match AWS accepted Policy.
-     * <p>
+     * Generates a presigned POST following the AWS guidelines. The response contains several fields that match an
+     * AWS-accepted policy:
      * <ul>
      *     <li>PolicyJson</li>
      *     <li>Policy</li>
-     *     <li>Signature</li>
      *     <li>Signature</li>
      * </ul>
      *

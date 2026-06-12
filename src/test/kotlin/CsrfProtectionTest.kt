@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
 import sirius.kernel.di.std.Part
 import sirius.web.http.TestRequest
+import java.io.ByteArrayInputStream
 import java.io.FileOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -110,6 +111,32 @@ class CsrfProtectionTest {
             )
         } finally {
             bucketHandle.delete()
+        }
+    }
+
+    @Test
+    fun `object upload accepts valid CSRF token and rejects missing token`() {
+        val bucket = "csrf-upload-test"
+        val key = "csrf-upload.txt"
+        val content = "hello csrf upload".toByteArray()
+        storage.getBucket(bucket).create()
+
+        try {
+            val rejected = TestRequest.POST("/ui/$bucket?upload")
+                .withParameter("filename", key)
+                .sendResource(ByteArrayInputStream(content))
+                .executeAndBlock()
+            assertEquals(HttpResponseStatus.FORBIDDEN, rejected.status)
+
+            val accepted = TestRequest.SAFEPOST("/ui/$bucket?upload")
+                .withParameter("filename", key)
+                .sendResource(ByteArrayInputStream(content))
+                .executeAndBlock()
+            assertEquals(HttpResponseStatus.OK, accepted.status)
+            assertTrue(accepted.contentAsJson["success"].asBoolean())
+            assertTrue(storage.getBucket(bucket).getObject(key).exists(), "uploaded object must be stored")
+        } finally {
+            storage.getBucket(bucket).delete()
         }
     }
 

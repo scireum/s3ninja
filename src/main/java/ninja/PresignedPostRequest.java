@@ -28,7 +28,7 @@ public record PresignedPostRequest(String bucket, String key, String region, int
         String bucket = context.require("bucket").asString();
         String key = context.require("key").asString();
         String region = context.require("region").asString();
-        int expiration = context.require("expirationHours").asInt(24);
+        int expiration = context.get("expirationHours").asInt(24);
         String sessionToken = context.get("sessionToken").asString();
         if (Strings.isEmpty(sessionToken)) {
             sessionToken = null;

@@ -110,7 +110,7 @@ A Kotlin/JUnit5 test suite already exists under `src/test/kotlin` (run via `Siri
 - `PresignedPostMultipartTest` performs a real `POST http://localhost:9999/<bucket>` (multipart) against `S3Dispatcher` and asserts `204`. This is exactly the dispatcher path that must stay CSRF-free, so it is valuable existing regression coverage — re-run it after the bump to confirm `S3Dispatcher` is unaffected by default validation.
 - `SessionTokenTest` calls `s3Dispatcher.generateSessionToken()` directly (not the HTTP route), so it is unaffected by the controller changes and should not be modified.
 
-Focused tests were added in `CsrfMigrationTest`:
+Focused tests were added in `CsrfProtectionTest`:
 
 - Missing `CSRFToken` on `POST /.api/generate-session-token` returns 403.
 - Valid CSRF POST to `/.api/generate-session-token` returns a token.
@@ -123,7 +123,7 @@ Focused tests were added in `CsrfMigrationTest`:
 Executed verification:
 
 - `mvn -q -DskipTests compile`
-- `mvn -q -Dtest=CsrfMigrationTest test`
+- `mvn -q -Dtest=CsrfProtectionTest test`
 
 Manual verification should cover:
 

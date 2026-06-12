@@ -7,10 +7,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Verifies the CSRF-by-default migration for the routed S3 Ninja UI controller.
+ * Verifies the CSRF-by-default protection for the routed S3 Ninja UI controller.
  */
 @ExtendWith(SiriusExtension::class)
-class CsrfMigrationTest {
+class CsrfProtectionTest {
 
     @Test
     fun `internal POST helpers reject missing CSRF token`() {

@@ -22,7 +22,9 @@ import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
 import sirius.kernel.nls.NLS;
 import sirius.web.controller.BasicController;
+import sirius.web.controller.Controller;
 import sirius.web.controller.DefaultRoute;
+import sirius.web.controller.HttpMethod;
 import sirius.web.controller.Message;
 import sirius.web.controller.Page;
 import sirius.web.controller.Routed;
@@ -179,6 +181,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?create
         if (webContext.hasParameter("create")) {
+            assertPostRequest(webContext);
+
             if (bucket.exists()) {
                 UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
                 webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
@@ -214,6 +218,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?make-public
         if (webContext.hasParameter("make-public")) {
+            assertPostRequest(webContext);
+
             if (!bucket.makePublic()) {
                 throw Exceptions.createHandled()
                                 .to(Storage.LOG)
@@ -228,6 +234,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?make-private
         if (webContext.hasParameter("make-private")) {
+            assertPostRequest(webContext);
+
             if (!bucket.makePrivate()) {
                 throw Exceptions.createHandled()
                                 .to(Storage.LOG)
@@ -242,6 +250,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?delete
         if (webContext.hasParameter("delete")) {
+            assertPostRequest(webContext);
+
             if (!bucket.delete()) {
                 throw Exceptions.createHandled()
                                 .to(Storage.LOG)
@@ -256,6 +266,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?upload
         if (webContext.hasParameter("upload")) {
+            assertPostRequest(webContext);
+
             uploadFile(webContext, bucket);
             return;
         }
@@ -346,6 +358,8 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]/[object]?delete
         if (webContext.hasParameter("delete")) {
+            assertPostRequest(webContext);
+
             object.delete();
 
             UserContext.message(Message.info().withTextMessage("Object successfully deleted."));
@@ -377,7 +391,7 @@ public class NinjaController extends BasicController {
      * @param output     the JSON output to write the response to
      */
     @InternalService
-    @Routed("/.api/generate-session-token")
+    @Routed(value = "/.api/generate-session-token", methods = HttpMethod.POST)
     public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
         String token = s3Dispatcher.generateSessionToken();
 
@@ -395,19 +409,17 @@ public class NinjaController extends BasicController {
     /**
      * Handles requests to <tt>/.api/generate-presigned-post</tt>.
      * <p>
-     * Genenrate a presigned post following AWS guideline.
-     * The presigned post output several fields that should match AWS accepted Policy.
-     * <p>
+     * Generates a presigned POST following the AWS guidelines. The response contains several fields that match an
+     * AWS-accepted policy:
      * <ul>
      *     <li>PolicyJson</li>
      *     <li>Policy</li>
-     *     <li>Signature</li>
      *     <li>Signature</li>
      * </ul>
      *
      * @param webContext the context describing the current request
      */
-    @Routed("/.api/generate-presigned-post")
+    @Routed(value = "/.api/generate-presigned-post", methods = HttpMethod.POST)
     public void generatePresignedPost(WebContext webContext) {
         try {
             PresignedPostRequest request = PresignedPostRequest.from(webContext);
@@ -438,5 +450,24 @@ public class NinjaController extends BasicController {
                       .property("message", handled.getMessage())
                       .endResult();
         }
+    }
+
+    /**
+     * Ensures that mutation branches in mixed GET/POST routes are only processed for POST requests.
+     * <p>
+     * CSRF validation itself is handled by the framework dispatcher before this controller is invoked.
+     *
+     * @param webContext the context describing the current request
+     */
+    private void assertPostRequest(WebContext webContext) {
+        if (webContext.isPostRequest()) {
+            return;
+        }
+
+        throw Exceptions.createHandled()
+                        .withDirectMessage("HTTP method not allowed, expecting " + HttpMethod.POST.name())
+                        .hint(Controller.HTTP_STATUS, HttpResponseStatus.METHOD_NOT_ALLOWED.code())
+                        .hint(Controller.HTTP_HEADER_ALLOW, HttpMethod.POST.name())
+                        .handle();
     }
 }

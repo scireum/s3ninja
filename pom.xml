@@ -21,7 +21,7 @@
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
 
         <sirius.kernel>52.0.1</sirius.kernel>
-        <sirius.web>103.0.2</sirius.web>
+        <sirius.web>104.1.0</sirius.web>
 
         <!-- Force build to complete with warnings, e.g.: while using deprecated code -->
         <maven.compiler.warnings></maven.compiler.warnings>

@@ -98,8 +98,8 @@ These are API protocol endpoints called by AWS SDKs, CLI tools, curl, and the pr
 
 ## Dependency and Compile Result
 
-1. `sirius.web` was bumped from `103.0.2` to `104.1.0`.
-2. The bump also raised `sirius.kernel` to `52.0.1` and `sirius-parent` to `15.2.0`; `mvn -q -DskipTests compile` then succeeds.
+1. `sirius.web` was bumped from `103.0.2` to `104.1.0`. This is the only dependency change in this PR.
+2. No `sirius.kernel` or `sirius-parent` bump was needed: `develop` already provides `sirius.kernel` `52.0.1` and `sirius-parent` `15.2.0`, both compatible with `sirius-web` `104.1.0`. `mvn -q -DskipTests compile` succeeds.
 3. The only framework API adjustment required in application code was using `sirius.web.controller.HttpMethod` for `@Routed(methods = ...)`.
 4. `PresignedPostRequest#from` was adjusted to treat `sessionToken` as optional, matching the UI and allowing the no-session-token presigned POST flow.
 

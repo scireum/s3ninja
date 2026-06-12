@@ -69,18 +69,18 @@
          */
         function submitForm() {
             checkBucketName().then(name => {
-                const form = document.createElement('form');
-                form.method = 'post';
-                form.action = '/ui/' + encodeURIComponent(name) + '?create';
+                const _form = document.createElement('form');
+                _form.method = 'post';
+                _form.action = '/ui/' + encodeURIComponent(name) + '?create';
 
-                const csrfToken = document.createElement('input');
-                csrfToken.type = 'hidden';
-                csrfToken.name = 'CSRFToken';
-                csrfToken.value = CSRF_TOKEN;
-                form.appendChild(csrfToken);
+                const _csrfToken = document.createElement('input');
+                _csrfToken.type = 'hidden';
+                _csrfToken.name = 'CSRFToken';
+                _csrfToken.value = CSRF_TOKEN;
+                _form.appendChild(_csrfToken);
 
-                document.body.appendChild(form);
-                form.submit();
+                document.body.appendChild(_form);
+                _form.submit();
             }).catch(() => {
                 // ignore, error has already been indicated while typing
             });

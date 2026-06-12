@@ -1,8 +1,11 @@
 import io.netty.handler.codec.http.HttpResponseStatus
+import ninja.Storage
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
+import sirius.kernel.di.std.Part
 import sirius.web.http.TestRequest
+import java.io.FileOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -11,6 +14,9 @@ import kotlin.test.assertTrue
  */
 @ExtendWith(SiriusExtension::class)
 class CsrfProtectionTest {
+
+    @Part
+    private var storage: Storage = Storage()
 
     @Test
     fun `internal POST helpers reject missing CSRF token`() {
@@ -58,6 +64,53 @@ class CsrfProtectionTest {
             HttpResponseStatus.METHOD_NOT_ALLOWED,
             TestRequest.GET("/ui/csrf-migration-test?create").executeAndBlock().status
         )
+    }
+
+    @Test
+    fun `bucket mutation branches reject GET`() {
+        val bucket = "csrf-bucket-mutation-test"
+        storage.getBucket(bucket).create()
+        try {
+            listOf("make-public", "make-private", "upload").forEach { action ->
+                assertEquals(
+                    HttpResponseStatus.METHOD_NOT_ALLOWED,
+                    TestRequest.GET("/ui/$bucket?$action").executeAndBlock().status,
+                    "GET /ui/$bucket?$action must be rejected"
+                )
+            }
+        } finally {
+            storage.getBucket(bucket).delete()
+        }
+    }
+
+    @Test
+    fun `bucket mutation POST without CSRF token is rejected`() {
+        assertEquals(
+            HttpResponseStatus.FORBIDDEN,
+            TestRequest.POST("/ui/csrf-no-token-test?make-public").executeAndBlock().status
+        )
+    }
+
+    @Test
+    fun `object delete branch rejects GET and missing CSRF token`() {
+        val bucket = "csrf-object-mutation-test"
+        val bucketHandle = storage.getBucket(bucket)
+        bucketHandle.create()
+        val obj = bucketHandle.getObject("csrf-object.txt")
+        FileOutputStream(obj.file).use { it.write("payload".toByteArray()) }
+
+        try {
+            assertEquals(
+                HttpResponseStatus.METHOD_NOT_ALLOWED,
+                TestRequest.GET("/ui/$bucket/${obj.encodedKey}?delete").executeAndBlock().status
+            )
+            assertEquals(
+                HttpResponseStatus.FORBIDDEN,
+                TestRequest.POST("/ui/$bucket/${obj.encodedKey}?delete").executeAndBlock().status
+            )
+        } finally {
+            bucketHandle.delete()
+        }
     }
 
     @Test

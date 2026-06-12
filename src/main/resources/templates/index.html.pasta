@@ -80,7 +80,7 @@
                 _form.appendChild(_csrfToken);
 
                 document.body.appendChild(_form);
-                _form.submit();
+                sirius.requestSubmitForm(_form);
             }).catch(() => {
                 // ignore, error has already been indicated while typing
             });

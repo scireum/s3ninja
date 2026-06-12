@@ -4,7 +4,7 @@ This document applies the generic CSRF default-validation migration guide to S3 
 
 ## Scope
 
-S3 Ninja used `sirius-web` `102.0.0`. The framework change starts with `sirius-web` `104.0.0`; the migration updates the project to `sirius-web` `104.1.0`.
+S3 Ninja used `sirius-web` `103.0.2`. The framework change starts with `sirius-web` `104.0.0`; the migration updates the project to `sirius-web` `104.1.0`.
 
 The routed web UI is implemented in `ninja.NinjaController`. The S3 protocol endpoints are implemented by `ninja.S3Dispatcher` as a custom `WebDispatcher`, not by `@Routed` controller methods. They must keep their AWS signature, session token, and presigned policy authentication model and must not be converted to browser-session CSRF validation.
 
@@ -48,7 +48,7 @@ Current source does not use the removed CSRF APIs:
 - No `SaveHelper#disableSafePOST()`.
 - No existing `skipCsrfValidation` or `isSkipCsrfValidation()` overrides.
 
-Route annotations now use `sirius.web.controller.HttpMethod`; request method checks still compare against Netty's request method enum.
+Route annotations now use `sirius.web.controller.HttpMethod`; the mutation-branch guard uses `WebContext#isPostRequest()`.
 
 ## Controller Implementation
 
@@ -98,8 +98,8 @@ These are API protocol endpoints called by AWS SDKs, CLI tools, curl, and the pr
 
 ## Dependency and Compile Result
 
-1. `sirius.web` was bumped from `102.0.0` to `104.1.0`.
-2. `mvn -q -DskipTests compile` succeeds with the existing `sirius.kernel` `51.0.0` and `sirius-parent` `14.3.3`.
+1. `sirius.web` was bumped from `103.0.2` to `104.1.0`.
+2. The bump also raised `sirius.kernel` to `52.0.1` and `sirius-parent` to `15.2.0`; `mvn -q -DskipTests compile` then succeeds.
 3. The only framework API adjustment required in application code was using `sirius.web.controller.HttpMethod` for `@Routed(methods = ...)`.
 4. `PresignedPostRequest#from` was adjusted to treat `sessionToken` as optional, matching the UI and allowing the no-session-token presigned POST flow.
 

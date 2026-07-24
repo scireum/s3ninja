@@ -8,15 +8,15 @@
 
 package ninja;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ArrayNode;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sirius.kernel.commons.Value;
 import sirius.web.http.WebContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -316,10 +316,10 @@ public class S3Policy {
         return switch (field) {
             case "bucket" -> bucket.getName();
             case "key" -> key;
-            case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString("");
+            case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
             case "Content-Type" -> webContext.getHeader("Content-Type");
-            case "success_action_redirect" -> webContext.get("success_action_redirect").asString("");
-            case "success_action_status" -> webContext.get("success_action_status").asString("");
+            case "success_action_redirect" -> webContext.get("success_action_redirect").asString();
+            case "success_action_status" -> webContext.get("success_action_status").asString();
             default -> webContext.get(field).asString("");
         };
     }

@@ -1,10 +1,9 @@
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.common.io.BaseEncoding
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ObjectNode
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -136,7 +135,7 @@ class PresignedPostGeneratorTest {
             conditions.add(objectMapper.createObjectNode().put("x-amz-security-token", sessionToken))
         }
 
-        policy.set<ArrayNode>("conditions", conditions)
+        policy.set("conditions", conditions)
         return policy
     }
 
@@ -200,4 +199,3 @@ class PresignedPostGeneratorTest {
         return mac.doFinal(value)
     }
 }
-

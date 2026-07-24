@@ -8,9 +8,9 @@
 
 package ninja;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
@@ -136,7 +136,7 @@ public class S3Policy {
         try {
             String jsonPolicy = new String(Base64.getDecoder().decode(base64Policy), StandardCharsets.UTF_8);
             this.policyData = MAPPER.readTree(jsonPolicy);
-            this.expiration = Instant.parse(policyData.get("expiration").asText());
+            this.expiration = Instant.parse(policyData.get("expiration").asString(""));
             this.conditions = parseConditions(policyData.get("conditions"));
         } catch (Exception e) {
             throw new IllegalArgumentException("Invalid policy document", e);
@@ -174,18 +174,18 @@ public class S3Policy {
             arrayNode.forEach(condition -> {
                 if (condition.isArray()) {
                     Map<String, Object> conditionMap = new HashMap<>();
-                    conditionMap.put("operator", condition.get(0).asText());
-                    String field = condition.get(1).asText();
+                    conditionMap.put("operator", condition.get(0).asString(""));
+                    String field = condition.get(1).asString("");
                     if (field.startsWith("$") && field.length() > 1) {
                         field = field.substring(1); // Remove '$' prefix
                     }
                     conditionMap.put("field", field);
-                    conditionMap.put("value", condition.get(2).asText());
+                    conditionMap.put("value", condition.get(2).asString(""));
                     result.add(conditionMap);
                 } else if (condition.isObject()) {
                     Map<String, Object> conditionMap = new HashMap<>();
                     condition.properties()
-                             .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asText()));
+                             .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
                     result.add(conditionMap);
                 }
             });
@@ -316,11 +316,11 @@ public class S3Policy {
         return switch (field) {
             case "bucket" -> bucket.getName();
             case "key" -> key;
-            case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
+            case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString("");
             case "Content-Type" -> webContext.getHeader("Content-Type");
-            case "success_action_redirect" -> webContext.get("success_action_redirect").asString();
-            case "success_action_status" -> webContext.get("success_action_status").asString();
-            default -> webContext.get(field).asString();
+            case "success_action_redirect" -> webContext.get("success_action_redirect").asString("");
+            case "success_action_status" -> webContext.get("success_action_status").asString("");
+            default -> webContext.get(field).asString("");
         };
     }
 

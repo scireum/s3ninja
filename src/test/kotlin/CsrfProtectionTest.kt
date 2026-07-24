@@ -40,7 +40,7 @@ class CsrfProtectionTest {
         val sessionTokenResult = TestRequest.SAFEPOST("/.api/generate-session-token").executeAndBlock()
         assertEquals(HttpResponseStatus.OK, sessionTokenResult.status)
         assertTrue(sessionTokenResult.contentAsJson["success"].asBoolean())
-        assertTrue(sessionTokenResult.contentAsJson["token"].asText().isNotBlank())
+        assertTrue(sessionTokenResult.contentAsJson["token"].asString("").isNotBlank())
 
         val presignedPostResult = TestRequest.SAFEPOST("/.api/generate-presigned-post")
             .withParameter("bucket", "csrf-test")

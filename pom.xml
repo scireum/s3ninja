@@ -20,8 +20,8 @@
     <properties>
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
 
-        <sirius.kernel>53.0.2</sirius.kernel>
-        <sirius.web>107.0.3</sirius.web>
+        <sirius.kernel>53.1.0</sirius.kernel>
+        <sirius.web>107.0.5</sirius.web>
 
         <!-- Force build to complete with warnings, e.g.: while using deprecated code -->
         <maven.compiler.warnings></maven.compiler.warnings>

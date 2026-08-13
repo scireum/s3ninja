@@ -21,7 +21,7 @@ clone:
 
 steps:
   - name: compile
-    image: scireum/sirius-build-jdk24:latest
+    image: scireum/sirius-build-jdk26:latest
     commands:
       - mvn clean compile
     volumes: *scireum_m2_volumes
@@ -30,7 +30,7 @@ steps:
       - push
 
   - name: test
-    image: scireum/sirius-build-jdk24:latest
+    image: scireum/sirius-build-jdk26:latest
     commands:
       - mvn clean test
     volumes: *scireum_m2_volumes
@@ -39,7 +39,7 @@ steps:
       - pull_request
 
   - name: sonar
-    image: scireum/sirius-build-jdk24:latest
+    image: scireum/sirius-build-jdk26:latest
     commands:
       - "sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml"
       - "mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test sonar:sonar -Dsonar.projectKey=${DRONE_REPO_NAME}"
@@ -49,7 +49,7 @@ steps:
       - tag
 
   - name: package
-    image: scireum/sirius-build-jdk24:latest
+    image: scireum/sirius-build-jdk26:latest
     commands:
       - "sed -i 's/DEVELOPMENT-SNAPSHOT/${DRONE_TAG}/g' pom.xml"
       - mvn clean package -DskipTests
@@ -79,7 +79,7 @@ steps:
         - tag
 
   - name: site
-    image: scireum/sirius-build-jdk24:latest
+    image: scireum/sirius-build-jdk26:latest
     commands:
       - "echo \"$SSH_KEY\" > /tmp/sshkey"
       - chmod 600 /tmp/sshkey

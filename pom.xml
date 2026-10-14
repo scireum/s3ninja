@@ -20,7 +20,7 @@
     <properties>
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>
 
-        <sirius.kernel>54.3.0</sirius.kernel>
+        <sirius.kernel>54.4.0</sirius.kernel>
         <sirius.web>111.0.0</sirius.web>
 
         <!-- Force build to complete with warnings, e.g.: while using deprecated code -->

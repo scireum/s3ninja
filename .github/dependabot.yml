@@ -5,14 +5,13 @@
 version: 2
 
 # private Maven repositories (no credentials required for download)
-# URLs are stored as Dependabot secrets (Settings -> Secrets and variables -> Dependabot)
 registries:
   scireum-mvn:
     type: maven-repository
-    url: ${{secrets.SCIREUM_MVN_URL}}
+    url: https://mvn.scireum.com
   scireum-mvn-closed:
     type: maven-repository
-    url: ${{secrets.SCIREUM_MVN_CLOSED_URL}}
+    url: https://mvn-closed.scireum.com
 
 updates:
 - package-ecosystem: maven

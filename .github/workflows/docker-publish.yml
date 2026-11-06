@@ -43,3 +43,10 @@ jobs:
         run: >
           docker buildx build --push --platform linux/amd64,linux/arm64
           -t "scireum/s3-ninja:$GITHUB_REF_NAME" -t scireum/s3-ninja:latest .
+
+      - name: Notify scireum-dev MIO about new version
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{
+            "channel": "scireum-dev",
+            "text": "A new version is available: **${{ github.event.repository.name }}**: [${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+          }' ${{ secrets.MEMOIO_SCIREUM_DEV }}

@@ -1,0 +1,24 @@
+name: Execute Tests on Pull Request
+on:
+  pull_request:
+
+# Cancel superseded runs when new commits are pushed to the PR
+concurrency:
+  group: pr-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: self-hosted
+    # Free the runner should the tests hang
+    timeout-minutes: 30
+    container:
+      image: scireum/sirius-build-jdk26
+      volumes:
+        - /root/.m2:/root/.m2
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7.0.1
+
+      - name: Test project
+        run: mvn clean test

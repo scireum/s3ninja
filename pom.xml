@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
     <name>s3-ninja</name>
     <description>S3 ninja emulates the S3 API for development and testing purposes.</description>
-    <url>https://s3ninja.net</url>
+    <url>https://github.com/scireum/s3ninja</url>
 
     <properties>
         <build.tag>DEVELOPMENT-SNAPSHOT</build.tag>

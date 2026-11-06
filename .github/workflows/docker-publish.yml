@@ -43,20 +43,3 @@ jobs:
         run: >
           docker buildx build --push --platform linux/amd64,linux/arm64
           -t "scireum/s3-ninja:$GITHUB_REF_NAME" -t scireum/s3-ninja:latest .
-
-  site:
-    runs-on: self-hosted
-    timeout-minutes: 10
-    container:
-      image: scireum/sirius-build-jdk26
-    steps:
-      - name: Checkout project
-        uses: actions/checkout@v7.0.1
-
-      - name: Upload site to s3ninja.net
-        env:
-          SSH_KEY: ${{ secrets.KAS_SERVER_SSH_KEY }}
-        run: |
-          echo "$SSH_KEY" > /tmp/sshkey
-          chmod 600 /tmp/sshkey
-          rsync -e 'ssh -i /tmp/sshkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no' -r --delete src/site/ ssh-w0158395@w0158395.kasserver.com:/www/htdocs/w0158395/s3ninja.net/

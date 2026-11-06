@@ -3,9 +3,24 @@ S3 ninja
 
 S3 ninja emulates the Amazon S3 API for development and test purposes.
 
-![Screenshot](src/site/assets/images/screenie_min.png)
+![Screenshot](docs/screenshot.png)
 
-See https://s3ninja.net for more details.
+## Usage
+
+A readily packaged Docker image is available on Docker Hub: [scireum/s3-ninja](https://hub.docker.com/r/scireum/s3-ninja/)
+(`linux/amd64` and `linux/arm64`).
+
+1. Run it like `docker run -p 9444:9000 scireum/s3-ninja:latest`.
+2. Navigate to http://localhost:9444/ui to manage buckets and to look up the access key and secret key.
+3. Run S3 API calls against http://localhost:9444/ (e.g. http://localhost:9444/test-bucket/test-object). If your
+   application generates URLs like http://test-bucket.localhost:9444/test-object, you will need to configure your S3
+   client to use path-style endpoints.
+
+Provide a volume for `/home/sirius/data` to persist data across restarts. S3 ninja runs as user id 2000 inside the
+container, so change the owner (user and group id) of an existing directory you link into the container to 2000.
+
+For private buckets, the `Authorization` header of a request is verified using the credentials shown in the UI. ACLs
+are ignored, except for `x-amz-acl: public-read-write` when creating a bucket, which makes it public.
 
 ## Development with Docker
 
@@ -26,7 +41,7 @@ To run S3 Ninja using Docker Compose for development:
   ```
 - Run the container:
   ```
-  docker run --rm -p 9444:9000 -v %cd%/data:/data s3ninja:local
+  docker run --rm -p 9444:9000 -v "$PWD/data:/home/sirius/data" s3ninja:local
   ```
   - Access the UI at: http://localhost:9444/ui
   - S3 API endpoint: http://localhost:9444/

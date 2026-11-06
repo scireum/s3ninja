@@ -1,0 +1,32 @@
+name: SonarQube Analysis
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  sonarqube:
+    runs-on: self-hosted
+    # Free the runner should the tests hang
+    timeout-minutes: 30
+    container:
+      image: scireum/sirius-build-jdk26
+      volumes:
+        - /root/.m2:/root/.m2
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7.0.1
+        with:
+          # SonarQube needs the full history for blame information
+          fetch-depth: 0
+
+      - name: Replace version in pom.xml
+        run: sed -i "s/DEVELOPMENT-SNAPSHOT/$VERSION/g" pom.xml
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'sonar-test' }}
+
+      - name: Analyze project with SonarQube
+        run: |
+          mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test org.jacoco:jacoco-maven-plugin:report sonar:sonar \
+            -Dsonar.projectKey=${{ github.event.repository.name }} -Dsonar.token=${{ secrets.SONAR_TOKEN }} -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}

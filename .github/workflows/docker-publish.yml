@@ -1,0 +1,52 @@
+name: Publish Docker Image
+on:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  publish:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    container:
+      image: scireum/sirius-build-jdk26
+      volumes:
+        - /root/.m2:/root/.m2
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7.0.1
+
+      - name: Replace version in pom.xml
+        run: sed -i "s/DEVELOPMENT-SNAPSHOT/$GITHUB_REF_NAME/g" pom.xml
+
+      - name: Package project
+        # pom.xml still reads the build number and commit from the variables Drone provided
+        env:
+          DRONE_BUILD_NUMBER: ${{ github.run_number }}
+          DRONE_COMMIT: ${{ github.sha }}
+        run: mvn clean package -DskipTests
+
+      # The image only copies the packaged application onto the runtime, so emulating arm64 is cheap here
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PUSH_TOKEN }}
+
+      - name: Build and push multi-arch Docker image
+        run: >
+          docker buildx build --push --platform linux/amd64,linux/arm64
+          -t "scireum/s3-ninja:$GITHUB_REF_NAME" -t scireum/s3-ninja:latest .
+
+      - name: Notify scireum-dev MIO about new version
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{
+            "channel": "scireum-dev",
+            "text": "A new version is available: **${{ github.event.repository.name }}**: [${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+          }' ${{ secrets.MEMOIO_SCIREUM_DEV }}

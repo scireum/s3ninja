@@ -1,0 +1,20 @@
+name: Compile on push
+on:
+  push:
+    # Tags are built by their own workflows
+    branches:
+      - '**'
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    container:
+      image: scireum/sirius-build-jdk26
+      volumes:
+        - /root/.m2:/root/.m2
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7.0.1
+
+      - name: Compile project
+        run: mvn clean compile

@@ -1,0 +1,37 @@
+name: Automatic Release on SemVer Tag on Main Branch
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check if tag is on main
+        id: tag
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_REF_NAME" -q .status)
+          echo "Compare status of main...$GITHUB_REF_NAME: $status"
+          if [ "$status" = "identical" ] || [ "$status" = "behind" ]; then
+            echo "on-main=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check if release already exists
+        id: release
+        if: steps.tag.outputs.on-main == 'true'
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        if: steps.tag.outputs.on-main == 'true' && steps.release.outputs.exists != 'true'
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes

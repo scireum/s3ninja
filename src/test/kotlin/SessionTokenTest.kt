@@ -1,4 +1,4 @@
-import ninja.S3Dispatcher
+import ninja.RequestAuthenticator
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
@@ -8,17 +8,17 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Tests for session token generation and validation in S3Dispatcher.
+ * Tests for session token generation and validation in RequestAuthenticator.
  */
 @ExtendWith(SiriusExtension::class)
 class SessionTokenTest {
 
     @Part
-    var s3Dispatcher: S3Dispatcher = S3Dispatcher()
+    var authenticator: RequestAuthenticator = RequestAuthenticator()
 
     @Test
     fun `generateSessionToken returns a valid token`() {
-        val token = s3Dispatcher.generateSessionToken()
+        val token = authenticator.generateSessionToken()
 
         assertNotNull(token)
         assertTrue(token.isNotEmpty())
@@ -27,42 +27,42 @@ class SessionTokenTest {
 
     @Test
     fun `generated token is valid`() {
-        val token = s3Dispatcher.generateSessionToken()
+        val token = authenticator.generateSessionToken()
 
-        assertTrue(s3Dispatcher.validateSessionToken(token))
+        assertTrue(authenticator.validateSessionToken(token))
     }
 
     @Test
     fun `validateSessionToken rejects empty token`() {
-        assertFalse(s3Dispatcher.validateSessionToken(""))
+        assertFalse(authenticator.validateSessionToken(""))
     }
 
     @Test
     fun `validateSessionToken rejects null token`() {
-        assertFalse(s3Dispatcher.validateSessionToken(null))
+        assertFalse(authenticator.validateSessionToken(null))
     }
 
     @Test
     fun `validateSessionToken rejects invalid token`() {
-        assertFalse(s3Dispatcher.validateSessionToken("invalid-token-12345"))
+        assertFalse(authenticator.validateSessionToken("invalid-token-12345"))
     }
 
     @Test
     fun `session token can be validated multiple times`() {
-        val token = s3Dispatcher.generateSessionToken()
+        val token = authenticator.generateSessionToken()
 
-        assertTrue(s3Dispatcher.validateSessionToken(token))
-        assertTrue(s3Dispatcher.validateSessionToken(token))
-        assertTrue(s3Dispatcher.validateSessionToken(token))
+        assertTrue(authenticator.validateSessionToken(token))
+        assertTrue(authenticator.validateSessionToken(token))
+        assertTrue(authenticator.validateSessionToken(token))
     }
 
     @Test
     fun `multiple tokens can be generated and validated independently`() {
-        val token1 = s3Dispatcher.generateSessionToken()
-        val token2 = s3Dispatcher.generateSessionToken()
+        val token1 = authenticator.generateSessionToken()
+        val token2 = authenticator.generateSessionToken()
 
-        assertTrue(s3Dispatcher.validateSessionToken(token1))
-        assertTrue(s3Dispatcher.validateSessionToken(token2))
+        assertTrue(authenticator.validateSessionToken(token1))
+        assertTrue(authenticator.validateSessionToken(token2))
         assertTrue(token1 != token2, "Each token should be unique")
     }
 }

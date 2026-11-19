@@ -16,12 +16,14 @@ import sirius.kernel.di.std.ConfigValue;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
+import sirius.kernel.timer.EveryHour;
 
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,8 +40,8 @@ import java.util.regex.Pattern;
  * The uploads are kept as folders within <tt>storage.multipartDir</tt>, see {@link MultipartUpload}. This service
  * holds no state of its own, so that open uploads survive a restart as long as that directory does.
  */
-@Register(classes = {MultipartUploads.class, Startable.class})
-public class MultipartUploads implements Startable {
+@Register(classes = {MultipartUploads.class, Startable.class, EveryHour.class})
+public class MultipartUploads implements Startable, EveryHour {
 
     /**
      * Ends the names of the files into which objects are assembled within the folder of their bucket.
@@ -79,6 +81,9 @@ public class MultipartUploads implements Startable {
     @ConfigValue("storage.multipartMinPartSize")
     private long minPartSize;
 
+    @ConfigValue("storage.multipartAbortAfter")
+    private Duration abortAfter;
+
     @Part
     private Storage storage;
 
@@ -102,6 +107,24 @@ public class MultipartUploads implements Startable {
     @Override
     public void started() {
         removeLeftovers(Instant.ofEpochMilli(ManagementFactory.getRuntimeMXBean().getStartTime()));
+        abortUploadsOfMissingBuckets();
+    }
+
+    /**
+     * Aborts the uploads of which the bucket no longer exists.
+     * <p>
+     * Deleting a bucket aborts its uploads, but an upload which is initiated at that very moment, or a system which is
+     * stopped in between, can leave one behind. It would show up again once a bucket with the same name is created.
+     */
+    void abortUploadsOfMissingBuckets() {
+        try {
+            listAll().stream()
+                     .filter(upload -> !Bucket.isValidName(upload.getBucket()) || !storage.getBucket(upload.getBucket())
+                                                                                          .exists())
+                     .forEach(this::abort);
+        } catch (Exception exception) {
+            Exceptions.handle(Storage.LOG, exception);
+        }
     }
 
     /**
@@ -227,18 +250,10 @@ public class MultipartUploads implements Startable {
      * @return the uploads, sorted by key and then by upload ID, which is the order of their initiation
      */
     public List<MultipartUpload> list(String bucket) {
-        List<MultipartUpload> uploads = new ArrayList<>();
-        File[] folders = new File(multipartDir).listFiles(folder -> folder.isDirectory()
-                                                                    && VALID_UPLOAD_ID.matcher(folder.getName())
-                                                                                      .matches());
-        if (folders != null) {
-            for (File folder : folders) {
-                MultipartUpload.load(folder)
-                               .filter(upload -> Strings.areEqual(upload.getBucket(), bucket))
-                               .ifPresent(uploads::add);
-            }
-        }
-
+        List<MultipartUpload> uploads = new ArrayList<>(listAll().stream()
+                                                                 .filter(upload -> Strings.areEqual(upload.getBucket(),
+                                                                                                    bucket))
+                                                                 .toList());
         uploads.sort(Comparator.comparing(MultipartUpload::getKey, MultipartUploads::compareKeys)
                                .thenComparing(MultipartUpload::getUploadId));
         return uploads;
@@ -258,6 +273,19 @@ public class MultipartUploads implements Startable {
         return Arrays.compareUnsigned(key1.getBytes(StandardCharsets.UTF_8), key2.getBytes(StandardCharsets.UTF_8));
     }
 
+    private List<MultipartUpload> listAll() {
+        List<MultipartUpload> uploads = new ArrayList<>();
+        File[] folders = new File(multipartDir).listFiles(folder -> folder.isDirectory()
+                                                                    && VALID_UPLOAD_ID.matcher(folder.getName())
+                                                                                      .matches());
+        if (folders != null) {
+            for (File folder : folders) {
+                MultipartUpload.load(folder).ifPresent(uploads::add);
+            }
+        }
+        return uploads;
+    }
+
     /**
      * Aborts all open uploads of the given bucket.
      * <p>
@@ -267,16 +295,49 @@ public class MultipartUploads implements Startable {
      * @param bucket the name of the bucket to abort the uploads of
      */
     public void abortAll(String bucket) {
-        for (MultipartUpload upload : list(bucket)) {
-            Lock lock = lockFor(upload.getUploadId());
-            lock.lock();
-            try {
+        list(bucket).forEach(this::abort);
+    }
+
+    /**
+     * Aborts the uploads which have been open for longer than <tt>storage.multipartAbortAfter</tt>.
+     * <p>
+     * S3 keeps an upload until it is completed or aborted, and so does this system by default. An upload which a
+     * client abandoned therefore occupies disk space for good. On a system which runs for a long time, the setting
+     * permits to get rid of these, like a lifecycle rule with <tt>AbortIncompleteMultipartUpload</tt> does for S3.
+     */
+    @Override
+    public void runTimer() {
+        abortUploadsOfMissingBuckets();
+        if (abortAfter != null && !abortAfter.isZero() && !abortAfter.isNegative()) {
+            abortUploadsInitiatedBefore(Instant.now().minus(abortAfter));
+        }
+    }
+
+    /**
+     * Aborts all uploads, of all buckets, which have been initiated before the given point in time.
+     * <p>
+     * As for S3, the time of initiation counts, not the time of the last part.
+     *
+     * @param initiatedBefore the point in time before which an upload must have been initiated to be aborted
+     */
+    void abortUploadsInitiatedBefore(Instant initiatedBefore) {
+        listAll().stream().filter(upload -> upload.getInitiated().isBefore(initiatedBefore)).forEach(this::abort);
+    }
+
+    /**
+     * Removes the given upload, unless it has been completed or aborted while waiting for its lock.
+     */
+    private void abort(MultipartUpload upload) {
+        Lock lock = lockFor(upload.getUploadId());
+        lock.lock();
+        try {
+            if (find(upload.getBucket(), upload.getKey(), upload.getUploadId()).isPresent()) {
                 upload.delete();
-            } catch (IOException exception) {
-                Exceptions.handle(Storage.LOG, exception);
-            } finally {
-                lock.unlock();
             }
+        } catch (IOException exception) {
+            Exceptions.handle(Storage.LOG, exception);
+        } finally {
+            lock.unlock();
         }
     }
 

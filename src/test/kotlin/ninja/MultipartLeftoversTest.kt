@@ -22,7 +22,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Verifies that leftovers of unfinished requests are removed without touching what a running request may still need.
+ * Verifies that leftovers of unfinished requests and uploads which were abandoned are removed without touching what a
+ * running request may still need.
  */
 @ExtendWith(SiriusExtension::class)
 class MultipartLeftoversTest {
@@ -66,6 +67,36 @@ class MultipartLeftoversTest {
         initiationInProgress.delete()
         foreignFolder.delete()
         bucket.delete()
+    }
+
+    @Test
+    fun `Uploads are aborted once they have been open for too long`() {
+        val uploads = Injector.context().getPart(MultipartUploads::class.java)!!
+        val upload = uploads.create(BUCKET, "key", emptyMap())
+        upload.publishPart(upload.stagePart(1, "Test".byteInputStream()))
+
+        uploads.abortUploadsInitiatedBefore(upload.initiated.minusSeconds(1))
+        assertTrue(uploads.find(BUCKET, "key", upload.uploadId).isPresent)
+
+        uploads.abortUploadsInitiatedBefore(upload.initiated.plusSeconds(1))
+        assertFalse(uploads.find(BUCKET, "key", upload.uploadId).isPresent)
+        assertFalse(File(Sirius.getSettings().getString("storage.multipartDir"), upload.uploadId).exists())
+
+        uploads.runTimer()
+    }
+
+    @Test
+    fun `Uploads are aborted once their bucket is gone`() {
+        val uploads = Injector.context().getPart(MultipartUploads::class.java)!!
+        val bucket = Injector.context().getPart(Storage::class.java)!!.getBucket(BUCKET).also { it.create() }
+        val upload = uploads.create(BUCKET, "key", emptyMap())
+
+        uploads.abortUploadsOfMissingBuckets()
+        assertTrue(uploads.find(BUCKET, "key", upload.uploadId).isPresent)
+
+        bucket.delete()
+        uploads.abortUploadsOfMissingBuckets()
+        assertFalse(uploads.find(BUCKET, "key", upload.uploadId).isPresent)
     }
 
     private fun createFile(folder: File, name: String, lastModified: Instant): File {

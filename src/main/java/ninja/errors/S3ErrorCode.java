@@ -59,6 +59,12 @@ public enum S3ErrorCode {
     InvalidDigest(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * One or more of the parts named when completing a multipart upload could not be found, or an entity tag did not
+     * match.
+     */
+    InvalidPart(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * The current request is not valid.
      */
     InvalidRequest(HttpResponseStatus.BAD_REQUEST),

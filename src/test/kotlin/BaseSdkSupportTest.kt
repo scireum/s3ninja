@@ -621,6 +621,68 @@ abstract class BaseSdkSupportTest {
         }
     }
 
+    @Test
+    fun `Multipart upload IDs are opaque and never handed out twice`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val firstUploadId = startMultipartUpload(client, bucketName, key)
+            val secondUploadId = startMultipartUpload(client, bucketName, key)
+
+            assertNotEquals(firstUploadId, secondUploadId)
+            assertNull(firstUploadId.toLongOrNull(), "upload IDs must not be drawn from a counter")
+            assertNull(secondUploadId.toLongOrNull(), "upload IDs must not be drawn from a counter")
+            assertTrue(firstUploadId.length >= 32, "upload IDs must not be guessable")
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `Multipart upload is bound to its bucket and key`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+
+            assertS3Error("NoSuchUpload") {
+                uploadPart(client, bucketName, "$key-other", uploadId, 1, "Test".toByteArray())
+            }
+            uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload naming a missing part answers InvalidPart and keeps the upload open`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val firstPart = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+            val missingPart = CompletedPart.builder().partNumber(2).eTag(firstPart.eTag()).build()
+
+            assertS3Error("InvalidPart") {
+                completeMultipartUpload(client, bucketName, key, uploadId, firstPart, missingPart)
+            }
+
+            completeMultipartUpload(client, bucketName, key, uploadId, firstPart)
+            assertEquals("Test", getObject(client, bucketName, key)!!.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
     companion object {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
@@ -698,6 +760,54 @@ abstract class BaseSdkSupportTest {
                 }
                 deleteBucket(client, bucketName)
             }
+        }
+
+        fun startMultipartUpload(client: S3Client, bucketName: String, key: String): String {
+            return client.createMultipartUpload { it.bucket(bucketName).key(key) }.uploadId()
+        }
+
+        fun uploadPart(
+            client: S3Client,
+            bucketName: String,
+            key: String,
+            uploadId: String,
+            partNumber: Int,
+            data: ByteArray
+        ): CompletedPart {
+            val response = client.uploadPart(
+                UploadPartRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .uploadId(uploadId)
+                    .partNumber(partNumber)
+                    .contentLength(data.size.toLong())
+                    .build(),
+                RequestBody.fromBytes(data)
+            )
+            return CompletedPart.builder().partNumber(partNumber).eTag(response.eTag()).build()
+        }
+
+        fun completeMultipartUpload(
+            client: S3Client,
+            bucketName: String,
+            key: String,
+            uploadId: String,
+            vararg parts: CompletedPart
+        ): CompleteMultipartUploadResponse {
+            return client.completeMultipartUpload {
+                it.bucket(bucketName)
+                    .key(key)
+                    .uploadId(uploadId)
+                    .multipartUpload(CompletedMultipartUpload.builder().parts(*parts).build())
+            }
+        }
+
+        /**
+         * Asserts that the given block is refused by the server with the given S3 error code.
+         */
+        fun assertS3Error(expectedCode: String, block: () -> Unit) {
+            val exception = assertThrows<S3Exception> { block() }
+            assertEquals(expectedCode, exception.awsErrorDetails().errorCode())
         }
 
         fun getPresigner(): S3Presigner {

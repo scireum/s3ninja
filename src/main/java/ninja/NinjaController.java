@@ -59,6 +59,9 @@ public class NinjaController extends BasicController {
     private RequestAuthenticator authenticator;
 
     @Part
+    private MultipartUploads multipartUploads;
+
+    @Part
     private GlobalContext globalContext;
 
     @Part
@@ -258,6 +261,7 @@ public class NinjaController extends BasicController {
                                 .withDirectMessage("Failed deleting bucket. Missing file system permission?")
                                 .handle();
             }
+            multipartUploads.abortAll(bucket.getName());
 
             UserContext.message(Message.info().withTextMessage("Bucket successfully deleted."));
             webContext.respondWith().redirectTemporarily("/ui");

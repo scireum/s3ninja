@@ -38,13 +38,16 @@ public class BucketHandler {
     private Storage storage;
 
     @Part
+    private MultipartUploads multipartUploads;
+
+    @Part
+    private MultipartUploadHandler multipartUploadHandler;
+
+    @Part
     private S3Responder responder;
 
     @Part
     private RequestAuthenticator authenticator;
-
-    @Part
-    private MultipartUploadHandler multipartUploadHandler;
 
     /**
      * GET a list of all buckets
@@ -143,6 +146,7 @@ public class BucketHandler {
                                                 S3Dispatcher.ERROR_FILE_SYSTEM_ACCESS);
                     return;
                 }
+                multipartUploads.abortAll(bucketName);
 
                 responder.signalObjectSuccess(webContext);
                 webContext.respondWith().status(HttpResponseStatus.OK);

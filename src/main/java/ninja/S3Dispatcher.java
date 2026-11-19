@@ -352,7 +352,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.DELETE.equals(method)) {
             if (Strings.isFilled(uploadId)) {
-                multipartUploadHandler.abortMultipartUpload(webContext, uploadId);
+                multipartUploadHandler.abortMultipartUpload(webContext, bucket, key, uploadId);
             } else {
                 objectHandler.deleteObject(webContext, bucket, key);
             }
@@ -386,7 +386,12 @@ public class S3Dispatcher implements WebDispatcher {
                 objectHandler.copyObject(webContext, bucket, key, copy.asString());
             } else if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
                 // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
-                multipartUploadHandler.multiObject(webContext, uploadId, webContext.get("partNumber").asString(), in);
+                multipartUploadHandler.uploadPart(webContext,
+                                                  bucket,
+                                                  key,
+                                                  uploadId,
+                                                  webContext.get("partNumber").asString(),
+                                                  in);
             } else {
                 objectHandler.putObject(webContext, bucket, key, in);
             }

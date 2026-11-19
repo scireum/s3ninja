@@ -121,7 +121,15 @@ public class ObjectHandler {
         responder.signalObjectSuccess(webContext);
     }
 
-    private Map<String, String> parseUploadProperties(WebContext webContext) {
+    /**
+     * Collects the request headers which are stored along with an object and sent again when it is read.
+     * <p>
+     * This is used for plain and for multipart uploads alike, so that both keep the same set of headers.
+     *
+     * @param webContext the context describing the current request
+     * @return the headers to store, by their names as sent by the client
+     */
+    Map<String, String> parseUploadProperties(WebContext webContext) {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
@@ -132,7 +140,7 @@ public class ObjectHandler {
         return properties;
     }
 
-    private String quoteEtag(String etag) {
+    static String quoteEtag(String etag) {
         return "\"" + etag + "\"";
     }
 

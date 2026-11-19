@@ -22,6 +22,29 @@ container, so change the owner (user and group id) of an existing directory you 
 For private buckets, the `Authorization` header of a request is verified using the credentials shown in the UI. ACLs
 are ignored, except for `x-amz-acl: public-read-write` when creating a bucket, which makes it public.
 
+## How strict is S3 ninja?
+
+S3 ninja aims to refuse what S3 refuses, so that mistakes of a client surface during development:
+
+- Signed requests are verified: the signature, the access key, the expiry of presigned URLs and the time of signing.
+  Requests without any signature are accepted for public buckets only.
+- Uploads are verified against `Content-MD5`, `x-amz-content-sha256` and the `x-amz-checksum-*` headers for CRC32,
+  CRC32C, SHA-1 and SHA-256. Checksums sent as trailer of a streamed upload and CRC64NVME are not verified.
+- `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` are honoured when reading an object,
+  and for the source when copying one. Writing honours `If-Match` and `If-None-Match`, and of several requests
+  which create the same object with `If-None-Match: *`, exactly one succeeds.
+- Browser-based uploads are only served if the signature of their policy is correct, the policy has not expired
+  and its conditions are met.
+- Creating a bucket which exists already answers `BucketAlreadyOwnedByYou`, unless the request is signed for the
+  region `us-east-1`. As for S3, it then succeeds and resets the access control list of the bucket.
+- Objects are listed in the binary order of their UTF-8 keys, with `delimiter`, `prefix`, `marker`, `start-after`
+  and continuation tokens, and at most 1000 entries per request.
+
+Known limits: object keys can be up to 243 bytes long once URL encoded, as objects are kept as files. Versioning,
+tagging, object lock, encryption and stored ACL, CORS, policy or lifecycle documents are not provided; requests for
+them answer `NotImplemented` or a fixed document. Storing an ACL or a CORS configuration is accepted without effect,
+so that scripts which set up a bucket keep working.
+
 ## Multipart uploads
 
 Multipart uploads follow the rules of S3, so that mistakes of a client surface here and not only against a real S3:

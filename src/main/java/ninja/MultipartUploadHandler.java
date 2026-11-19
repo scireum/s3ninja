@@ -34,6 +34,8 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -214,7 +216,7 @@ public class MultipartUploadHandler {
 
             String etag = BaseEncoding.base16().lowerCase().encode(md5);
             webContext.respondWith()
-                      .setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag)
+                      .setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, ObjectHandler.quoteEtag(etag))
                       .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG)
                       .status(HttpResponseStatus.OK);
             responder.signalObjectSuccess(webContext);
@@ -371,7 +373,7 @@ public class MultipartUploadHandler {
                                          String id,
                                          MultipartUpload upload,
                                          List<Tuple<Integer, String>> requestedParts) {
-        List<MultipartUpload.Part> parts = new ArrayList<>();
+        Map<MultipartUpload.Part, String> parts = new LinkedHashMap<>();
         Optional<Tuple<S3ErrorCode, String>> error = verifyRequestedParts(upload, requestedParts, parts);
         if (error.isPresent()) {
             responder.signalObjectError(webContext,
@@ -387,9 +389,9 @@ public class MultipartUploadHandler {
         // Assembled next to the object, as only a file on the same file system can replace it in one step.
         File assembledFile = multipartUploads.getAssemblingFile(bucket, upload);
         try {
-            upload.assemble(parts, assembledFile);
+            upload.assemble(List.copyOf(parts.keySet()), assembledFile);
 
-            String etag = Hasher.md5().hashFile(assembledFile).toHexString();
+            String etag = computeMultipartEtag(parts.values());
             Map<String, String> properties = upload.getProperties();
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
             publishObject(object, assembledFile, properties);
@@ -400,7 +402,7 @@ public class MultipartUploadHandler {
             out.property("Location", "");
             out.property(S3Dispatcher.RESPONSE_BUCKET, bucket.getName());
             out.property("Key", id);
-            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, ObjectHandler.quoteEtag(etag));
             out.endOutput();
             responder.signalObjectSuccess(webContext);
         } catch (IOException exception) {
@@ -513,12 +515,12 @@ public class MultipartUploadHandler {
      *
      * @param upload         the upload to complete
      * @param requestedParts the number and the entity tag of each part, in the order given by the client
-     * @param parts          receives the parts to assemble in their order
+     * @param parts          receives the parts to assemble in their order, each along with its entity tag
      * @return the error to answer the request with, or an empty optional if the list of parts is valid
      */
     private Optional<Tuple<S3ErrorCode, String>> verifyRequestedParts(MultipartUpload upload,
                                                                       List<Tuple<Integer, String>> requestedParts,
-                                                                      List<MultipartUpload.Part> parts) {
+                                                                      Map<MultipartUpload.Part, String> parts) {
         int previousPartNumber = 0;
         for (Tuple<Integer, String> requestedPart : requestedParts) {
             if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
@@ -541,18 +543,35 @@ public class MultipartUploadHandler {
             if (!etag.equalsIgnoreCase(unquoteEtag(requestedPart.getSecond()))) {
                 return Optional.of(Tuple.create(S3ErrorCode.InvalidPart, ERROR_INVALID_PART));
             }
-            parts.add(part.get());
+            parts.put(part.get(), etag);
         }
 
         // Only the last part may be smaller than the minimum, which is why this cannot be checked on upload.
         MultipartUpload.Part lastPart = upload.getPart(previousPartNumber).orElse(null);
-        for (MultipartUpload.Part part : parts) {
+        for (MultipartUpload.Part part : parts.keySet()) {
             if (!part.equals(lastPart) && part.size() < multipartUploads.getMinPartSize()) {
                 return Optional.of(Tuple.create(S3ErrorCode.EntityTooSmall, ERROR_ENTITY_TOO_SMALL));
             }
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * Computes the entity tag of an object which has been assembled from the given parts.
+     * <p>
+     * Unlike for a plain upload, this is not the MD5 hash of the contents. S3 hashes the concatenated MD5 hashes of all
+     * parts, and appends the number of parts.
+     *
+     * @param partEtags the entity tags of the parts in their order, which are the hex encoded MD5 hashes
+     * @return the entity tag of the assembled object, without quotes
+     */
+    private String computeMultipartEtag(Collection<String> partEtags) {
+        Hasher hasher = Hasher.md5();
+        for (String partEtag : partEtags) {
+            hasher.hashBytes(BaseEncoding.base16().lowerCase().decode(partEtag));
+        }
+        return BaseEncoding.base16().lowerCase().encode(hasher.toHash()) + "-" + partEtags.size();
     }
 
     /**
@@ -669,7 +688,7 @@ public class MultipartUploadHandler {
             out.beginObject("Part");
             out.property("PartNumber", part.number());
             out.property("LastModified", S3Dispatcher.ISO8601_INSTANT.format(part.lastModified()));
-            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, part.etag());
+            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, ObjectHandler.quoteEtag(part.etag()));
             out.property("Size", part.size());
             out.endObject();
         }

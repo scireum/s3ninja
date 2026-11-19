@@ -103,15 +103,25 @@ class ListFileTreeVisitor extends SimpleFileVisitor<Path> {
             output.property("LastModified", S3Dispatcher.ISO8601_INSTANT.format(object.getLastModifiedInstant()));
             output.property("Size", object.getSizeBytes());
             output.property("StorageClass", "STANDARD");
-            output.property("ETag", getETag(file));
+            output.property("ETag", "\"" + getETag(object) + "\"");
             output.endObject();
         }
 
         return FileVisitResult.CONTINUE;
     }
 
-    private String getETag(File file) {
-        return Hasher.md5().hashFile(file).toHexString();
+    /**
+     * Determines the entity tag of the given object.
+     * <p>
+     * The tag is returned without the quotes which surround it on the wire. The tag stored along with the object wins, as it is not the MD5 hash of the contents for objects which have been
+     * uploaded in parts.
+     */
+    private String getETag(StoredObject object) {
+        String storedETag = object.getProperties().get("ETag");
+        if (Strings.isFilled(storedETag)) {
+            return storedETag;
+        }
+        return Hasher.md5().hashFile(object.getFile()).toHexString();
     }
 
     /**

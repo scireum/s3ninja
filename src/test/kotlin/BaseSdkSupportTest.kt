@@ -6,6 +6,7 @@
  * https://www.scireum.de - info@scireum.de
  */
 
+import com.google.common.io.BaseEncoding
 import com.google.common.io.ByteStreams
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -842,6 +843,78 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `UploadPart and ListParts report the quoted MD5 of the part as ETag`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val data = "Test".toByteArray()
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val part = uploadPart(client, bucketName, key, uploadId, 1, data)
+
+            assertEquals("\"${md5Hex(data)}\"", part.eTag())
+
+            val listedParts = client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId) }.parts()
+            assertEquals(listOf("\"${md5Hex(data)}\""), listedParts.map { it.eTag() })
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `Multipart object carries the MD5 of the part MD5s and the number of parts as ETag`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val firstData = bytesOfSize(MIN_PART_SIZE)
+        val secondData = "Test".toByteArray()
+        val expectedETag = "\"${md5Hex(md5(firstData) + md5(secondData))}-2\""
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val firstPart = uploadPart(client, bucketName, key, uploadId, 1, firstData)
+            val secondPart = uploadPart(client, bucketName, key, uploadId, 2, secondData)
+            val response = completeMultipartUpload(client, bucketName, key, uploadId, firstPart, secondPart)
+
+            assertEquals(expectedETag, response.eTag())
+            assertEquals(expectedETag, client.headObject { it.bucket(bucketName).key(key) }.eTag())
+
+            assertEquals(expectedETag, client.listObjectsV2 { it.bucket(bucketName) }.contents().single().eTag())
+            assertEquals(expectedETag, client.listObjects { it.bucket(bucketName) }.contents().single().eTag())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `Copy of a multipart object carries the MD5 of its content as ETag`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val keyTo = "$key-copy"
+        val data = "Test".toByteArray()
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val part = uploadPart(client, bucketName, key, uploadId, 1, data)
+            completeMultipartUpload(client, bucketName, key, uploadId, part)
+
+            val response = client.copyObject {
+                it.sourceBucket(bucketName).sourceKey(key).destinationBucket(bucketName).destinationKey(keyTo)
+            }
+
+            assertEquals("\"${md5Hex(data)}\"", response.copyObjectResult().eTag())
+            assertEquals("\"${md5Hex(data)}\"", client.headObject { it.bucket(bucketName).key(keyTo) }.eTag())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `UploadPart only accepts part numbers from 1 to 10000`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -1214,6 +1287,10 @@ abstract class BaseSdkSupportTest {
 
         fun md5(data: ByteArray): ByteArray {
             return MessageDigest.getInstance("MD5").digest(data)
+        }
+
+        fun md5Hex(data: ByteArray): String {
+            return BaseEncoding.base16().lowerCase().encode(md5(data))
         }
 
         /**

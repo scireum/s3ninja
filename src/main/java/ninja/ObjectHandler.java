@@ -205,7 +205,11 @@ public class ObjectHandler {
             Files.copy(sourceObject.getPropertiesFile(), object.getPropertiesFile());
         }
 
+        // A copy is a plain object, even if its source has been uploaded in parts and thus carries another entity tag.
         String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
+        Map<String, String> properties = object.getProperties();
+        properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+        object.setProperties(properties);
 
         XMLStructuredOutput structuredOutput =
                 webContext.respondWith().addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).xml();

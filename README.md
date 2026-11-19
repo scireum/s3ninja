@@ -22,6 +22,27 @@ container, so change the owner (user and group id) of an existing directory you 
 For private buckets, the `Authorization` header of a request is verified using the credentials shown in the UI. ACLs
 are ignored, except for `x-amz-acl: public-read-write` when creating a bucket, which makes it public.
 
+## Multipart uploads
+
+Multipart uploads follow the rules of S3, so that mistakes of a client surface here and not only against a real S3:
+
+- Completing an upload verifies the `ETag` of every part (`InvalidPart`), their ascending order (`InvalidPartOrder`)
+  and the minimum size of every part except the last one (`EntityTooSmall`). A rejected request leaves the upload open.
+- Part numbers must be integers from 1 to 10000 (`InvalidArgument`).
+- The `ETag` of the final object is the MD5 hash of the MD5 hashes of its parts, followed by `-` and the number of parts.
+- Upload IDs are random. `ListParts`, `ListMultipartUploads`, `UploadPartCopy` and `AbortMultipartUpload` are supported.
+
+The minimum part size is 5 MiB as in S3. Sending parts of that size can slow down the tests of a client, so the limit
+can be lowered with the setting `storage.multipartMinPartSize`, e.g. by passing
+`-e storage.multipartMinPartSize=1024` to `docker run`. Clients which cut their parts too small will then go unnoticed.
+
+Open uploads are kept in `/home/sirius/multipart` and survive a restart of the container. Provide a volume for that
+directory as well if they have to survive the container being re-created.
+
+As in S3, an upload is kept until it is completed or aborted, so uploads which a client abandoned pile up. On an
+instance which runs for a long time, `storage.multipartAbortAfter`, e.g. `-e "storage.multipartAbortAfter=7 days"`,
+aborts uploads that long after their initiation.
+
 ## Development with Docker
 
 ### Quick Start with Docker Compose

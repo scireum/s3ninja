@@ -32,7 +32,9 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.Base64
 import kotlin.test.*
 
 @ExtendWith(SiriusExtension::class)
@@ -812,6 +814,142 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `UploadPart only accepts part numbers from 1 to 10000`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+
+            assertS3Error("InvalidArgument") {
+                uploadPart(client, bucketName, key, uploadId, 0, "Test".toByteArray())
+            }
+            assertS3Error("InvalidArgument") {
+                uploadPart(client, bucketName, key, uploadId, 10001, "Test".toByteArray())
+            }
+            uploadPart(client, bucketName, key, uploadId, 10000, "Test".toByteArray())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `AbortMultipartUpload answers 204 and NoSuchUpload for an unknown upload`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+
+            val response = client.abortMultipartUpload { it.bucket(bucketName).key(key).uploadId(uploadId) }
+            assertEquals(204, response.sdkHttpResponse().statusCode())
+
+            assertS3Error("NoSuchUpload") {
+                uploadPart(client, bucketName, key, uploadId, 2, "Test".toByteArray())
+            }
+            assertS3Error("NoSuchUpload") {
+                client.abortMultipartUpload { it.bucket(bucketName).key(key).uploadId(uploadId) }
+            }
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `ListParts lists the uploaded parts in ascending order and supports pagination`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            listOf(3, 1, 10, 2).forEach { partNumber ->
+                uploadPart(client, bucketName, key, uploadId, partNumber, bytesOfSize(partNumber))
+            }
+
+            val allParts = client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId) }
+            assertEquals(listOf(1, 2, 3, 10), allParts.parts().map { it.partNumber() })
+            assertEquals(listOf(1L, 2L, 3L, 10L), allParts.parts().map { it.size() })
+            assertFalse(allParts.isTruncated())
+
+            val firstPage = client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId).maxParts(3) }
+            assertEquals(listOf(1, 2, 3), firstPage.parts().map { it.partNumber() })
+            assertTrue(firstPage.isTruncated())
+            assertEquals(3, firstPage.nextPartNumberMarker())
+
+            val secondPage = client.listParts {
+                it.bucket(bucketName).key(key).uploadId(uploadId).maxParts(3)
+                    .partNumberMarker(firstPage.nextPartNumberMarker())
+            }
+            assertEquals(listOf(10), secondPage.parts().map { it.partNumber() })
+            assertFalse(secondPage.isTruncated())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload only accepts part numbers from 1 to 10000`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val part = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+
+            listOf(0, 10001).forEach { partNumber ->
+                assertS3Error("InvalidArgument") {
+                    completeMultipartUpload(
+                        client, bucketName, key, uploadId,
+                        CompletedPart.builder().partNumber(partNumber).eTag(part.eTag()).build()
+                    )
+                }
+            }
+            completeMultipartUpload(client, bucketName, key, uploadId, part)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `UploadPart with a wrong Content-MD5 answers BadDigest and stores nothing`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val data = "Test".toByteArray()
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val request = UploadPartRequest.builder().bucket(bucketName).key(key).uploadId(uploadId).partNumber(1)
+
+            assertS3Error("BadDigest") {
+                client.uploadPart(
+                    request.contentMD5(Base64.getEncoder().encodeToString(md5("Other".toByteArray()))).build(),
+                    RequestBody.fromBytes(data)
+                )
+            }
+            assertTrue(client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId) }.parts().isEmpty())
+
+            client.uploadPart(
+                request.contentMD5(Base64.getEncoder().encodeToString(md5(data))).build(),
+                RequestBody.fromBytes(data)
+            )
+            assertEquals(1, client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId) }.parts().size)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `CompleteMultipartUpload leaves out the parts which it does not name`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -834,6 +972,28 @@ abstract class BaseSdkSupportTest {
         }
     }
 
+    @Test
+    fun `ListParts answers NoSuchUpload for an unknown upload and ends the listing for a page of no parts`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            assertS3Error("NoSuchUpload") {
+                client.listParts { it.bucket(bucketName).key(key).uploadId(UNKNOWN_UPLOAD_ID) }
+            }
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+            val emptyPage = client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId).maxParts(0) }
+            assertTrue(emptyPage.parts().isEmpty())
+            assertFalse(emptyPage.isTruncated())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
     companion object {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
@@ -846,6 +1006,11 @@ abstract class BaseSdkSupportTest {
          * Mirrors <tt>storage.multipartMinPartSize</tt> as lowered in <tt>test.conf</tt>, so that parts stay small.
          */
         const val MIN_PART_SIZE = 1024
+
+        /**
+         * Has the form of an upload ID, but was never handed out.
+         */
+        val UNKNOWN_UPLOAD_ID = "0".repeat(48)
 
         fun doesBucketExist(client: S3Client, bucketName: String): Boolean {
             return try {
@@ -963,6 +1128,10 @@ abstract class BaseSdkSupportTest {
          */
         fun bytesOfSize(size: Int): ByteArray {
             return ByteArray(size) { (it % 251).toByte() }
+        }
+
+        fun md5(data: ByteArray): ByteArray {
+            return MessageDigest.getInstance("MD5").digest(data)
         }
 
         /**

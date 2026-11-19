@@ -31,7 +31,9 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,10 +56,17 @@ public class MultipartUploadHandler {
             "One or more of the specified parts could not be found. The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.";
     private static final String ERROR_ENTITY_TOO_SMALL =
             "Your proposed upload is smaller than the minimum allowed size.";
+    private static final String ERROR_INVALID_PART_NUMBER =
+            "Part number must be an integer between 1 and 10000, inclusive.";
     private static final String ERROR_INVALID_PART_ORDER =
             "The list of parts was not in ascending order. Parts must be ordered by part number.";
     private static final String ERROR_MALFORMED_XML =
             "The XML you provided was not well-formed or did not validate against our published schema.";
+
+    /**
+     * Contains the number of entries S3 returns at most, and by default, when listing parts or uploads.
+     */
+    private static final int DEFAULT_MAX_LISTING_SIZE = 1000;
 
     /**
      * Limits the size of the body which is accepted when completing an upload, in bytes.
@@ -161,6 +170,17 @@ public class MultipartUploadHandler {
                     String uploadId,
                     String partNumber,
                     InputStreamHandler part) throws IOException {
+        Optional<Integer> number = parsePartNumber(partNumber);
+        if (number.isEmpty()) {
+            ByteStreams.exhaust(part);
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.InvalidArgument,
+                                        ERROR_INVALID_PART_NUMBER);
+            return;
+        }
+
         Optional<MultipartUpload> upload = findMultipartUpload(webContext, bucket, id, uploadId);
         if (upload.isEmpty()) {
             ByteStreams.exhaust(part);
@@ -169,12 +189,26 @@ public class MultipartUploadHandler {
 
         MultipartUpload.Part stagedPart = null;
         try {
-            stagedPart = upload.get().stagePart(Integer.parseInt(partNumber), part);
+            stagedPart = upload.get().stagePart(number.get(), part);
             part.close();
 
-            MultipartUpload.Part storedPart = publishPart(bucket, id, uploadId, stagedPart);
+            // Checked on the staged file, so that a refused request never touches a part stored by another one.
+            byte[] md5 = stagedPart.md5();
+            String contentMd5 = webContext.getHeader("Content-MD5");
+            if (Strings.isFilled(contentMd5) && !Strings.areEqual(contentMd5,
+                                                                  Base64.getEncoder().encodeToString(md5))) {
+                upload.get().discardPart(stagedPart);
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.BadDigest,
+                                            "The Content-MD5 you specified did not match what we received.");
+                return;
+            }
 
-            String etag = BaseEncoding.base16().lowerCase().encode(storedPart.md5());
+            publishPart(bucket, id, uploadId, stagedPart);
+
+            String etag = BaseEncoding.base16().lowerCase().encode(md5);
             webContext.respondWith()
                       .setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag)
                       .addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG)
@@ -255,6 +289,27 @@ public class MultipartUploadHandler {
                                     id,
                                     S3ErrorCode.InternalError,
                                     Exceptions.handle(Storage.LOG, exception).getMessage());
+    }
+
+    /**
+     * Parses the part number given by the client.
+     * <p>
+     * The value is used as file name, so anything but a number in the range accepted by S3 has to be refused.
+     *
+     * @param partNumber the part number as found in the query string
+     * @return the part number, or an empty optional if the value is not an integer between
+     * {@link MultipartUpload#MIN_PART_NUMBER} and {@link MultipartUpload#MAX_PART_NUMBER}
+     */
+    private Optional<Integer> parsePartNumber(String partNumber) {
+        if (Strings.isEmpty(partNumber) || !PART_NUMBER_PATTERN.matcher(partNumber).matches()) {
+            return Optional.empty();
+        }
+
+        int number = Integer.parseInt(partNumber);
+        if (number < MultipartUpload.MIN_PART_NUMBER || number > MultipartUpload.MAX_PART_NUMBER) {
+            return Optional.empty();
+        }
+        return Optional.of(number);
     }
 
     /**
@@ -462,6 +517,10 @@ public class MultipartUploadHandler {
                                                                       List<MultipartUpload.Part> parts) {
         int previousPartNumber = 0;
         for (Tuple<Integer, String> requestedPart : requestedParts) {
+            if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
+                || requestedPart.getFirst() > MultipartUpload.MAX_PART_NUMBER) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidArgument, ERROR_INVALID_PART_NUMBER));
+            }
             if (requestedPart.getFirst() <= previousPartNumber) {
                 return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
             }
@@ -517,12 +576,14 @@ public class MultipartUploadHandler {
         Lock lock = multipartUploads.lockFor(uploadId);
         lock.lock();
         try {
-            Optional<MultipartUpload> upload = multipartUploads.find(bucket.getName(), id, uploadId);
-            if (upload.isPresent()) {
-                upload.get().delete();
+            Optional<MultipartUpload> upload = findMultipartUpload(webContext, bucket, id, uploadId);
+            if (upload.isEmpty()) {
+                return;
             }
 
-            webContext.respondWith().status(HttpResponseStatus.OK);
+            upload.get().delete();
+
+            webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
             responder.signalObjectSuccess(webContext);
         } catch (IOException exception) {
             responder.signalObjectError(webContext,
@@ -537,6 +598,9 @@ public class MultipartUploadHandler {
 
     /**
      * Handles GET /bucket/id?uploadId=uploadId
+     * <p>
+     * The parts are listed in ascending order of their numbers. A client resuming an upload relies on that, and on
+     * <tt>part-number-marker</tt> and <tt>max-parts</tt> to page through the parts.
      *
      * @param webContext the context describing the current request
      * @param bucket     the bucket containing the object to download
@@ -544,9 +608,38 @@ public class MultipartUploadHandler {
      * @param uploadId   the multipart upload to list the parts of
      */
     void getPartList(WebContext webContext, Bucket bucket, String id, String uploadId) {
-        Optional<MultipartUpload> upload = findMultipartUpload(webContext, bucket, id, uploadId);
-        if (upload.isEmpty()) {
-            return;
+        int marker = webContext.get("part-number-marker").asInt(0);
+        int maxParts = webContext.get("max-parts").asInt(DEFAULT_MAX_LISTING_SIZE);
+        if (maxParts < 0 || maxParts > DEFAULT_MAX_LISTING_SIZE) {
+            maxParts = DEFAULT_MAX_LISTING_SIZE;
+        }
+
+        List<ListedPart> parts = new ArrayList<>();
+        boolean truncated;
+
+        // The parts are read under the lock of the upload, as aborting or completing it removes their files, and a
+        // part which is uploaded again replaces its file. The response is written once the lock is released.
+        Lock lock = multipartUploads.lockFor(uploadId);
+        lock.lock();
+        try {
+            Optional<MultipartUpload> upload = findMultipartUpload(webContext, bucket, id, uploadId);
+            if (upload.isEmpty()) {
+                return;
+            }
+
+            List<MultipartUpload.Part> remainingParts =
+                    upload.get().getParts().stream().filter(part -> part.number() > marker).toList();
+            // Nothing can follow a page of no parts, which would otherwise keep a client paging forever.
+            truncated = maxParts > 0 && remainingParts.size() > maxParts;
+            remainingParts.stream()
+                          .limit(maxParts)
+                          .map(part -> new ListedPart(part.number(),
+                                                      part.lastModified(),
+                                                      BaseEncoding.base16().lowerCase().encode(part.md5()),
+                                                      part.size()))
+                          .forEach(parts::add);
+        } finally {
+            lock.unlock();
         }
 
         Response response = webContext.respondWith();
@@ -562,34 +655,33 @@ public class MultipartUploadHandler {
         responder.outputOwnerInfo(out, "Initiator");
         responder.outputOwnerInfo(out, "Owner");
 
-        int marker = webContext.get("part-number-marker").asInt(0);
-        int maxParts = webContext.get("max-parts").asInt(0);
-
-        List<MultipartUpload.Part> parts = upload.get().getParts();
-
         out.property("StorageClass", "STANDARD");
         out.property("PartNumberMarker", marker);
-        if ((marker + maxParts) < parts.size()) {
-            out.property("NextPartNumberMarker", marker + maxParts + 1);
-        }
-
-        if (Strings.isFilled(maxParts)) {
-            out.property("MaxParts", maxParts);
-        }
-
-        boolean truncated = 0 < maxParts && maxParts < parts.size();
+        out.property("NextPartNumberMarker", parts.isEmpty() ? marker : parts.getLast().number());
+        out.property("MaxParts", maxParts);
         out.property("IsTruncated", truncated);
 
-        for (MultipartUpload.Part part : parts) {
+        for (ListedPart part : parts) {
             out.beginObject("Part");
             out.property("PartNumber", part.number());
             out.property("LastModified", S3Dispatcher.ISO8601_INSTANT.format(part.lastModified()));
-            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, BaseEncoding.base16().lowerCase().encode(part.md5()));
+            out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG, part.etag());
             out.property("Size", part.size());
             out.endObject();
         }
 
         out.endOutput();
         responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Describes a part as it is listed, read while its file cannot change.
+     *
+     * @param number       the number of the part
+     * @param lastModified the point in time when the part has been uploaded
+     * @param etag         the entity tag of the part, without quotes
+     * @param size         the size of the part in bytes
+     */
+    private record ListedPart(int number, Instant lastModified, String etag, long size) {
     }
 }

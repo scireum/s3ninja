@@ -59,6 +59,11 @@ public enum S3ErrorCode {
     InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
 
     /**
+     * An argument of the request is not valid.
+     */
+    InvalidArgument(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * The specified checksum value is invalid.
      */
     InvalidDigest(HttpResponseStatus.BAD_REQUEST),

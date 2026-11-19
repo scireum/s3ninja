@@ -683,6 +683,157 @@ abstract class BaseSdkSupportTest {
         }
     }
 
+    @Test
+    fun `CompleteMultipartUpload with a wrong ETag answers InvalidPart and keeps the upload open`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val part = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+            val forgedPart = CompletedPart.builder().partNumber(1).eTag("deadbeef").build()
+
+            assertS3Error("InvalidPart") {
+                completeMultipartUpload(client, bucketName, key, uploadId, forgedPart)
+            }
+            assertS3Error("NoSuchKey") { getObject(client, bucketName, key) }
+
+            completeMultipartUpload(client, bucketName, key, uploadId, part)
+            assertEquals("Test", getObject(client, bucketName, key)!!.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload accepts ETags with and without quotes`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            listOf<(String) -> String>({ "\"$it\"" }, { it }).forEach { quoting ->
+                val uploadId = startMultipartUpload(client, bucketName, key)
+                val part = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+                val requotedPart =
+                    CompletedPart.builder().partNumber(1).eTag(quoting(part.eTag().trim('"'))).build()
+
+                completeMultipartUpload(client, bucketName, key, uploadId, requotedPart)
+            }
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload with parts out of order answers InvalidPartOrder`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val firstPart = uploadPart(client, bucketName, key, uploadId, 1, bytesOfSize(MIN_PART_SIZE))
+            val secondPart = uploadPart(client, bucketName, key, uploadId, 2, "Test".toByteArray())
+
+            assertS3Error("InvalidPartOrder") {
+                completeMultipartUpload(client, bucketName, key, uploadId, secondPart, firstPart)
+            }
+            assertS3Error("InvalidPartOrder") {
+                completeMultipartUpload(client, bucketName, key, uploadId, firstPart, firstPart)
+            }
+
+            completeMultipartUpload(client, bucketName, key, uploadId, firstPart, secondPart)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload without any part or with an incomplete part answers MalformedXML`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val part = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+
+            assertS3Error("MalformedXML") {
+                completeMultipartUpload(client, bucketName, key, uploadId)
+            }
+            assertS3Error("MalformedXML") {
+                completeMultipartUpload(
+                    client, bucketName, key, uploadId,
+                    CompletedPart.builder().eTag(part.eTag()).build()
+                )
+            }
+            assertS3Error("MalformedXML") {
+                completeMultipartUpload(
+                    client, bucketName, key, uploadId,
+                    CompletedPart.builder().partNumber(1).build()
+                )
+            }
+            completeMultipartUpload(client, bucketName, key, uploadId, part)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload with an undersized part answers EntityTooSmall and keeps the upload open`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val undersizedPart = uploadPart(client, bucketName, key, uploadId, 1, bytesOfSize(MIN_PART_SIZE - 1))
+            val lastPart = uploadPart(client, bucketName, key, uploadId, 2, "Test".toByteArray())
+
+            assertS3Error("EntityTooSmall") {
+                completeMultipartUpload(client, bucketName, key, uploadId, undersizedPart, lastPart)
+            }
+
+            val firstPart = uploadPart(client, bucketName, key, uploadId, 1, bytesOfSize(MIN_PART_SIZE))
+            completeMultipartUpload(client, bucketName, key, uploadId, firstPart, lastPart)
+
+            val content = getObject(client, bucketName, key)!!.use { it.readAllBytes() }
+            assertContentEquals(bytesOfSize(MIN_PART_SIZE) + "Test".toByteArray(), content)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload leaves out the parts which it does not name`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val firstData = bytesOfSize(MIN_PART_SIZE)
+        val lastData = "Test".toByteArray()
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val firstPart = uploadPart(client, bucketName, key, uploadId, 1, firstData)
+            uploadPart(client, bucketName, key, uploadId, 2, bytesOfSize(MIN_PART_SIZE))
+            val lastPart = uploadPart(client, bucketName, key, uploadId, 3, lastData)
+            completeMultipartUpload(client, bucketName, key, uploadId, firstPart, lastPart)
+
+            val content = getObject(client, bucketName, key)!!.use { it.readAllBytes() }
+            assertContentEquals(firstData + lastData, content)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
     companion object {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
@@ -690,6 +841,11 @@ abstract class BaseSdkSupportTest {
 
         const val DEFAULT_BUCKET_NAME = "test"
         const val DEFAULT_KEY = "key/with/slashes and spaces 😇"
+
+        /**
+         * Mirrors <tt>storage.multipartMinPartSize</tt> as lowered in <tt>test.conf</tt>, so that parts stay small.
+         */
+        const val MIN_PART_SIZE = 1024
 
         fun doesBucketExist(client: S3Client, bucketName: String): Boolean {
             return try {
@@ -800,6 +956,13 @@ abstract class BaseSdkSupportTest {
                     .uploadId(uploadId)
                     .multipartUpload(CompletedMultipartUpload.builder().parts(*parts).build())
             }
+        }
+
+        /**
+         * Creates reproducible content of the given size.
+         */
+        fun bytesOfSize(size: Int): ByteArray {
+            return ByteArray(size) { (it % 251).toByte() }
         }
 
         /**

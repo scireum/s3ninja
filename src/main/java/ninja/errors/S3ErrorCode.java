@@ -44,6 +44,11 @@ public enum S3ErrorCode {
     BucketNotEmpty(HttpResponseStatus.CONFLICT),
 
     /**
+     * A part of a multipart upload other than the last one is smaller than the minimum part size.
+     */
+    EntityTooSmall(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * During upload, less than the number of bytes specified have been transmitted.
      */
     IncompleteBody(HttpResponseStatus.BAD_REQUEST),
@@ -65,9 +70,19 @@ public enum S3ErrorCode {
     InvalidPart(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The parts named when completing a multipart upload were not listed in ascending order.
+     */
+    InvalidPartOrder(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * The current request is not valid.
      */
     InvalidRequest(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The XML sent along with the request was not well-formed or did not match the expected structure.
+     */
+    MalformedXML(HttpResponseStatus.BAD_REQUEST),
 
     /**
      * The specified bucket does not exist.

@@ -15,10 +15,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import ninja.errors.S3ErrorCode;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.StructuredNode;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.InputStreamHandler;
@@ -33,7 +35,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
+import java.util.regex.Pattern;
 
 /**
  * Handles the S3 API calls which deal with multipart uploads.
@@ -48,6 +52,24 @@ public class MultipartUploadHandler {
             "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.";
     private static final String ERROR_INVALID_PART =
             "One or more of the specified parts could not be found. The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.";
+    private static final String ERROR_ENTITY_TOO_SMALL =
+            "Your proposed upload is smaller than the minimum allowed size.";
+    private static final String ERROR_INVALID_PART_ORDER =
+            "The list of parts was not in ascending order. Parts must be ordered by part number.";
+    private static final String ERROR_MALFORMED_XML =
+            "The XML you provided was not well-formed or did not validate against our published schema.";
+
+    /**
+     * Limits the size of the body which is accepted when completing an upload, in bytes.
+     * <p>
+     * A request naming all 10,000 parts along with every checksum S3 knows stays well below this.
+     */
+    private static final long MAX_COMPLETE_REQUEST_SIZE = 8L * 1024 * 1024;
+
+    /**
+     * Matches integers which are short enough to be parsed safely.
+     */
+    private static final Pattern PART_NUMBER_PATTERN = Pattern.compile("\\d{1,6}");
 
     @Part
     private Storage storage;
@@ -260,14 +282,8 @@ public class MultipartUploadHandler {
         }
 
         // The body is read before the lock is taken, so that a slow client cannot block other uploads.
-        List<Integer> requestedParts = new ArrayList<>();
-        XMLReader reader = new XMLReader();
-        reader.addHandler("Part", part -> requestedParts.add(part.queryValue("PartNumber").asInt(0)));
-        try {
-            reader.parse(in);
-        } catch (IOException exception) {
-            Exceptions.handle(exception);
-        }
+        List<Tuple<Integer, String>> requestedParts = new ArrayList<>();
+        boolean wellFormed = parseRequestedParts(in, requestedParts);
 
         Lock lock = multipartUploads.lockFor(uploadId);
         lock.lock();
@@ -276,6 +292,15 @@ public class MultipartUploadHandler {
             if (upload.isEmpty()) {
                 return;
             }
+            if (!wellFormed || requestedParts.isEmpty()) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.MalformedXML,
+                                            ERROR_MALFORMED_XML);
+                return;
+            }
+
             completeMultipartUpload(webContext, bucket, id, upload.get(), requestedParts);
         } finally {
             lock.unlock();
@@ -286,19 +311,16 @@ public class MultipartUploadHandler {
                                          Bucket bucket,
                                          String id,
                                          MultipartUpload upload,
-                                         List<Integer> requestedParts) {
+                                         List<Tuple<Integer, String>> requestedParts) {
         List<MultipartUpload.Part> parts = new ArrayList<>();
-        for (int partNumber : requestedParts.stream().sorted().toList()) {
-            Optional<MultipartUpload.Part> part = upload.getPart(partNumber);
-            if (part.isEmpty()) {
-                responder.signalObjectError(webContext,
-                                            bucket.getName(),
-                                            id,
-                                            S3ErrorCode.InvalidPart,
-                                            ERROR_INVALID_PART);
-                return;
-            }
-            parts.add(part.get());
+        Optional<Tuple<S3ErrorCode, String>> error = verifyRequestedParts(upload, requestedParts, parts);
+        if (error.isPresent()) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        error.get().getFirst(),
+                                        error.get().getSecond());
+            return;
         }
 
         StoredObject object = bucket.getObject(id);
@@ -382,6 +404,105 @@ public class MultipartUploadHandler {
             }
             throw exception;
         }
+    }
+
+    /**
+     * Reads the list of parts sent along when completing a multipart upload.
+     * <p>
+     * The body has to be a <tt>CompleteMultipartUpload</tt> element of which every <tt>Part</tt> names an integer as
+     * <tt>PartNumber</tt> and an <tt>ETag</tt>. Whether the numbers are in range is not decided here, as that is
+     * reported as another error.
+     *
+     * @param in             input stream with xml listing the parts which make up the object
+     * @param requestedParts receives the number and the entity tag of each part, in the order given by the client
+     * @return <tt>true</tt> if the body is well-formed and of the expected structure, <tt>false</tt> otherwise
+     */
+    private boolean parseRequestedParts(InputStreamHandler in, List<Tuple<Integer, String>> requestedParts) {
+        AtomicBoolean valid = new AtomicBoolean(false);
+
+        XMLReader reader = new XMLReader();
+        reader.addHandler("CompleteMultipartUpload", root -> {
+            valid.set(true);
+            for (StructuredNode part : root.queryNodeList("Part")) {
+                String partNumber = part.queryValue("PartNumber").asString().trim();
+                String etag = part.queryValue(S3Dispatcher.HTTP_HEADER_NAME_ETAG).asString().trim();
+                if (!PART_NUMBER_PATTERN.matcher(partNumber).matches() || Strings.isEmpty(etag)) {
+                    valid.set(false);
+                    return;
+                }
+                requestedParts.add(Tuple.create(Integer.parseInt(partNumber), etag));
+            }
+        });
+        try {
+            // The whole body is held in memory while it is parsed. A body beyond the limit is cut off, and what is
+            // left of it is refused as malformed.
+            reader.parse(ByteStreams.limit(in, MAX_COMPLETE_REQUEST_SIZE));
+            return valid.get();
+        } catch (IOException exception) {
+            Exceptions.ignore(exception);
+            return false;
+        } finally {
+            in.exhaust();
+        }
+    }
+
+    /**
+     * Checks the list of parts sent along when completing a multipart upload against the parts which have actually
+     * been uploaded.
+     * <p>
+     * Nothing is changed here, so that a rejected request leaves the upload as it was.
+     *
+     * @param upload         the upload to complete
+     * @param requestedParts the number and the entity tag of each part, in the order given by the client
+     * @param parts          receives the parts to assemble in their order
+     * @return the error to answer the request with, or an empty optional if the list of parts is valid
+     */
+    private Optional<Tuple<S3ErrorCode, String>> verifyRequestedParts(MultipartUpload upload,
+                                                                      List<Tuple<Integer, String>> requestedParts,
+                                                                      List<MultipartUpload.Part> parts) {
+        int previousPartNumber = 0;
+        for (Tuple<Integer, String> requestedPart : requestedParts) {
+            if (requestedPart.getFirst() <= previousPartNumber) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
+            }
+            previousPartNumber = requestedPart.getFirst();
+        }
+
+        for (Tuple<Integer, String> requestedPart : requestedParts) {
+            Optional<MultipartUpload.Part> part = upload.getPart(requestedPart.getFirst());
+            if (part.isEmpty()) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidPart, ERROR_INVALID_PART));
+            }
+
+            String etag = BaseEncoding.base16().lowerCase().encode(part.get().md5());
+            if (!etag.equalsIgnoreCase(unquoteEtag(requestedPart.getSecond()))) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidPart, ERROR_INVALID_PART));
+            }
+            parts.add(part.get());
+        }
+
+        // Only the last part may be smaller than the minimum, which is why this cannot be checked on upload.
+        MultipartUpload.Part lastPart = upload.getPart(previousPartNumber).orElse(null);
+        for (MultipartUpload.Part part : parts) {
+            if (!part.equals(lastPart) && part.size() < multipartUploads.getMinPartSize()) {
+                return Optional.of(Tuple.create(S3ErrorCode.EntityTooSmall, ERROR_ENTITY_TOO_SMALL));
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    /**
+     * Removes the quotes which surround an entity tag on the wire.
+     * <p>
+     * Clients send entity tags back as they received them, which may be with or without quotes.
+     */
+    private String unquoteEtag(String etag) {
+        String result = Strings.isEmpty(etag) ? "" : etag.trim();
+        if (result.length() >= 2 && result.startsWith("\"") && result.endsWith("\"")) {
+            return result.substring(1, result.length() - 1);
+        }
+        return result;
     }
 
     /**

@@ -76,6 +76,9 @@ public class MultipartUploads implements Startable {
     @ConfigValue("storage.multipartDir")
     private String multipartDir;
 
+    @ConfigValue("storage.multipartMinPartSize")
+    private long minPartSize;
+
     @Part
     private Storage storage;
 
@@ -288,5 +291,16 @@ public class MultipartUploads implements Startable {
      */
     public Lock lockFor(String uploadId) {
         return locks.get(uploadId);
+    }
+
+    /**
+     * Returns the minimal size of every part of an upload except the last one.
+     * <p>
+     * This is 5 MiB for S3, and can be lowered via <tt>storage.multipartMinPartSize</tt> to keep tests fast.
+     *
+     * @return the minimal part size in bytes
+     */
+    public long getMinPartSize() {
+        return minPartSize;
     }
 }

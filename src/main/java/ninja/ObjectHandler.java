@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -161,43 +162,11 @@ public class ObjectHandler {
      * @param sourcePath the path of the source object to copy from
      */
     void copyObject(WebContext webContext, Bucket bucket, String key, String sourcePath) throws IOException {
-        if (Strings.isEmpty(sourcePath) || !sourcePath.contains(PATH_DELIMITER)) {
-            responder.signalObjectError(webContext,
-                                        null,
-                                        null,
-                                        S3ErrorCode.InvalidRequest,
-                                        String.format("Source '%s' must contain '/'", sourcePath));
+        Optional<StoredObject> source = resolveCopySource(webContext, sourcePath);
+        if (source.isEmpty()) {
             return;
         }
-
-        // parse the path of the source object
-        sourcePath = Urls.decode(sourcePath);
-        int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
-        String sourceBucketName =
-                sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));
-        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart) + 1);
-
-        Bucket sourceBucket = storage.getBucket(sourceBucketName);
-        if (!sourceBucket.exists()) {
-            responder.signalObjectError(webContext,
-                                        sourceBucketName,
-                                        sourceKey,
-                                        S3ErrorCode.NoSuchBucket,
-                                        String.format("Source bucket '%s' does not exist", sourceBucketName));
-            return;
-        }
-
-        StoredObject sourceObject = sourceBucket.getObject(sourceKey);
-        if (!sourceObject.exists()) {
-            responder.signalObjectError(webContext,
-                                        sourceBucketName,
-                                        sourceKey,
-                                        S3ErrorCode.NoSuchKey,
-                                        String.format("Source object '%s/%s' does not exist",
-                                                      sourceBucketName,
-                                                      sourceKey));
-            return;
-        }
+        StoredObject sourceObject = source.get();
 
         StoredObject object = bucket.getObject(key);
         Files.copy(sourceObject.getFile(), object.getFile());
@@ -222,6 +191,56 @@ public class ObjectHandler {
         structuredOutput.endObject();
         structuredOutput.endOutput();
         responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Resolves the object named by an <tt>x-amz-copy-source</tt> header, and answers the request with an error if
+     * there is none.
+     *
+     * @param webContext the context describing the current request
+     * @param sourcePath the path of the source object, as <tt>bucket/key</tt> with an optional leading slash
+     * @return the object to copy from, or an empty optional if the request has been answered with an error
+     */
+    Optional<StoredObject> resolveCopySource(WebContext webContext, String sourcePath) {
+        if (Strings.isEmpty(sourcePath) || !sourcePath.contains(PATH_DELIMITER)) {
+            responder.signalObjectError(webContext,
+                                        null,
+                                        null,
+                                        S3ErrorCode.InvalidRequest,
+                                        String.format("Source '%s' must contain '/'", sourcePath));
+            return Optional.empty();
+        }
+
+        // parse the path of the source object
+        sourcePath = Urls.decode(sourcePath);
+        int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
+        String sourceBucketName =
+                sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));
+        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart) + 1);
+
+        Bucket sourceBucket = storage.getBucket(sourceBucketName);
+        if (!sourceBucket.exists()) {
+            responder.signalObjectError(webContext,
+                                        sourceBucketName,
+                                        sourceKey,
+                                        S3ErrorCode.NoSuchBucket,
+                                        String.format("Source bucket '%s' does not exist", sourceBucketName));
+            return Optional.empty();
+        }
+
+        StoredObject sourceObject = sourceBucket.getObject(sourceKey);
+        if (!sourceObject.exists()) {
+            responder.signalObjectError(webContext,
+                                        sourceBucketName,
+                                        sourceKey,
+                                        S3ErrorCode.NoSuchKey,
+                                        String.format("Source object '%s/%s' does not exist",
+                                                      sourceBucketName,
+                                                      sourceKey));
+            return Optional.empty();
+        }
+
+        return Optional.of(sourceObject);
     }
 
     /**

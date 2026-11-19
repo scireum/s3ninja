@@ -1045,6 +1045,118 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `ListMultipartUploads lists the open uploads of a bucket`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val otherBucketName = "$DEFAULT_BUCKET_NAME-other"
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            createBucket(client, otherBucketName)
+
+            assertTrue(client.listMultipartUploads { it.bucket(bucketName) }.uploads().isEmpty())
+
+            val uploadB = startMultipartUpload(client, bucketName, "b/1")
+            val firstUploadA = startMultipartUpload(client, bucketName, "a/1")
+            val secondUploadA = startMultipartUpload(client, bucketName, "a/1")
+            val uploadA2 = startMultipartUpload(client, bucketName, "a/2 😇")
+            startMultipartUpload(client, otherBucketName, "a/1")
+
+            val allUploads = client.listMultipartUploads { it.bucket(bucketName) }
+            assertEquals(listOf("a/1", "a/1", "a/2 😇", "b/1"), allUploads.uploads().map { it.key() })
+            assertEquals(
+                setOf(firstUploadA, secondUploadA, uploadA2, uploadB),
+                allUploads.uploads().map { it.uploadId() }.toSet()
+            )
+            assertFalse(allUploads.isTruncated())
+            assertNotNull(allUploads.uploads().first().initiated())
+
+            val prefixedUploads = client.listMultipartUploads { it.bucket(bucketName).prefix("a/") }
+            assertEquals(listOf("a/1", "a/1", "a/2 😇"), prefixedUploads.uploads().map { it.key() })
+
+            val firstPage = client.listMultipartUploads { it.bucket(bucketName).maxUploads(1) }
+            assertTrue(firstPage.isTruncated())
+            val secondPage = client.listMultipartUploads {
+                it.bucket(bucketName)
+                    .keyMarker(firstPage.nextKeyMarker())
+                    .uploadIdMarker(firstPage.nextUploadIdMarker())
+            }
+            assertEquals(
+                allUploads.uploads().map { it.uploadId() },
+                (firstPage.uploads() + secondPage.uploads()).map { it.uploadId() }
+            )
+
+            client.abortMultipartUpload { it.bucket(bucketName).key("b/1").uploadId(uploadB) }
+            val part = uploadPart(client, bucketName, "a/1", firstUploadA, 1, "Test".toByteArray())
+            completeMultipartUpload(client, bucketName, "a/1", firstUploadA, part)
+
+            assertEquals(
+                setOf(secondUploadA, uploadA2),
+                client.listMultipartUploads { it.bucket(bucketName) }.uploads().map { it.uploadId() }.toSet()
+            )
+
+            cleanupBuckets(client, bucketName, otherBucketName)
+        }
+    }
+
+    @Test
+    fun `UploadPartCopy fills a part from an existing object instead of overwriting the target`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val sourceKey = "$DEFAULT_KEY-source"
+        val key = DEFAULT_KEY
+        val sourceData = bytesOfSize(MIN_PART_SIZE + 100)
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            client.putObject({ it.bucket(bucketName).key(sourceKey) }, RequestBody.fromBytes(sourceData))
+
+            val uploadId = startMultipartUpload(client, bucketName, key)
+            val firstPart = uploadPartCopy(client, bucketName, sourceKey, key, uploadId, 1, null)
+            val secondPart = uploadPartCopy(client, bucketName, sourceKey, key, uploadId, 2, "bytes=10-19")
+
+            assertEquals("\"${md5Hex(sourceData)}\"", firstPart.eTag())
+            assertS3Error("NoSuchKey") { getObject(client, bucketName, key) }
+            assertS3Error("InvalidArgument") {
+                uploadPartCopy(client, bucketName, sourceKey, key, uploadId, 3, "bytes=10-${sourceData.size}")
+            }
+
+            completeMultipartUpload(client, bucketName, key, uploadId, firstPart, secondPart)
+
+            val content = getObject(client, bucketName, key)!!.use { it.readAllBytes() }
+            assertContentEquals(sourceData + sourceData.copyOfRange(10, 20), content)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `ListMultipartUploads keeps paging after the upload named as marker was aborted`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            repeat(3) { startMultipartUpload(client, bucketName, key) }
+            val allUploadIds = client.listMultipartUploads { it.bucket(bucketName) }.uploads().map { it.uploadId() }
+
+            val firstPage = client.listMultipartUploads { it.bucket(bucketName).maxUploads(1) }
+            assertEquals(allUploadIds.take(1), firstPage.uploads().map { it.uploadId() })
+            client.abortMultipartUpload { it.bucket(bucketName).key(key).uploadId(allUploadIds.first()) }
+
+            val secondPage = client.listMultipartUploads {
+                it.bucket(bucketName)
+                    .keyMarker(firstPage.nextKeyMarker())
+                    .uploadIdMarker(firstPage.nextUploadIdMarker())
+            }
+            assertEquals(allUploadIds.drop(1), secondPage.uploads().map { it.uploadId() })
+
+            assertTrue(client.listMultipartUploads { it.bucket(bucketName).maxUploads(0) }.uploads().isEmpty())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `CompleteMultipartUpload only accepts part numbers from 1 to 10000`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -1100,6 +1212,28 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `ListMultipartUploads lists keys in the order of their UTF-8 bytes`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        // As Java strings, these compare the other way round, as the emoji is stored as a pair of surrogates.
+        val keyInBasicPlane = "order/\uFF5E"
+        val keyBeyondBasicPlane = "order/😇"
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            startMultipartUpload(client, bucketName, keyBeyondBasicPlane)
+            startMultipartUpload(client, bucketName, keyInBasicPlane)
+
+            val uploads = client.listMultipartUploads { it.bucket(bucketName) }.uploads()
+            assertEquals(listOf(keyInBasicPlane, keyBeyondBasicPlane), uploads.map { it.key() })
+
+            val secondPage = client.listMultipartUploads { it.bucket(bucketName).keyMarker(keyInBasicPlane) }
+            assertEquals(listOf(keyBeyondBasicPlane), secondPage.uploads().map { it.key() })
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `CompleteMultipartUpload leaves out the parts which it does not name`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -1139,6 +1273,22 @@ abstract class BaseSdkSupportTest {
             val emptyPage = client.listParts { it.bucket(bucketName).key(key).uploadId(uploadId).maxParts(0) }
             assertTrue(emptyPage.parts().isEmpty())
             assertFalse(emptyPage.isTruncated())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `UploadPartCopy answers NoSuchUpload for an unknown upload`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            putObjectWithContent(client, bucketName, "source", "Test")
+
+            assertS3Error("NoSuchUpload") {
+                uploadPartCopy(client, bucketName, "source", DEFAULT_KEY, UNKNOWN_UPLOAD_ID, 1, null)
+            }
 
             cleanupBuckets(client, bucketName)
         }
@@ -1308,6 +1458,27 @@ abstract class BaseSdkSupportTest {
             assertEquals(CACHE_CONTROL, getResponse.cacheControl())
             assertEquals(EXPIRES_HEADER, getResponse.expiresString())
             assertNotNull(getResponse.lastModified())
+        }
+
+        fun uploadPartCopy(
+            client: S3Client,
+            bucketName: String,
+            sourceKey: String,
+            key: String,
+            uploadId: String,
+            partNumber: Int,
+            range: String?
+        ): CompletedPart {
+            val response = client.uploadPartCopy {
+                it.sourceBucket(bucketName)
+                    .sourceKey(sourceKey)
+                    .destinationBucket(bucketName)
+                    .destinationKey(key)
+                    .uploadId(uploadId)
+                    .partNumber(partNumber)
+                    .copySourceRange(range)
+            }
+            return CompletedPart.builder().partNumber(partNumber).eTag(response.copyPartResult().eTag()).build()
         }
 
         /**

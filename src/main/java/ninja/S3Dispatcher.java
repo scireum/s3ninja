@@ -201,6 +201,11 @@ public class S3Dispatcher implements WebDispatcher {
             return DispatchDecision.CONTINUE;
         }
 
+        if (isListMultipartUploads(webContext, request)) {
+            multipartUploadHandler.listMultipartUploads(webContext, request.bucket);
+            return DispatchDecision.DONE;
+        }
+
         if (Strings.isFilled(request.query)) {
             forwardQueryToProcessor(webContext, request);
             return DispatchDecision.DONE;
@@ -234,6 +239,30 @@ public class S3Dispatcher implements WebDispatcher {
 
         readObject(webContext, request.bucket, request.key);
         return DispatchDecision.DONE;
+    }
+
+    /**
+     * Determines if the given request is <tt>GET /bucket?uploads</tt>.
+     * <p>
+     * This is checked via the parameter instead of {@link S3Request#query}, as clients are free to send
+     * <tt>uploads</tt> after other parameters such as <tt>prefix</tt>.
+     */
+    private boolean isListMultipartUploads(WebContext webContext, S3Request request) {
+        return HttpMethod.GET.equals(webContext.getRequest().method())
+               && Strings.isFilled(request.bucket)
+               && Strings.isEmpty(request.key)
+               && webContext.hasParameter("uploads")
+               && !isQueryForProcessor(request);
+    }
+
+    /**
+     * Determines if the request leads with a parameter other than <tt>uploads</tt> for which a
+     * {@link S3QueryProcessor} exists, such as <tt>acl</tt>, which then takes precedence.
+     */
+    private boolean isQueryForProcessor(S3Request request) {
+        return Strings.isFilled(request.query)
+               && !Strings.areEqual(request.query, "uploads")
+               && globalContext.getPart(request.query, S3QueryProcessor.class) != null;
     }
 
     /**
@@ -383,16 +412,22 @@ public class S3Dispatcher implements WebDispatcher {
         HttpMethod method = webContext.getRequest().method();
         if (HttpMethod.PUT.equals(method)) {
             Value copy = webContext.getHeaderValue("x-amz-copy-source");
-            if (copy.isFilled()) {
-                objectHandler.copyObject(webContext, bucket, key, copy.asString());
-            } else if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
+            if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
                 // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
-                multipartUploadHandler.uploadPart(webContext,
-                                                  bucket,
-                                                  key,
-                                                  uploadId,
-                                                  webContext.get("partNumber").asString(),
-                                                  in);
+                String partNumber = webContext.get("partNumber").asString();
+                if (copy.isFilled()) {
+                    multipartUploadHandler.uploadPartCopy(webContext,
+                                                          bucket,
+                                                          key,
+                                                          uploadId,
+                                                          partNumber,
+                                                          copy.asString(),
+                                                          in);
+                } else {
+                    multipartUploadHandler.uploadPart(webContext, bucket, key, uploadId, partNumber, in);
+                }
+            } else if (copy.isFilled()) {
+                objectHandler.copyObject(webContext, bucket, key, copy.asString());
             } else {
                 objectHandler.putObject(webContext, bucket, key, in);
             }

@@ -20,6 +20,7 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.StructuredNode;
 import sirius.kernel.xml.XMLReader;
 import sirius.kernel.xml.XMLStructuredOutput;
@@ -29,6 +30,7 @@ import sirius.web.http.WebContext;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
@@ -41,6 +43,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -81,6 +84,12 @@ public class MultipartUploadHandler {
      * Matches integers which are short enough to be parsed safely.
      */
     private static final Pattern PART_NUMBER_PATTERN = Pattern.compile("\\d{1,6}");
+
+    /**
+     * Matches the value of an <tt>x-amz-copy-source-range</tt> header, which unlike a <tt>Range</tt> header always
+     * names both the first and the last byte.
+     */
+    private static final Pattern COPY_SOURCE_RANGE_PATTERN = Pattern.compile("bytes=(\\d{1,18})-(\\d{1,18})");
 
     @Part
     private Storage storage;
@@ -134,6 +143,102 @@ public class MultipartUploadHandler {
         out.property("UploadId", upload.getUploadId());
         out.endOutput();
         responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Handles GET /bucket?uploads
+     * <p>
+     * Lists the multipart uploads of a bucket which have neither been completed nor aborted, sorted by key and then
+     * by the time of their initiation. <tt>prefix</tt>, <tt>max-uploads</tt>, <tt>key-marker</tt> and
+     * <tt>upload-id-marker</tt> are supported, <tt>delimiter</tt> is not.
+     *
+     * @param webContext the context describing the current request
+     * @param bucketName the name of the bucket to list the uploads of
+     */
+    void listMultipartUploads(WebContext webContext, String bucketName) {
+        Bucket bucket = storage.getBucket(bucketName);
+        if (!authenticator.objectCheckAuth(webContext, bucket, null)) {
+            return;
+        }
+        if (!bucket.exists()) {
+            responder.signalObjectError(webContext,
+                                        bucketName,
+                                        null,
+                                        S3ErrorCode.NoSuchBucket,
+                                        S3Dispatcher.ERROR_BUCKET_DOES_NOT_EXIST);
+            return;
+        }
+
+        String prefix = webContext.get("prefix").asString();
+        String keyMarker = webContext.get("key-marker").asString();
+        String uploadIdMarker = webContext.get("upload-id-marker").asString();
+        int maxUploads = webContext.get("max-uploads").asInt(DEFAULT_MAX_LISTING_SIZE);
+        if (maxUploads < 0 || maxUploads > DEFAULT_MAX_LISTING_SIZE) {
+            maxUploads = DEFAULT_MAX_LISTING_SIZE;
+        }
+
+        List<MultipartUpload> uploadsAfterMarker =
+                skipUploadsUpToMarker(multipartUploads.list(bucketName), keyMarker, uploadIdMarker);
+        List<MultipartUpload> remainingUploads =
+                uploadsAfterMarker.stream().filter(upload -> upload.getKey().startsWith(prefix)).toList();
+        List<MultipartUpload> uploads = remainingUploads.stream().limit(maxUploads).toList();
+        boolean truncated = !uploads.isEmpty() && uploads.size() < remainingUploads.size();
+
+        Response response = webContext.respondWith();
+        response.setHeader(S3Dispatcher.HTTP_HEADER_NAME_CONTENT_TYPE, S3Dispatcher.CONTENT_TYPE_XML);
+
+        XMLStructuredOutput out = response.xml();
+        out.beginOutput("ListMultipartUploadsResult",
+                        Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+        out.property(S3Dispatcher.RESPONSE_BUCKET, bucketName);
+        out.property("KeyMarker", keyMarker);
+        out.property("UploadIdMarker", uploadIdMarker);
+        if (truncated) {
+            out.property("NextKeyMarker", uploads.getLast().getKey());
+            out.property("NextUploadIdMarker", uploads.getLast().getUploadId());
+        }
+        out.property("Prefix", prefix);
+        out.property("MaxUploads", maxUploads);
+        out.property("IsTruncated", truncated);
+
+        for (MultipartUpload upload : uploads) {
+            out.beginObject("Upload");
+            out.property("Key", upload.getKey());
+            out.property("UploadId", upload.getUploadId());
+            responder.outputOwnerInfo(out, "Initiator");
+            responder.outputOwnerInfo(out, "Owner");
+            out.property("StorageClass", "STANDARD");
+            out.property("Initiated", S3Dispatcher.ISO8601_INSTANT.format(upload.getInitiated()));
+            out.endObject();
+        }
+
+        out.endOutput();
+        responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Drops all uploads which have been part of previous pages of a listing.
+     *
+     * @param uploads        the uploads in the order in which they are listed
+     * @param keyMarker      the key after which the listing continues, or an empty string to start at the beginning
+     * @param uploadIdMarker the upload of <tt>keyMarker</tt> after which the listing continues, or an empty string
+     *                       to skip all uploads of that key
+     * @return the uploads which follow the markers
+     */
+    private List<MultipartUpload> skipUploadsUpToMarker(List<MultipartUpload> uploads,
+                                                        String keyMarker,
+                                                        String uploadIdMarker) {
+        if (Strings.isEmpty(keyMarker)) {
+            return uploads;
+        }
+
+        // Compared instead of looked up, as the upload named as marker may have been completed or aborted meanwhile.
+        return uploads.stream().filter(upload -> {
+            int keyOrder = MultipartUploads.compareKeys(upload.getKey(), keyMarker);
+            return keyOrder > 0 || (keyOrder == 0
+                                    && Strings.isFilled(uploadIdMarker)
+                                    && upload.getUploadId().compareTo(uploadIdMarker) > 0);
+        }).toList();
     }
 
     /**
@@ -295,6 +400,97 @@ public class MultipartUploadHandler {
                                     id,
                                     S3ErrorCode.InternalError,
                                     Exceptions.handle(Storage.LOG, exception).getMessage());
+    }
+
+    /**
+     * Handles PUT /bucket/id?uploadId=X&partNumber=Y with an <tt>x-amz-copy-source</tt> header.
+     * <p>
+     * The part is filled with the contents of an existing object, or with the range of it which is given as
+     * <tt>x-amz-copy-source-range</tt>.
+     *
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket containing the object to upload
+     * @param id         name of the object to upload
+     * @param uploadId   the multipart upload this part belongs to
+     * @param partNumber the number of this part in the complete upload
+     * @param sourcePath the path of the source object to copy from
+     * @param body       the body of the request, which is expected to be empty
+     */
+    void uploadPartCopy(WebContext webContext,
+                        Bucket bucket,
+                        String id,
+                        String uploadId,
+                        String partNumber,
+                        String sourcePath,
+                        InputStreamHandler body) throws IOException {
+        ByteStreams.exhaust(body);
+
+        Optional<Integer> number = parsePartNumber(partNumber);
+        if (number.isEmpty()) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.InvalidArgument,
+                                        ERROR_INVALID_PART_NUMBER);
+            return;
+        }
+
+        Optional<MultipartUpload> upload = findMultipartUpload(webContext, bucket, id, uploadId);
+        if (upload.isEmpty()) {
+            return;
+        }
+
+        Optional<StoredObject> source = objectHandler.resolveCopySource(webContext, sourcePath);
+        if (source.isEmpty()) {
+            return;
+        }
+
+        long sourceSize = source.get().getSizeBytes();
+        long firstByte = 0;
+        long lastByte = sourceSize - 1;
+        String range = webContext.getHeader("x-amz-copy-source-range");
+        if (Strings.isFilled(range)) {
+            Matcher matcher = COPY_SOURCE_RANGE_PATTERN.matcher(range.trim());
+            if (matcher.matches()) {
+                firstByte = Long.parseLong(matcher.group(1));
+                lastByte = Long.parseLong(matcher.group(2));
+            }
+            if (!matcher.matches() || firstByte > lastByte || lastByte >= sourceSize) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.InvalidArgument,
+                                            Strings.apply(
+                                                    "The x-amz-copy-source-range value must be of the form bytes=first-last where first and last are the zero-based offsets of the first and last bytes to copy, and must lie within the source object of size %s.",
+                                                    sourceSize));
+                return;
+            }
+        }
+
+        MultipartUpload.Part stagedPart = null;
+        byte[] md5;
+        Instant lastModified;
+        try (FileInputStream in = new FileInputStream(source.get().getFile())) {
+            ByteStreams.skipFully(in, firstByte);
+            stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
+
+            // Read from the staged file, as a published part can be replaced or removed by another request at once.
+            md5 = stagedPart.md5();
+            lastModified = stagedPart.lastModified();
+            publishPart(bucket, id, uploadId, stagedPart);
+        } catch (IOException | HandledException exception) {
+            discardStagedPart(stagedPart);
+            signalPartNotStored(webContext, bucket, id, uploadId, exception);
+            return;
+        }
+
+        XMLStructuredOutput out = webContext.respondWith().xml();
+        out.beginOutput("CopyPartResult");
+        out.property("LastModified", S3Dispatcher.ISO8601_INSTANT.format(lastModified));
+        out.property(S3Dispatcher.HTTP_HEADER_NAME_ETAG,
+                     ObjectHandler.quoteEtag(BaseEncoding.base16().lowerCase().encode(md5)));
+        out.endOutput();
+        responder.signalObjectSuccess(webContext);
     }
 
     /**

@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Handles the S3 API calls which deal with single objects: storing, reading, copying and deleting them.
@@ -41,6 +42,13 @@ import java.util.Map;
 public class ObjectHandler {
 
     private static final String PATH_DELIMITER = "/";
+
+    /**
+     * Lists the standard headers, in lower case, which are stored along with an object next to all headers starting
+     * with {@link S3Dispatcher#AMAZON_HEADER_PREFIX}.
+     */
+    private static final Set<String> STORED_HEADERS =
+            Set.of("cache-control", "content-disposition", "content-md5", "content-type", "expires");
 
     private static final Map<String, String> headerOverrides;
 
@@ -133,7 +141,7 @@ public class ObjectHandler {
         Map<String, String> properties = Maps.newTreeMap();
         for (String name : webContext.getRequest().headers().names()) {
             String nameLower = name.toLowerCase();
-            if (nameLower.startsWith("x-amz-") || "content-md5".equals(nameLower) || "content-type".equals(nameLower)) {
+            if (nameLower.startsWith(S3Dispatcher.AMAZON_HEADER_PREFIX) || STORED_HEADERS.contains(nameLower)) {
                 properties.put(name, webContext.getHeader(name));
             }
         }
@@ -234,7 +242,10 @@ public class ObjectHandler {
         Response response = webContext.respondWith();
         Map<String, String> properties = object.getProperties();
         for (Map.Entry<String, String> entry : properties.entrySet()) {
-            response.addHeader(entry.getKey(), entry.getValue());
+            // The entity tag is stored without quotes, and is sent in its proper form below.
+            if (!S3Dispatcher.HTTP_HEADER_NAME_ETAG.equalsIgnoreCase(entry.getKey())) {
+                response.setHeader(entry.getKey(), entry.getValue());
+            }
         }
         for (Map.Entry<String, String> entry : getOverridenHeaders(webContext).entrySet()) {
             response.setHeader(entry.getKey(), entry.getValue());
@@ -247,16 +258,19 @@ public class ObjectHandler {
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
             object.setProperties(properties);
         }
-        response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag.toLowerCase()));
+        response.setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag.toLowerCase()));
         response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+
+        // Set explicitly, as sending the file skips this header once the object brings its own caching headers.
+        response.setHeader(HttpHeaderNames.LAST_MODIFIED,
+                           Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
 
         if (sendFile) {
             response.file(object.getFile());
         } else {
+            // The content type is only guessed if none has been stored along with the object.
             String contentType = MimeHelper.guessMimeType(object.getFile().getName());
-            response.addHeader(HttpHeaderNames.CONTENT_TYPE, contentType);
-            response.addHeader(HttpHeaderNames.LAST_MODIFIED,
-                               Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile().lastModified())));
+            response.addHeaderIfNotExists(HttpHeaderNames.CONTENT_TYPE, contentType);
             response.addHeader(HttpHeaderNames.CONTENT_LENGTH, object.getFile().length());
             response.status(HttpResponseStatus.OK);
         }

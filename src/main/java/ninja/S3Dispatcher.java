@@ -59,6 +59,7 @@ public class S3Dispatcher implements WebDispatcher {
     static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
     static final String ERROR_FILE_SYSTEM_ACCESS =
             "General problems accessing the file system — Permissions set correctly?";
+    static final String AMAZON_HEADER_PREFIX = "x-amz-";
 
     private static class S3Request {
 

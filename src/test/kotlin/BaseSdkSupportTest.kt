@@ -34,6 +34,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.security.MessageDigest
 import java.time.Duration
+import java.time.Instant
 import java.util.Base64
 import kotlin.test.*
 
@@ -814,6 +815,33 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `HEAD and GET report the ETag and the Content-Type exactly once`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+        val data = "Test".toByteArray()
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val putResponse = client.putObject(
+                PutObjectRequest.builder().bucket(bucketName).key(key).contentType("application/pdf").build(),
+                RequestBody.fromBytes(data)
+            )
+
+            val headResponse = client.headObject { it.bucket(bucketName).key(key) }
+            val getResponse = client.getObject { it.bucket(bucketName).key(key) }.use { it.response() }
+
+            listOf(headResponse.sdkHttpResponse(), getResponse.sdkHttpResponse()).forEach { httpResponse ->
+                assertEquals(listOf("application/pdf"), httpResponse.matchingHeaders("Content-Type"))
+                assertEquals(listOf(putResponse.eTag()), httpResponse.matchingHeaders("ETag"))
+            }
+            assertTrue(putResponse.eTag().startsWith('"'), "ETags are quoted")
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `UploadPart only accepts part numbers from 1 to 10000`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -889,6 +917,55 @@ abstract class BaseSdkSupportTest {
             }
             assertEquals(listOf(10), secondPage.parts().map { it.partNumber() })
             assertFalse(secondPage.isTruncated())
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `PutObject stores Content-Disposition, Cache-Control and Expires`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            client.putObject(
+                PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .contentDisposition(CONTENT_DISPOSITION)
+                    .cacheControl(CACHE_CONTROL)
+                    .expires(EXPIRES)
+                    .build(),
+                RequestBody.fromBytes("Test".toByteArray())
+            )
+
+            assertCachingAndDispositionHeaders(client, bucketName, key)
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
+    fun `Multipart upload stores Content-Disposition, Cache-Control and Expires`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+        val key = DEFAULT_KEY
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+
+            val uploadId = client.createMultipartUpload {
+                it.bucket(bucketName)
+                    .key(key)
+                    .contentDisposition(CONTENT_DISPOSITION)
+                    .cacheControl(CACHE_CONTROL)
+                    .expires(EXPIRES)
+            }.uploadId()
+            val part = uploadPart(client, bucketName, key, uploadId, 1, "Test".toByteArray())
+            completeMultipartUpload(client, bucketName, key, uploadId, part)
+
+            assertCachingAndDispositionHeaders(client, bucketName, key)
 
             cleanupBuckets(client, bucketName)
         }
@@ -1001,6 +1078,11 @@ abstract class BaseSdkSupportTest {
 
         const val DEFAULT_BUCKET_NAME = "test"
         const val DEFAULT_KEY = "key/with/slashes and spaces 😇"
+
+        const val CONTENT_DISPOSITION = "attachment; filename=\"report.pdf\""
+        const val CACHE_CONTROL = "private, max-age=600"
+        const val EXPIRES_HEADER = "Tue, 01 Jan 2030 00:00:00 GMT"
+        val EXPIRES: Instant = Instant.parse("2030-01-01T00:00:00Z")
 
         /**
          * Mirrors <tt>storage.multipartMinPartSize</tt> as lowered in <tt>test.conf</tt>, so that parts stay small.
@@ -1132,6 +1214,23 @@ abstract class BaseSdkSupportTest {
 
         fun md5(data: ByteArray): ByteArray {
             return MessageDigest.getInstance("MD5").digest(data)
+        }
+
+        /**
+         * Asserts that both HEAD and GET report the headers given when the object was uploaded.
+         */
+        fun assertCachingAndDispositionHeaders(client: S3Client, bucketName: String, key: String) {
+            val headResponse = client.headObject { it.bucket(bucketName).key(key) }
+            assertEquals(CONTENT_DISPOSITION, headResponse.contentDisposition())
+            assertEquals(CACHE_CONTROL, headResponse.cacheControl())
+            assertEquals(EXPIRES_HEADER, headResponse.expiresString())
+            assertNotNull(headResponse.lastModified())
+
+            val getResponse = client.getObject { it.bucket(bucketName).key(key) }.use { it.response() }
+            assertEquals(CONTENT_DISPOSITION, getResponse.contentDisposition())
+            assertEquals(CACHE_CONTROL, getResponse.cacheControl())
+            assertEquals(EXPIRES_HEADER, getResponse.expiresString())
+            assertNotNull(getResponse.lastModified())
         }
 
         /**

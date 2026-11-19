@@ -118,7 +118,11 @@ public class MultipartUploadHandler {
         }
 
         Response response = webContext.respondWith();
-        properties.forEach(response::addHeader);
+        properties.forEach((name, value) -> {
+            if (name.toLowerCase().startsWith(S3Dispatcher.AMAZON_HEADER_PREFIX)) {
+                response.addHeader(name, value);
+            }
+        });
         response.setHeader(S3Dispatcher.HTTP_HEADER_NAME_CONTENT_TYPE, S3Dispatcher.CONTENT_TYPE_XML);
 
         XMLStructuredOutput out = response.xml();

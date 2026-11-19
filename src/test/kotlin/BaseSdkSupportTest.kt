@@ -1212,6 +1212,34 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `Copying from a private bucket requires a signature even if the target is public`() {
+        val privateBucketName = DEFAULT_BUCKET_NAME
+        val publicBucketName = "$DEFAULT_BUCKET_NAME-public"
+
+        getClient().use { client ->
+            createBucket(client, privateBucketName)
+            client.createBucket { it.bucket(publicBucketName).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            putObjectWithContent(client, privateBucketName, "secret", "Test")
+            val uploadId = startMultipartUpload(client, publicBucketName, "target")
+            val copySource = mapOf("x-amz-copy-source" to "/$privateBucketName/secret")
+
+            assertEquals(403, putUnsigned("/$publicBucketName/target", copySource))
+            assertEquals(403, putUnsigned("/$publicBucketName/target?partNumber=1&uploadId=$uploadId", copySource))
+            assertS3Error("NoSuchKey") { getObject(client, publicBucketName, "target") }
+            assertTrue(
+                client.listParts { it.bucket(publicBucketName).key("target").uploadId(uploadId) }.parts().isEmpty()
+            )
+
+            client.copyObject {
+                it.sourceBucket(privateBucketName).sourceKey("secret")
+                    .destinationBucket(publicBucketName).destinationKey("target")
+            }
+
+            cleanupBuckets(client, privateBucketName, publicBucketName)
+        }
+    }
+
+    @Test
     fun `ListMultipartUploads lists keys in the order of their UTF-8 bytes`() {
         val bucketName = DEFAULT_BUCKET_NAME
         // As Java strings, these compare the other way round, as the emoji is stored as a pair of surrogates.
@@ -1479,6 +1507,16 @@ abstract class BaseSdkSupportTest {
                     .copySourceRange(range)
             }
             return CompletedPart.builder().partNumber(partNumber).eTag(response.copyPartResult().eTag()).build()
+        }
+
+        /**
+         * Sends a PUT request without any signature and returns the status code of the response.
+         */
+        fun putUnsigned(path: String, headers: Map<String, String>): Int {
+            val connection = URI(ENDPOINT + path).toURL().openConnection() as HttpURLConnection
+            connection.requestMethod = "PUT"
+            headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            return connection.responseCode.also { connection.disconnect() }
         }
 
         /**

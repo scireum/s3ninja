@@ -69,6 +69,9 @@ public class ObjectHandler {
     @Part
     private S3Responder responder;
 
+    @Part
+    private RequestAuthenticator authenticator;
+
     /**
      * Handles DELETE /bucket/id
      *
@@ -225,6 +228,12 @@ public class ObjectHandler {
                                         sourceKey,
                                         S3ErrorCode.NoSuchBucket,
                                         String.format("Source bucket '%s' does not exist", sourceBucketName));
+            return Optional.empty();
+        }
+
+        // The request has only been checked against its target so far. Without this, anyone permitted to write
+        // somewhere could copy objects out of a private bucket.
+        if (!authenticator.objectCheckAuth(webContext, sourceBucket, sourceKey)) {
             return Optional.empty();
         }
 

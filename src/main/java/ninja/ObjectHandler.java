@@ -45,6 +45,11 @@ public class ObjectHandler {
     private static final String PATH_DELIMITER = "/";
 
     /**
+     * Starts the version which S3 permits at the end of an <tt>x-amz-copy-source</tt> header.
+     */
+    private static final String COPY_SOURCE_VERSION_SUFFIX = "?versionId=";
+
+    /**
      * Lists the standard headers, in lower case, which are stored along with an object next to all headers starting
      * with {@link S3Dispatcher#AMAZON_HEADER_PREFIX}.
      */
@@ -201,25 +206,46 @@ public class ObjectHandler {
      * there is none.
      *
      * @param webContext the context describing the current request
-     * @param sourcePath the path of the source object, as <tt>bucket/key</tt> with an optional leading slash
+     * @param sourcePath the path of the source object, as <tt>bucket/key</tt> with an optional leading slash. The
+     *                   path may be URL-encoded as a whole, and may end with <tt>?versionId=</tt>, which is ignored
+     *                   as there are no versions.
      * @return the object to copy from, or an empty optional if the request has been answered with an error
      */
     Optional<StoredObject> resolveCopySource(WebContext webContext, String sourcePath) {
-        if (Strings.isEmpty(sourcePath) || !sourcePath.contains(PATH_DELIMITER)) {
+        // The version is cut off before decoding, as a question mark which belongs to the key is sent encoded.
+        String path = Strings.isEmpty(sourcePath) ? "" : sourcePath;
+        int versionStart = path.indexOf(COPY_SOURCE_VERSION_SUFFIX);
+        if (versionStart >= 0) {
+            path = path.substring(0, versionStart);
+        }
+
+        // Decoded before it is split, as clients are free to encode the slash after the bucket as well.
+        path = Urls.decode(path);
+        if (path.startsWith(PATH_DELIMITER)) {
+            path = path.substring(PATH_DELIMITER.length());
+        }
+        int keyStart = path.indexOf(PATH_DELIMITER);
+        if (keyStart <= 0 || keyStart == path.length() - 1) {
             responder.signalObjectError(webContext,
                                         null,
                                         null,
                                         S3ErrorCode.InvalidRequest,
-                                        String.format("Source '%s' must contain '/'", sourcePath));
+                                        String.format("Source '%s' must name a bucket and a key, separated by '/'",
+                                                      sourcePath));
             return Optional.empty();
         }
 
-        // parse the path of the source object
-        sourcePath = Urls.decode(sourcePath);
-        int sourceBucketNameStart = sourcePath.startsWith(PATH_DELIMITER) ? PATH_DELIMITER.length() : 0;
-        String sourceBucketName =
-                sourcePath.substring(sourceBucketNameStart, sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart));
-        String sourceKey = sourcePath.substring(sourcePath.indexOf(PATH_DELIMITER, sourceBucketNameStart) + 1);
+        String sourceBucketName = path.substring(0, keyStart);
+        String sourceKey = path.substring(keyStart + 1);
+
+        if (!Bucket.isValidName(sourceBucketName)) {
+            responder.signalObjectError(webContext,
+                                        sourceBucketName,
+                                        sourceKey,
+                                        S3ErrorCode.NoSuchBucket,
+                                        String.format("Source bucket '%s' does not exist", sourceBucketName));
+            return Optional.empty();
+        }
 
         Bucket sourceBucket = storage.getBucket(sourceBucketName);
         if (!sourceBucket.exists()) {
@@ -237,8 +263,9 @@ public class ObjectHandler {
             return Optional.empty();
         }
 
+        // Only a file is an object. A key such as ".." names a folder, which exists, but cannot be copied.
         StoredObject sourceObject = sourceBucket.getObject(sourceKey);
-        if (!sourceObject.exists()) {
+        if (!sourceObject.getFile().isFile()) {
             responder.signalObjectError(webContext,
                                         sourceBucketName,
                                         sourceKey,

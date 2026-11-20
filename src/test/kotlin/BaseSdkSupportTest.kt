@@ -1322,6 +1322,37 @@ abstract class BaseSdkSupportTest {
         }
     }
 
+    @Test
+    fun `Copy source may be encoded as a whole and name a version, but has to name an object`() {
+        val bucketName = DEFAULT_BUCKET_NAME
+
+        getClient().use { client ->
+            createBucket(client, bucketName)
+            putObjectWithContent(client, bucketName, "source", "Test")
+            val copy = CopyObjectRequest.builder().destinationBucket(bucketName)
+
+            client.copyObject(copy.destinationKey("encoded").copySource("$bucketName%2Fsource").build())
+            assertEquals("Test", String(getObject(client, bucketName, "encoded")!!.readAllBytes()))
+            client.copyObject(
+                copy.destinationKey("versioned").copySource("/$bucketName/source?versionId=null").build()
+            )
+            assertEquals("Test", String(getObject(client, bucketName, "versioned")!!.readAllBytes()))
+
+            assertS3Error("InvalidRequest") {
+                client.copyObject(copy.destinationKey("target").copySource("/$bucketName").build())
+            }
+            assertS3Error("NoSuchBucket") {
+                client.copyObject(copy.destinationKey("target").copySource("Not_A_Bucket/source").build())
+            }
+            assertS3Error("NoSuchKey") {
+                client.copyObject(copy.destinationKey("target").copySource("$bucketName/..").build())
+            }
+            assertS3Error("NoSuchKey") { getObject(client, bucketName, "target") }
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
     companion object {
         const val ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
         const val SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"

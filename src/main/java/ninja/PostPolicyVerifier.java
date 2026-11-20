@@ -36,6 +36,11 @@ import java.util.regex.Matcher;
 @Register(classes = PostPolicyVerifier.class)
 public class PostPolicyVerifier {
 
+    /**
+     * Names the algorithm signature version 4 derives its keys and signatures with.
+     */
+    private static final String HMAC_SHA256 = "HmacSHA256";
+
     private static final String ALGORITHM_VERSION_4 = "AWS4-HMAC-SHA256";
     /**
      * Explains that the size of an upload lies outside of the <tt>content-length-range</tt> of its policy.
@@ -163,12 +168,12 @@ public class PostPolicyVerifier {
 
         try {
             byte[] secretKey = ("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8);
-            byte[] dateKey = hmac("HmacSHA256", secretKey, credentialMatcher.group(2));
-            byte[] regionKey = hmac("HmacSHA256", dateKey, credentialMatcher.group(3));
-            byte[] serviceKey = hmac("HmacSHA256", regionKey, credentialMatcher.group(4));
-            byte[] signingKey = hmac("HmacSHA256", serviceKey, "aws4_request");
+            byte[] dateKey = hmac(HMAC_SHA256, secretKey, credentialMatcher.group(2));
+            byte[] regionKey = hmac(HMAC_SHA256, dateKey, credentialMatcher.group(3));
+            byte[] serviceKey = hmac(HMAC_SHA256, regionKey, credentialMatcher.group(4));
+            byte[] signingKey = hmac(HMAC_SHA256, serviceKey, "aws4_request");
 
-            String expectedSignature = BaseEncoding.base16().lowerCase().encode(hmac("HmacSHA256", signingKey, policy));
+            String expectedSignature = BaseEncoding.base16().lowerCase().encode(hmac(HMAC_SHA256, signingKey, policy));
             return expectedSignature.equals(signature);
         } catch (GeneralSecurityException exception) {
             Exceptions.handle(Storage.LOG, exception);

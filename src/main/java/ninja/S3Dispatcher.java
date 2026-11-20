@@ -45,6 +45,16 @@ import java.util.Set;
 public class S3Dispatcher implements WebDispatcher {
 
     /**
+     * Names the parameter which addresses the multipart uploads of a bucket.
+     */
+    private static final String PARAMETER_UPLOADS = "uploads";
+
+    /**
+     * Names the parameter which states the number of a part of a multipart upload.
+     */
+    private static final String PARAMETER_PART_NUMBER = "partNumber";
+
+    /**
      * Logger for S3 dispatcher operations including session tokens.
      */
     protected static final Log LOG = Log.get("s3dispatcher");
@@ -169,9 +179,9 @@ public class S3Dispatcher implements WebDispatcher {
             // Answered by dispatch(...).
             return null;
         }
-        if (Strings.isFilled(request.query)
-            && !Strings.areEqual(request.query, "uploads")
-            && !Strings.areEqual(request.query, "delete")) {
+        if (Strings.isFilled(request.query) && !Strings.areEqual(request.query, PARAMETER_UPLOADS) && !Strings.areEqual(
+                request.query,
+                "delete")) {
             // Handled by dispatch(...) once the body has arrived.
             return null;
         }
@@ -315,7 +325,7 @@ public class S3Dispatcher implements WebDispatcher {
         return HttpMethod.GET.equals(webContext.getRequest().method())
                && Strings.isFilled(request.bucket)
                && Strings.isEmpty(request.key)
-               && webContext.hasParameter("uploads")
+               && webContext.hasParameter(PARAMETER_UPLOADS)
                && !isQueryForProcessor(request);
     }
 
@@ -325,7 +335,7 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private boolean isQueryForProcessor(S3Request request) {
         return Strings.isFilled(request.query)
-               && !Strings.areEqual(request.query, "uploads")
+               && !Strings.areEqual(request.query, PARAMETER_UPLOADS)
                && globalContext.getPart(request.query, S3QueryProcessor.class) != null;
     }
 
@@ -481,7 +491,7 @@ public class S3Dispatcher implements WebDispatcher {
         HttpMethod method = webContext.getRequest().method();
         if (HttpMethod.PUT.equals(method)) {
             Value copy = webContext.getHeaderValue("x-amz-copy-source");
-            if (webContext.hasParameter("partNumber") != Strings.isFilled(uploadId)) {
+            if (webContext.hasParameter(PARAMETER_PART_NUMBER) != Strings.isFilled(uploadId)) {
                 // Without this check, a part lacking its upload ID would be stored as the object itself.
                 ByteStreams.exhaust(in);
                 responder.signalObjectError(webContext,
@@ -489,9 +499,9 @@ public class S3Dispatcher implements WebDispatcher {
                                             key,
                                             S3ErrorCode.InvalidArgument,
                                             "Uploading a part requires both partNumber and uploadId.");
-            } else if (webContext.hasParameter("partNumber")) {
+            } else if (webContext.hasParameter(PARAMETER_PART_NUMBER)) {
                 // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
-                String partNumber = webContext.get("partNumber").asString();
+                String partNumber = webContext.get(PARAMETER_PART_NUMBER).asString();
                 if (copy.isFilled()) {
                     multipartUploadHandler.uploadPartCopy(webContext,
                                                           bucket,
@@ -510,7 +520,7 @@ public class S3Dispatcher implements WebDispatcher {
             }
         } else if (HttpMethod.POST.equals(method)) {
             // S3 Multipart Upload API endpoints (different from Browser-Based Presigned POST)
-            if (webContext.hasParameter("uploads")) {
+            if (webContext.hasParameter(PARAMETER_UPLOADS)) {
                 // POST /bucket/key?uploads - Initiate Multipart Upload
                 multipartUploadHandler.startMultipartUpload(webContext, bucket, key);
             } else if (Strings.isFilled(uploadId)) {

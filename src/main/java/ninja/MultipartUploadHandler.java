@@ -53,6 +53,11 @@ import java.util.regex.Pattern;
 @Register(classes = MultipartUploadHandler.class)
 public class MultipartUploadHandler {
 
+    /**
+     * Names the element of a response which carries the ID of a multipart upload.
+     */
+    private static final String RESPONSE_UPLOAD_ID = "UploadId";
+
     private static final String ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST =
             "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.";
     private static final String ERROR_INVALID_PART =
@@ -144,7 +149,7 @@ public class MultipartUploadHandler {
         out.beginOutput("InitiateMultipartUploadResult");
         out.property(S3Dispatcher.RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
-        out.property("UploadId", upload.getUploadId());
+        out.property(RESPONSE_UPLOAD_ID, upload.getUploadId());
         out.endOutput();
         responder.signalObjectSuccess(webContext);
     }
@@ -208,7 +213,7 @@ public class MultipartUploadHandler {
         for (MultipartUpload upload : uploads) {
             out.beginObject("Upload");
             out.property("Key", upload.getKey());
-            out.property("UploadId", upload.getUploadId());
+            out.property(RESPONSE_UPLOAD_ID, upload.getUploadId());
             responder.outputOwnerInfo(out, "Initiator");
             responder.outputOwnerInfo(out, "Owner");
             out.property("StorageClass", "STANDARD");
@@ -867,7 +872,7 @@ public class MultipartUploadHandler {
         out.beginOutput("ListPartsResult");
         out.property(S3Dispatcher.RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
-        out.property("UploadId", uploadId);
+        out.property(RESPONSE_UPLOAD_ID, uploadId);
 
         responder.outputOwnerInfo(out, "Initiator");
         responder.outputOwnerInfo(out, "Owner");

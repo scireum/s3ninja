@@ -341,21 +341,6 @@ public class S3Policy {
     }
 
     /**
-     * Gets the maximum allowed file size from the policy.
-     * <p>
-     * This method searches for a {@code content-length-range} condition in the policy
-     * and extracts the maximum value (the second number in the range).
-     * <p>
-     * <b>Example policy condition:</b>
-     * <pre>{@code
-     * ["content-length-range", 0, 10485760]  // Min: 0 bytes, Max: 10 MB
-     * }</pre>
-     * <p>
-     * The method returns the maximum value (10485760 in the example above).
-     *
-     * @return the maximum allowed file size in bytes, or -1 if no content-length-range condition is specified
-     */
-    /**
      * Determines if an upload of the given size meets the <tt>content-length-range</tt> condition of this policy.
      *
      * @param size the size of the uploaded content in bytes
@@ -383,6 +368,21 @@ public class S3Policy {
                          .anyMatch(condition -> size < Value.of(condition.get("minimum")).asLong(0));
     }
 
+    /**
+     * Gets the maximum allowed file size from the policy.
+     * <p>
+     * This method searches for a {@code content-length-range} condition in the policy
+     * and extracts the maximum value (the second number in the range).
+     * <p>
+     * <b>Example policy condition:</b>
+     * <pre>{@code
+     * ["content-length-range", 0, 10485760]  // Min: 0 bytes, Max: 10 MB
+     * }</pre>
+     * <p>
+     * The method returns the maximum value (10485760 in the example above).
+     *
+     * @return the maximum allowed file size in bytes, or -1 if no content-length-range condition is specified
+     */
     public long getMaxFileSize() {
         return conditions.stream()
                          .filter(condition -> condition.containsKey("operator") && "content-length-range".equals(

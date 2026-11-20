@@ -35,7 +35,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -57,13 +56,6 @@ public class ObjectHandler {
      * Starts the version which S3 permits at the end of an <tt>x-amz-copy-source</tt> header.
      */
     private static final String COPY_SOURCE_VERSION_SUFFIX = "?versionId=";
-
-    /**
-     * Lists the standard headers, in lower case, which are stored along with an object next to all headers starting
-     * with {@link S3Dispatcher#AMAZON_HEADER_PREFIX}.
-     */
-    private static final Set<String> STORED_HEADERS =
-            Set.of("cache-control", "content-disposition", "content-md5", "content-type", "expires");
 
     private static final Map<String, String> headerOverrides;
 
@@ -153,7 +145,7 @@ public class ObjectHandler {
             }
 
             String etag = Hasher.md5().hashFile(receivedFile).toHexString();
-            Map<String, String> properties = parseUploadProperties(webContext);
+            Map<String, String> properties = StoredHeaders.ofRequest(webContext);
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
             object.replaceWith(receivedFile, properties);
 
@@ -165,25 +157,6 @@ public class ObjectHandler {
             // Gone if the object has been written. Whatever else happened, the file must not stay behind.
             sirius.kernel.commons.Files.delete(receivedFile);
         }
-    }
-
-    /**
-     * Collects the request headers which are stored along with an object and sent again when it is read.
-     * <p>
-     * This is used for plain and for multipart uploads alike, so that both keep the same set of headers.
-     *
-     * @param webContext the context describing the current request
-     * @return the headers to store, by their names as sent by the client
-     */
-    Map<String, String> parseUploadProperties(WebContext webContext) {
-        Map<String, String> properties = Maps.newTreeMap();
-        for (String name : webContext.getRequest().headers().names()) {
-            String nameLower = name.toLowerCase();
-            if (nameLower.startsWith(S3Dispatcher.AMAZON_HEADER_PREFIX) || STORED_HEADERS.contains(nameLower)) {
-                properties.put(name, webContext.getHeader(name));
-            }
-        }
-        return properties;
     }
 
     static String quoteEtag(String etag) {
@@ -206,16 +179,40 @@ public class ObjectHandler {
         StoredObject sourceObject = source.get();
 
         StoredObject object = bucket.getObject(key);
-        Files.copy(sourceObject.getFile(), object.getFile());
-        if (sourceObject.getPropertiesFile().exists()) {
-            Files.copy(sourceObject.getPropertiesFile(), object.getPropertiesFile());
+        String metadataDirective = webContext.getHeader("x-amz-metadata-directive");
+        if (Strings.isFilled(metadataDirective) && !"COPY".equals(metadataDirective) && !"REPLACE".equals(
+                metadataDirective)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        key,
+                                        S3ErrorCode.InvalidArgument,
+                                        "Unknown metadata directive.");
+            return;
+        }
+
+        boolean replaceMetadata = "REPLACE".equals(metadataDirective);
+        if (!replaceMetadata && sourceObject.getFile().equals(object.getFile())) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        key,
+                                        S3ErrorCode.InvalidRequest,
+                                        "This copy request is illegal because it is trying to copy an object to itself without changing the object's metadata.");
+            return;
         }
 
         // A copy is a plain object, even if its source has been uploaded in parts and thus carries another entity tag.
-        String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
-        Map<String, String> properties = object.getProperties();
+        String etag = Hasher.md5().hashFile(sourceObject.getFile()).toHexString();
+        Map<String, String> properties =
+                replaceMetadata ? StoredHeaders.ofRequest(webContext) : sourceObject.getProperties();
         properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-        object.setProperties(properties);
+
+        File copiedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
+        try {
+            Files.copy(sourceObject.getFile(), copiedFile);
+            object.replaceWith(copiedFile, properties);
+        } finally {
+            sirius.kernel.commons.Files.delete(copiedFile);
+        }
 
         XMLStructuredOutput structuredOutput =
                 webContext.respondWith().addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).xml();
@@ -353,9 +350,11 @@ public class ObjectHandler {
 
         Response response = webContext.respondWith();
         Map<String, String> properties = object.getProperties();
+        // A checksum covers the whole object, so it must not accompany a part of it.
+        boolean partialContent = Strings.isFilled(webContext.getHeader(HttpHeaderNames.RANGE));
         for (Map.Entry<String, String> entry : properties.entrySet()) {
-            // The entity tag is stored without quotes, and is sent in its proper form below.
-            if (!S3Dispatcher.HTTP_HEADER_NAME_ETAG.equalsIgnoreCase(entry.getKey())) {
+            if (StoredHeaders.isStored(entry.getKey()) && !(partialContent
+                                                            && StoredHeaders.isChecksum(entry.getKey()))) {
                 response.setHeader(entry.getKey(), entry.getValue());
             }
         }

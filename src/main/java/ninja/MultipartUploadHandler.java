@@ -118,7 +118,7 @@ public class MultipartUploadHandler {
      * @param id         name of the object to upload
      */
     void startMultipartUpload(WebContext webContext, Bucket bucket, String id) {
-        Map<String, String> properties = objectHandler.parseUploadProperties(webContext);
+        Map<String, String> properties = StoredHeaders.ofRequest(webContext);
 
         MultipartUpload upload;
         try {

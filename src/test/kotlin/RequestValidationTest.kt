@@ -27,17 +27,23 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
 import software.amazon.awssdk.services.s3.model.BucketCannedACL
+import software.amazon.awssdk.services.s3.model.ChecksumMode
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
 import software.amazon.awssdk.services.s3.model.CompletedPart
+import software.amazon.awssdk.services.s3.model.MetadataDirective
 import software.amazon.awssdk.services.s3.model.S3Exception
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+import java.util.zip.GZIPOutputStream
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -348,6 +354,109 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    fun `Object keeps the headers which describe it and none of its upload request`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            val data = gzip("Test ".repeat(1000))
+
+            client.putObject(
+                {
+                    it.bucket(BUCKET).key(KEY).contentType("text/plain").contentEncoding("gzip").contentLanguage("de")
+                        .metadata(mapOf("color" to "blue")).contentMD5(base64(md5(data)))
+                },
+                RequestBody.fromBytes(data)
+            )
+
+            val head = client.headObject { it.bucket(BUCKET).key(KEY) }
+            assertEquals("gzip", head.contentEncoding())
+            assertEquals("de", head.contentLanguage())
+            assertEquals(mapOf("color" to "blue"), head.metadata())
+            listOf("x-amz-date", "x-amz-content-sha256", "x-amz-decoded-content-length", "Content-MD5").forEach {
+                assertTrue(head.sdkHttpResponse().matchingHeaders(it).isEmpty(), "$it must not be returned")
+            }
+
+            val connection = URI("${BaseSdkSupportTest.ENDPOINT}/$BUCKET/$KEY").toURL().openConnection()
+            connection.setRequestProperty("Accept-Encoding", "gzip")
+            assertContentEquals(data, connection.getInputStream().use { it.readAllBytes() })
+            assertEquals("gzip", connection.getHeaderField("Content-Encoding"))
+
+            putObjectWithContent(client, BUCKET, "plain", "Test")
+            assertNull(client.headObject { it.bucket(BUCKET).key("plain") }.contentEncoding())
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Checksum of an object is not sent along with a range of it`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            val data = "Test".toByteArray()
+            client.putObject(
+                { it.bucket(BUCKET).key(KEY).checksumSHA256(base64(sha256(data))) }, RequestBody.fromBytes(data)
+            )
+
+            val whole = client.getObject { it.bucket(BUCKET).key(KEY).checksumMode(ChecksumMode.ENABLED) }
+            assertEquals(base64(sha256(data)), whole.use { it.response() }.checksumSHA256())
+
+            val range = client.getObject {
+                it.bucket(BUCKET).key(KEY).range("bytes=0-1").checksumMode(ChecksumMode.ENABLED)
+            }
+            assertNull(range.response().checksumSHA256())
+            assertEquals("Te", range.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `CopyObject honours the metadata directive`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            client.putObject(
+                { it.bucket(BUCKET).key(KEY).contentType("text/plain").metadata(mapOf("color" to "blue")) },
+                RequestBody.fromBytes("Test".toByteArray())
+            )
+
+            client.copyObject {
+                it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("kept")
+            }
+            val kept = client.headObject { it.bucket(BUCKET).key("kept") }
+            assertEquals("text/plain", kept.contentType())
+            assertEquals(mapOf("color" to "blue"), kept.metadata())
+
+            client.copyObject {
+                it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("replaced")
+                    .metadataDirective(MetadataDirective.REPLACE).contentType("application/json")
+                    .metadata(mapOf("shape" to "round"))
+            }
+            val replaced = client.headObject { it.bucket(BUCKET).key("replaced") }
+            assertEquals("application/json", replaced.contentType())
+            assertEquals(mapOf("shape" to "round"), replaced.metadata())
+
+            assertS3Error("InvalidRequest") {
+                client.copyObject {
+                    it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey(KEY)
+                }
+            }
+            client.copyObject {
+                it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey(KEY)
+                    .metadataDirective(MetadataDirective.REPLACE).metadata(mapOf("shape" to "round"))
+            }
+            assertEquals(mapOf("shape" to "round"), client.headObject { it.bucket(BUCKET).key(KEY) }.metadata())
+
+            assertS3Error("InvalidArgument") {
+                client.copyObject {
+                    it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("copy")
+                        .metadataDirective("REPLAC")
+                }
+            }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
     /**
      * Starts every test without any bucket, so that tests neither depend on nor disturb each other.
      */
@@ -397,6 +506,12 @@ class RequestValidationTest {
     private fun assertStatus(expectedStatus: Int, block: () -> Unit) {
         val exception = assertThrows<S3Exception> { block() }
         assertEquals(expectedStatus, exception.statusCode())
+    }
+
+    private fun gzip(text: String): ByteArray {
+        val buffer = ByteArrayOutputStream()
+        GZIPOutputStream(buffer).use { it.write(text.toByteArray()) }
+        return buffer.toByteArray()
     }
 
     private fun sha256(data: ByteArray): ByteArray {

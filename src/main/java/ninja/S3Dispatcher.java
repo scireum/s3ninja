@@ -150,7 +150,7 @@ public class S3Dispatcher implements WebDispatcher {
         if (Strings.isFilled(request.query)
             && !Strings.areEqual(request.query, "uploads")
             && !Strings.areEqual(request.query, "delete")) {
-            forwardQueryToProcessor(webContext, request);
+            // Handled by dispatch(...) once the body has arrived.
             return null;
         }
 
@@ -338,6 +338,10 @@ public class S3Dispatcher implements WebDispatcher {
                                              request.key,
                                              S3ErrorCode.NoSuchBucket,
                                              ERROR_BUCKET_DOES_NOT_EXIST);
+            return;
+        }
+
+        if (!authenticator.objectCheckAuth(webContext, bucket, request.key)) {
             return;
         }
 

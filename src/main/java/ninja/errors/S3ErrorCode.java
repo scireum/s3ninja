@@ -24,6 +24,11 @@ public enum S3ErrorCode {
     AccessDenied(HttpResponseStatus.FORBIDDEN),
 
     /**
+     * A parameter of a presigned URL which is part of its signature is not valid.
+     */
+    AuthorizationQueryParametersError(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * During upload, the specified checksum value did not match the calculated one.
      */
     BadDigest(HttpResponseStatus.BAD_REQUEST),
@@ -57,6 +62,11 @@ public enum S3ErrorCode {
      * An internal error has occurred.
      */
     InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
+
+    /**
+     * The access key the request was signed for is not known.
+     */
+    InvalidAccessKeyId(HttpResponseStatus.FORBIDDEN),
 
     /**
      * An argument of the request is not valid.
@@ -113,6 +123,11 @@ public enum S3ErrorCode {
      * The specified multipart upload does not exist.
      */
     NoSuchUpload(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The time at which the request was signed is too far from the time of the server.
+     */
+    RequestTimeTooSkewed(HttpResponseStatus.FORBIDDEN),
 
     /**
      * The provided request signature does not match the one calculated by the server.

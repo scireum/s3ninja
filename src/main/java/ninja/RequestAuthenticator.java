@@ -17,11 +17,13 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
 
+import java.util.Optional;
 import java.util.regex.Matcher;
 
 /**
@@ -48,6 +50,9 @@ public class RequestAuthenticator {
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
+
+    @Part
+    private CredentialVerifier credentialVerifier;
 
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -152,6 +157,20 @@ public class RequestAuthenticator {
 
         String hash = getAuthHash(webContext);
         if (Strings.isFilled(hash)) {
+            Optional<Tuple<S3ErrorCode, String>> credentialError = credentialVerifier.verify(webContext);
+            if (credentialError.isPresent()) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 key,
+                                                 credentialError.get().getFirst(),
+                                                 credentialError.get().getSecond());
+                log.log(webContext.getRequest().method().name(),
+                        webContext.getRequestedURI(),
+                        APILog.Result.REJECTED,
+                        CallContext.getCurrent().getWatch());
+                return false;
+            }
+
             String expectedHash = hashCalculator.computeHash(webContext, "");
             String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
             if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {

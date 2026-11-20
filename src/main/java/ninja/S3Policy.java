@@ -295,7 +295,7 @@ public class S3Policy {
                 default -> false;
             };
         } else {
-            // Format: {"success_action_redirect": "https://example.com/success"}
+            // A condition given as object names a field and the exact value it has to have.
             Map.Entry<String, Object> entry = condition.entrySet().iterator().next();
             String field = entry.getKey();
             String expectedValue = (String) entry.getValue();

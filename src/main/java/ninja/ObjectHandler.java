@@ -15,7 +15,6 @@ import com.google.common.io.Files;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import ninja.errors.S3ErrorCode;
-import sirius.kernel.cache.Cache;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Outcall;
 import sirius.kernel.commons.Strings;

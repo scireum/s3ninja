@@ -546,7 +546,7 @@ public class MultipartUploadHandler {
                                  Bucket bucket,
                                  String id,
                                  final String uploadId,
-                                 InputStreamHandler in) throws IOException {
+                                 InputStreamHandler in) {
         // Checked before reading the body, so that a request for an upload which does not exist costs next to nothing.
         if (multipartUploads.find(bucket.getName(), id, uploadId).isEmpty()) {
             in.exhaust();

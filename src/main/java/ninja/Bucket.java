@@ -155,6 +155,7 @@ public class Bucket {
      */
     public boolean delete() {
         if (!folder.exists()) {
+            publicAccessCache.remove(getName());
             return true;
         }
 
@@ -164,6 +165,11 @@ public class Bucket {
         } catch (IOException exception) {
             Exceptions.handle(Storage.LOG, exception);
             return false;
+        } finally {
+            // A bucket which is created anew under this name must not inherit being public. Forgotten once the
+            // marker is gone, whether deleting succeeded or not, as a request served meanwhile may have cached it
+            // again.
+            publicAccessCache.remove(getName());
         }
     }
 

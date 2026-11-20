@@ -628,6 +628,22 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    fun `A bucket created anew is private, even if a public one of that name was deleted`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            assertEquals(200, sendUnsigned("GET", "/$BUCKET/$KEY"))
+            cleanupBuckets(client, BUCKET)
+
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            assertEquals(403, sendUnsigned("GET", "/$BUCKET/$KEY"))
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
     /**
      * Starts every test without any bucket, so that tests neither depend on nor disturb each other.
      */

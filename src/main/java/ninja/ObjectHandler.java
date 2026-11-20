@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.locks.Lock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -91,6 +92,9 @@ public class ObjectHandler {
     @Part
     private Preconditions preconditions;
 
+    @Part
+    private ObjectLocks objectLocks;
+
     /**
      * Handles DELETE /bucket/id
      *
@@ -100,7 +104,13 @@ public class ObjectHandler {
      */
     void deleteObject(final WebContext webContext, final Bucket bucket, final String id) {
         StoredObject object = bucket.getObject(id);
-        object.delete();
+        Lock lock = objectLocks.lockFor(object);
+        lock.lock();
+        try {
+            object.delete();
+        } finally {
+            lock.unlock();
+        }
 
         webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
         responder.signalObjectSuccess(webContext);
@@ -154,7 +164,14 @@ public class ObjectHandler {
             String etag = Hasher.md5().hashFile(receivedFile).toHexString();
             Map<String, String> properties = StoredHeaders.ofRequest(webContext);
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-            object.replaceWith(receivedFile, properties);
+            if (!replaceIfPermitted(webContext, object, receivedFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
 
             Response response = webContext.respondWith();
             response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
@@ -164,6 +181,77 @@ public class ObjectHandler {
             // Gone if the object has been written. Whatever else happened, the file must not stay behind.
             sirius.kernel.commons.Files.delete(receivedFile);
         }
+    }
+
+    /**
+     * Makes the given file and properties the new state of the object, unless the conditions of the request forbid
+     * it.
+     * <p>
+     * The conditions are evaluated and the object is replaced while holding the lock of the object. Of two requests
+     * which only want to create an object, exactly one therefore succeeds.
+     *
+     * @param webContext the request which writes the object
+     * @param object     the object to replace or to create
+     * @param content    the file holding the new content, which has to reside in the folder of the bucket
+     * @param properties the properties of the new object
+     * @return <tt>true</tt> if the object has been written, <tt>false</tt> if a condition of the request did not hold
+     * @throws IOException if the object cannot be written, in which case its previous state is kept
+     */
+    boolean replaceIfPermitted(WebContext webContext, StoredObject object, File content, Map<String, String> properties)
+            throws IOException {
+        Lock lock = objectLocks.lockFor(object);
+        lock.lock();
+        try {
+            if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+                return false;
+            }
+            object.replaceWith(content, properties);
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Takes the lock of the source of a copy, and verifies that it still is what the request asks for.
+     * <p>
+     * The conditions a request states for its source have been evaluated when the source was resolved. Until it is
+     * read, another request may replace it. The source is therefore read while holding its lock, after its conditions
+     * have been evaluated once more.
+     *
+     * @param webContext the request which copies the object
+     * @param source     the object to copy from
+     * @return the lock, which has to be released once the source has been read, or an empty optional if the request
+     * has been answered with an error as the source no longer meets its conditions
+     */
+    Optional<Lock> lockCopySource(WebContext webContext, StoredObject source) {
+        Lock lock = objectLocks.lockFor(source);
+        lock.lock();
+        boolean sourceMayBeRead = false;
+        try {
+            if (!source.getFile().isFile()) {
+                responder.signalObjectError(webContext,
+                                            null,
+                                            source.getKey(),
+                                            S3ErrorCode.NoSuchKey,
+                                            "The source object does not exist");
+            } else if (preconditions.evaluateCopySource(webContext, source) == Preconditions.Outcome.FAILED) {
+                responder.signalObjectError(webContext,
+                                            null,
+                                            source.getKey(),
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            } else {
+                sourceMayBeRead = true;
+            }
+        } finally {
+            // Also released if evaluating the conditions fails, as nothing else would ever release it.
+            if (!sourceMayBeRead) {
+                lock.unlock();
+            }
+        }
+
+        return sourceMayBeRead ? Optional.of(lock) : Optional.empty();
     }
 
     static String quoteEtag(String etag) {
@@ -207,16 +295,33 @@ public class ObjectHandler {
             return;
         }
 
-        // A copy is a plain object, even if its source has been uploaded in parts and thus carries another entity tag.
-        String etag = Hasher.md5().hashFile(sourceObject.getFile()).toHexString();
-        Map<String, String> properties =
-                replaceMetadata ? StoredHeaders.ofRequest(webContext) : sourceObject.getProperties();
-        properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-
+        String etag;
         File copiedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
         try {
-            Files.copy(sourceObject.getFile(), copiedFile);
-            object.replaceWith(copiedFile, properties);
+            Map<String, String> properties;
+            Optional<Lock> sourceLock = lockCopySource(webContext, sourceObject);
+            if (sourceLock.isEmpty()) {
+                return;
+            }
+            try {
+                // A copy is a plain object, even if its source has been uploaded in parts and thus carries another
+                // entity tag.
+                etag = Hasher.md5().hashFile(sourceObject.getFile()).toHexString();
+                properties = replaceMetadata ? StoredHeaders.ofRequest(webContext) : sourceObject.getProperties();
+                properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+                Files.copy(sourceObject.getFile(), copiedFile);
+            } finally {
+                sourceLock.get().unlock();
+            }
+
+            if (!replaceIfPermitted(webContext, object, copiedFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            key,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
         } finally {
             sirius.kernel.commons.Files.delete(copiedFile);
         }

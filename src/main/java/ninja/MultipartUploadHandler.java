@@ -475,9 +475,17 @@ public class MultipartUploadHandler {
         MultipartUpload.Part stagedPart = null;
         byte[] md5;
         Instant lastModified;
-        try (FileInputStream in = new FileInputStream(source.get().getFile())) {
-            ByteStreams.skipFully(in, firstByte);
-            stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
+        Optional<Lock> sourceLock = objectHandler.lockCopySource(webContext, source.get());
+        if (sourceLock.isEmpty()) {
+            return;
+        }
+        try {
+            try (FileInputStream in = new FileInputStream(source.get().getFile())) {
+                ByteStreams.skipFully(in, firstByte);
+                stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
+            } finally {
+                sourceLock.get().unlock();
+            }
 
             // Read from the staged file, as a published part can be replaced or removed by another request at once.
             md5 = stagedPart.md5();
@@ -603,7 +611,14 @@ public class MultipartUploadHandler {
             String etag = computeMultipartEtag(parts.values());
             Map<String, String> properties = upload.getProperties();
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-            object.replaceWith(assembledFile, properties);
+            if (!objectHandler.replaceIfPermitted(webContext, object, assembledFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
             removeCompletedUpload(upload);
 
             XMLStructuredOutput out = webContext.respondWith().xml();

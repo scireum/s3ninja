@@ -9,7 +9,9 @@
 package ninja.queries;
 
 import ninja.Bucket;
+import ninja.ObjectLocks;
 import ninja.StoredObject;
+import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.xml.StructuredNode;
 import sirius.kernel.xml.XMLStructuredInput;
@@ -19,12 +21,16 @@ import sirius.web.http.WebContext;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.concurrent.locks.Lock;
 
 /**
  * Processes <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html">delete object</a> requests.
  */
 @Register(name = "delete")
 public class DeleteObjectsProcessor implements S3QueryProcessor {
+
+    @Part
+    private ObjectLocks objectLocks;
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,
@@ -63,8 +69,14 @@ public class DeleteObjectsProcessor implements S3QueryProcessor {
 
         StoredObject object = bucket.getObject(key);
         // Deleting an object which does not exist is no error for S3, it is reported as deleted like any other.
-        if (object.exists()) {
-            object.delete();
+        Lock lock = objectLocks.lockFor(object);
+        lock.lock();
+        try {
+            if (object.exists()) {
+                object.delete();
+            }
+        } finally {
+            lock.unlock();
         }
 
         if (!quiet) {

@@ -46,6 +46,9 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -289,6 +292,45 @@ class RequestValidationTest {
 
             client.putObject({ it.bucket(BUCKET).key(KEY).ifMatch(etag) }, body)
             assertEquals("Changed", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Of several requests creating the same object only if it does not exist, exactly one succeeds`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+
+            // Large enough for all requests to be on their way before the first one has been received completely.
+            val content = ByteArray(2 * 1024 * 1024)
+            val attempts = 8
+            val start = CountDownLatch(1)
+            val executor = Executors.newFixedThreadPool(attempts)
+            val outcomes = (1..attempts).map {
+                executor.submit<Boolean> {
+                    start.await()
+                    try {
+                        client.putObject(
+                            { it.bucket(BUCKET).key(KEY).ifNoneMatch("*") },
+                            RequestBody.fromBytes(content)
+                        )
+                        true
+                    } catch (exception: S3Exception) {
+                        assertEquals(412, exception.statusCode())
+                        false
+                    }
+                }
+            }
+            val successes = try {
+                start.countDown()
+                outcomes.count { it.get(1, TimeUnit.MINUTES) }
+            } finally {
+                executor.shutdownNow()
+            }
+
+            assertEquals(1, successes)
+            assertEquals(content.size.toLong(), client.headObject { it.bucket(BUCKET).key(KEY) }.contentLength())
 
             cleanupBuckets(client, BUCKET)
         }

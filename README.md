@@ -83,13 +83,14 @@ S3 Ninja supports AWS S3-compatible presigned POST requests for secure file uplo
 4. Inspect the policy JSON, Base64 policy, and signature in the results card for debugging or automation.
 
 ### Making the Request
-- **URL**: `POST http://localhost:9444/<bucket>/<key>`
+- **URL**: `POST http://localhost:9444/<bucket>`, as for S3. The key is sent as form field.
 - **Content-Type**: `multipart/form-data`
-- **Form Fields**: Include the generated fields plus the file to upload as `file=@/path/to/file`.
+- **Form Fields**: Include the generated fields plus the file to upload as `file=@/path/to/file`, which has to be the
+  last field.
 
 Example `curl` command:
 ```
-curl -X POST "http://localhost:9444/test/example.txt" \
+curl -X POST "http://localhost:9444/test" \
   -F "key=example.txt" \
   -F "policy=<BASE64_POLICY>" \
   -F "x-amz-algorithm=AWS4-HMAC-SHA256" \
@@ -105,6 +106,14 @@ If using a session token (from `/session-token` endpoint), add:
 ```
 
 The policy enforces conditions like bucket, key, expiration, and optional security token. On success, the file is uploaded; on failure, an XML error is returned.
+
+The policy and its signature are verified as S3 does: the signature has to cover the policy in its Base64 encoding,
+exactly as it is sent in the `policy` field. This is what `generate_presigned_post` of boto3 and the other SDKs
+produce. Both signature version 4 (`x-amz-signature`) and version 2 (`signature`) are accepted. An upload with a wrong
+signature, an expired policy or a condition which is not met is refused, also if the bucket is public.
+
+The workbench of the UI sends the generated fields as query string to `POST /<bucket>/<key>`, with the file as body
+of the request. This is a convenience of S3 ninja which S3 does not offer.
 
 ## Contributions
 

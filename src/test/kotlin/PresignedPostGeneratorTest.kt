@@ -43,7 +43,7 @@ class PresignedPostGeneratorTest {
         val policyBase64 = BaseEncoding.base64().encode(policyJson.toByteArray(StandardCharsets.UTF_8))
 
         // Calculate Signature (AWS Signature Version 4)
-        val signature = calculateAwsSignature(secretKey, date, region, policyJson.toByteArray(StandardCharsets.UTF_8))
+        val signature = calculateAwsSignature(secretKey, date, region, policyBase64.toByteArray(StandardCharsets.UTF_8))
 
         // Build the presigned POST URL
         val url = buildPresignedPostUrl(bucket, key, policyBase64, credential, xAmzDate, sessionToken, signature)
@@ -86,7 +86,7 @@ class PresignedPostGeneratorTest {
         val policyBase64 = BaseEncoding.base64().encode(policyJson.toByteArray(StandardCharsets.UTF_8))
 
         // Calculate Signature
-        val signature = calculateAwsSignature(secretKey, date, region, policyJson.toByteArray(StandardCharsets.UTF_8))
+        val signature = calculateAwsSignature(secretKey, date, region, policyBase64.toByteArray(StandardCharsets.UTF_8))
 
         // Build URL without session token
         val url = buildPresignedPostUrl(bucket, key, policyBase64, credential, xAmzDate, null, signature)

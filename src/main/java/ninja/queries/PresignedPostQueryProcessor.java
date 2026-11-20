@@ -7,6 +7,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.multipart.HttpData;
 import ninja.Bucket;
+import ninja.PostPolicyVerifier;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
@@ -38,6 +39,9 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
 
+    @Part
+    private PostPolicyVerifier postPolicyVerifier;
+
     @Override
     public void processQuery(@Nonnull WebContext webContext,
                              @Nonnull Bucket bucket,
@@ -52,6 +56,26 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                                                  null,
                                                  S3ErrorCode.InvalidRequest,
                                                  "Missing key in form data");
+                return;
+            }
+            if (!StoredObject.isStorableKey(objectKey)) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 objectKey,
+                                                 S3ErrorCode.KeyTooLongError,
+                                                 "Your key is too long");
+                return;
+            }
+
+            // Nothing but its policy authorizes this request, as it has been let through without a signature of
+            // its own.
+            PostPolicyVerifier.Result verification = postPolicyVerifier.verify(webContext, bucket, objectKey);
+            if (!verification.isValid()) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 objectKey,
+                                                 verification.errorCode(),
+                                                 verification.message());
                 return;
             }
 
@@ -79,6 +103,17 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                                                  objectKey,
                                                  S3ErrorCode.InvalidRequest,
                                                  "Missing file content in form data");
+                return;
+            }
+
+            long contentSize = filePart != null ? filePart.length() : webContext.getContentSize();
+            S3ErrorCode sizeError = postPolicyVerifier.verifySize(verification.policy(), contentSize);
+            if (sizeError != null) {
+                errorSynthesizer.synthesiseError(webContext,
+                                                 bucket.getName(),
+                                                 objectKey,
+                                                 sizeError,
+                                                 PostPolicyVerifier.ERROR_SIZE_NOT_PERMITTED);
                 return;
             }
 
@@ -145,31 +180,13 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
             object.setProperties(properties);
 
-            // Return success response
-            String successActionStatus = webContext.get("success_action_status").asString("204");
-            HttpResponseStatus status;
-
-            switch (successActionStatus) {
-                case "200":
-                    status = HttpResponseStatus.OK;
-                    break;
-                case "201":
-                    status = HttpResponseStatus.CREATED;
-                    break;
-                case "204":
-                    status = HttpResponseStatus.NO_CONTENT;
-                    break;
-                default:
-                    // Invalid success_action_status - AWS S3 would reject this
-                    errorSynthesizer.synthesiseError(webContext,
-                                                     bucket.getName(),
-                                                     objectKey,
-                                                     S3ErrorCode.InvalidRequest,
-                                                     "Invalid success_action_status: "
-                                                     + successActionStatus
-                                                     + ". Must be 200, 201, or 204.");
-                    return;
-            }
+            // The object is stored at this point, so the request has succeeded whatever status the form asks for. As
+            // for S3, a value which is not valid is answered like none at all, with 204.
+            HttpResponseStatus status = switch (webContext.get("success_action_status").asString("204")) {
+                case "200" -> HttpResponseStatus.OK;
+                case "201" -> HttpResponseStatus.CREATED;
+                default -> HttpResponseStatus.NO_CONTENT;
+            };
 
             webContext.respondWith().status(status);
         } catch (IOException exception) {

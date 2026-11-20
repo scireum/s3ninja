@@ -43,13 +43,13 @@ public class PresignedPostService {
 
     /**
      * Generate presigned POST DTO and concatenate all the below fields.
-     *  "key"
-     *  "policy"
-     *  "x-amz-algorithm"
-     *  "x-amz-credential"
-     *  "x-amz-date"
-     *  "x-amz-signature",
-     *  "x-amz-security-token"
+     * "key"
+     * "policy"
+     * "x-amz-algorithm"
+     * "x-amz-credential"
+     * "x-amz-date"
+     * "x-amz-signature",
+     * "x-amz-security-token"
      *
      */
     public PresignedPostResponse generate(PresignedPostRequest request) {
@@ -64,7 +64,8 @@ public class PresignedPostService {
         ObjectNode policyJson = buildPolicy(request, credential, xAmzDate, expiration);
         String policyString = policyJson.toString();
         String policyBase64 = BaseEncoding.base64().encode(policyString.getBytes(StandardCharsets.UTF_8));
-        String signature = signPolicy(policyString.getBytes(StandardCharsets.UTF_8), date, request.region());
+        // As for S3, the policy is signed the way it is sent, i.e. in its Base64 encoding.
+        String signature = signPolicy(policyBase64.getBytes(StandardCharsets.UTF_8), date, request.region());
 
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("key", request.key());

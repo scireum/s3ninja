@@ -54,6 +54,9 @@ public class RequestAuthenticator {
     @Part
     private CredentialVerifier credentialVerifier;
 
+    @Part
+    private PostPolicyVerifier postPolicyVerifier;
+
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
      */
@@ -150,7 +153,7 @@ public class RequestAuthenticator {
             return true;
         }
 
-        // Allow policy-signed POST uploads without Authorization header; signature is validated later.
+        // A browser-based upload carries no signature of its own. Its policy is verified before anything is stored.
         if (isPolicyBasedPost(webContext)) {
             return true;
         }
@@ -205,11 +208,21 @@ public class RequestAuthenticator {
         return true;
     }
 
+    /**
+     * Determines if the request is a browser-based upload, which is not signed itself, but carries a signed policy.
+     * <p>
+     * Such a request is let through here, as {@link PostPolicyVerifier} verifies its policy and signature before
+     * anything is stored. The other POST requests of the API, which initiate or complete a multipart upload or delete
+     * several objects, are never exempt, as nothing would verify a policy sent along with them.
+     */
     private boolean isPolicyBasedPost(WebContext webContext) {
         if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
             return false;
         }
-        return webContext.hasParameter("policy") || webContext.hasParameter("Policy") || webContext.hasParameter(
-                "x-amz-signature") || webContext.hasParameter("Signature");
+        if (webContext.hasParameter("uploads") || webContext.hasParameter("uploadId") || webContext.hasParameter(
+                "delete")) {
+            return false;
+        }
+        return postPolicyVerifier.hasPolicy(webContext);
     }
 }

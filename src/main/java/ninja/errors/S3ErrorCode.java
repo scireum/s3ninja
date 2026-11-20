@@ -54,6 +54,11 @@ public enum S3ErrorCode {
     EntityTooSmall(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The upload exceeds the maximum size which is permitted for it.
+     */
+    EntityTooLarge(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * During upload, less than the number of bytes specified have been transmitted.
      */
     IncompleteBody(HttpResponseStatus.BAD_REQUEST),

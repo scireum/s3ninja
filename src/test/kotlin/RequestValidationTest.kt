@@ -604,6 +604,30 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    fun `A policy parameter does not exempt the POST requests of the API from being signed`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            val uploadId = client.createMultipartUpload { it.bucket(BUCKET).key("upload") }.uploadId()
+
+            assertEquals(403, sendUnsigned("POST", "/$BUCKET/other?uploads&policy=x"))
+            assertEquals(
+                403,
+                sendUnsigned("POST", "/$BUCKET/upload?uploadId=$uploadId&Signature=x", "<CompleteMultipartUpload/>")
+            )
+            assertEquals(
+                403,
+                sendUnsigned("POST", "/$BUCKET?delete&policy=x", "<Delete><Object><Key>$KEY</Key></Object></Delete>")
+            )
+
+            assertEquals(listOf(KEY), client.listObjectsV2 { it.bucket(BUCKET) }.contents().map { it.key() })
+            assertEquals(listOf("upload"), client.listMultipartUploads { it.bucket(BUCKET) }.uploads().map { it.key() })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
     /**
      * Starts every test without any bucket, so that tests neither depend on nor disturb each other.
      */

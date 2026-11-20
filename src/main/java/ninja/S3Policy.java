@@ -90,6 +90,8 @@ import java.util.Map;
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html">AWS S3 POST Example</a>
  */
 public class S3Policy {
+
+    private static final String CONTENT_LENGTH_RANGE = "content-length-range";
     private static final Logger LOG = LoggerFactory.getLogger(S3Policy.class);
 
     /**
@@ -172,7 +174,15 @@ public class S3Policy {
         List<Map<String, Object>> result = new ArrayList<>();
         if (conditionsNode instanceof ArrayNode arrayNode) {
             arrayNode.forEach(condition -> {
-                if (condition.isArray()) {
+                if (condition.isArray() && CONTENT_LENGTH_RANGE.equals(condition.get(0).asString(""))) {
+                    // Format: ["content-length-range", 0, 1048576], which names no field but the permitted sizes.
+                    Map<String, Object> conditionMap = new HashMap<>();
+                    conditionMap.put("operator", CONTENT_LENGTH_RANGE);
+                    conditionMap.put("field", CONTENT_LENGTH_RANGE);
+                    conditionMap.put("minimum", condition.get(1).asString(""));
+                    conditionMap.put("value", condition.get(2).asString(""));
+                    result.add(conditionMap);
+                } else if (condition.isArray()) {
                     Map<String, Object> conditionMap = new HashMap<>();
                     conditionMap.put("operator", condition.get(0).asString(""));
                     String field = condition.get(1).asString("");
@@ -183,6 +193,9 @@ public class S3Policy {
                     conditionMap.put("value", condition.get(2).asString(""));
                     result.add(conditionMap);
                 } else if (condition.isObject()) {
+                    if (condition.isEmpty()) {
+                        throw new IllegalArgumentException("A condition must name a field.");
+                    }
                     Map<String, Object> conditionMap = new HashMap<>();
                     condition.properties()
                              .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
@@ -277,6 +290,8 @@ public class S3Policy {
             return switch (operator) {
                 case "eq" -> value.equals(actualValue);
                 case "starts-with" -> actualValue != null && actualValue.startsWith(value);
+                // The size of the upload is only known once it has been received, see isPermittedSize(long).
+                case CONTENT_LENGTH_RANGE -> true;
                 default -> false;
             };
         } else {
@@ -317,7 +332,8 @@ public class S3Policy {
             case "bucket" -> bucket.getName();
             case "key" -> key;
             case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
-            case "Content-Type" -> webContext.getHeader("Content-Type");
+            // The type of the object is a field of the form. The header describes the form itself.
+            case "Content-Type" -> webContext.get("Content-Type").asString(webContext.getHeader("Content-Type"));
             case "success_action_redirect" -> webContext.get("success_action_redirect").asString();
             case "success_action_status" -> webContext.get("success_action_status").asString();
             default -> webContext.get(field).asString("");
@@ -339,6 +355,34 @@ public class S3Policy {
      *
      * @return the maximum allowed file size in bytes, or -1 if no content-length-range condition is specified
      */
+    /**
+     * Determines if an upload of the given size meets the <tt>content-length-range</tt> condition of this policy.
+     *
+     * @param size the size of the uploaded content in bytes
+     * @return <tt>true</tt> if the policy states no such condition or the size lies within its range,
+     * <tt>false</tt> otherwise
+     */
+    public boolean isPermittedSize(long size) {
+        return !isBelowMinimumSize(size) && conditions.stream()
+                                                      .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get(
+                                                              "operator")))
+                                                      .allMatch(condition -> size <= Value.of(condition.get("value"))
+                                                                                          .asLong(Long.MAX_VALUE));
+    }
+
+    /**
+     * Determines if an upload of the given size is smaller than the <tt>content-length-range</tt> condition of this
+     * policy permits.
+     *
+     * @param size the size of the uploaded content in bytes
+     * @return <tt>true</tt> if the policy states a minimum which the size does not reach, <tt>false</tt> otherwise
+     */
+    public boolean isBelowMinimumSize(long size) {
+        return conditions.stream()
+                         .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get("operator")))
+                         .anyMatch(condition -> size < Value.of(condition.get("minimum")).asLong(0));
+    }
+
     public long getMaxFileSize() {
         return conditions.stream()
                          .filter(condition -> condition.containsKey("operator") && "content-length-range".equals(

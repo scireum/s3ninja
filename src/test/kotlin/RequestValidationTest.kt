@@ -10,20 +10,27 @@ import BaseSdkSupportTest.Companion.assertS3Error
 import BaseSdkSupportTest.Companion.cleanupBuckets
 import BaseSdkSupportTest.Companion.createBucket
 import BaseSdkSupportTest.Companion.getPresigner
+import BaseSdkSupportTest.Companion.md5
 import BaseSdkSupportTest.Companion.putObjectWithContent
+import com.google.common.io.BaseEncoding
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import sirius.kernel.SiriusExtension
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
+import software.amazon.awssdk.services.s3.model.BucketCannedACL
 import java.net.HttpURLConnection
 import java.net.URI
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.Base64
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Verifies that requests are checked as strictly as S3 checks them, apart from multipart uploads which are covered by
@@ -94,6 +101,91 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    fun `PutObject with a wrong Content-MD5 or checksum is refused and keeps the previous object`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Previous")
+            val data = "Test".toByteArray()
+
+            assertS3Error("BadDigest") {
+                client.putObject(
+                    { it.bucket(BUCKET).key(KEY).contentMD5(base64(md5("Other".toByteArray()))) },
+                    RequestBody.fromBytes(data)
+                )
+            }
+            assertS3Error("InvalidDigest") {
+                client.putObject({ it.bucket(BUCKET).key(KEY).contentMD5("AAAA") }, RequestBody.fromBytes(data))
+            }
+            assertS3Error("BadDigest") {
+                client.putObject(
+                    { it.bucket(BUCKET).key(KEY).checksumSHA256(base64(sha256("Other".toByteArray()))) },
+                    RequestBody.fromBytes(data)
+                )
+            }
+            assertS3Error("BadDigest") {
+                client.putObject({ it.bucket(BUCKET).key(KEY).checksumCRC32("AAAAAA==") }, RequestBody.fromBytes(data))
+            }
+            assertEquals("Previous", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            client.putObject(
+                {
+                    it.bucket(BUCKET).key(KEY).contentMD5(base64(md5(data))).checksumSHA256(base64(sha256(data)))
+                },
+                RequestBody.fromBytes(data)
+            )
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `PutObject with a wrong x-amz-content-sha256 is refused`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            val data = "Test".toByteArray()
+
+            val wrongHash = BaseEncoding.base16().lowerCase().encode(sha256("Other".toByteArray()))
+            assertEquals(400, sendUnsigned("PUT", "/$BUCKET/$KEY", "Test", mapOf("x-amz-content-sha256" to wrongHash)))
+            assertS3Error("NoSuchKey") { client.headObject { it.bucket(BUCKET).key(KEY) } }
+            assertEquals(
+                400, sendUnsigned("PUT", "/$BUCKET/$KEY", "Test", mapOf("x-amz-content-sha256" to "not-a-hash"))
+            )
+            assertEquals(
+                400,
+                sendUnsigned("PUT", "/$BUCKET/$KEY", "Test", mapOf("x-amz-content-sha256" to "STREAMING-UNKNOWN"))
+            )
+            assertS3Error("NoSuchKey") { client.headObject { it.bucket(BUCKET).key(KEY) } }
+
+            val hash = BaseEncoding.base16().lowerCase().encode(sha256(data))
+            assertEquals(200, sendUnsigned("PUT", "/$BUCKET/$KEY", "Test", mapOf("x-amz-content-sha256" to hash)))
+            assertEquals(
+                200, sendUnsigned("PUT", "/$BUCKET/$KEY", "Test", mapOf("x-amz-content-sha256" to "UNSIGNED-PAYLOAD"))
+            )
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `UploadPart with a wrong checksum is refused`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            val uploadId = client.createMultipartUpload { it.bucket(BUCKET).key(KEY) }.uploadId()
+
+            assertS3Error("BadDigest") {
+                client.uploadPart(
+                    { it.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1).checksumCRC32("AAAAAA==") },
+                    RequestBody.fromBytes("Test".toByteArray())
+                )
+            }
+            assertTrue(client.listParts { it.bucket(BUCKET).key(KEY).uploadId(uploadId) }.parts().isEmpty())
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
     /**
      * Starts every test without any bucket, so that tests neither depend on nor disturb each other.
      */
@@ -120,15 +212,29 @@ class RequestValidationTest {
     /**
      * Sends a request without any signature and returns the status code of the response.
      */
-    private fun sendUnsigned(method: String, path: String, xmlBody: String? = null): Int {
+    private fun sendUnsigned(
+        method: String,
+        path: String,
+        body: String? = null,
+        headers: Map<String, String> = emptyMap()
+    ): Int {
         val connection = URI(BaseSdkSupportTest.ENDPOINT + path).toURL().openConnection() as HttpURLConnection
         connection.requestMethod = method
-        if (xmlBody != null) {
+        connection.setRequestProperty("Content-Type", "application/xml")
+        headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+        if (body != null) {
             connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/xml")
-            connection.outputStream.use { it.write(xmlBody.toByteArray()) }
+            connection.outputStream.use { it.write(body.toByteArray()) }
         }
         return connection.responseCode.also { connection.disconnect() }
+    }
+
+    private fun sha256(data: ByteArray): ByteArray {
+        return MessageDigest.getInstance("SHA-256").digest(data)
+    }
+
+    private fun base64(data: ByteArray): String {
+        return Base64.getEncoder().encodeToString(data)
     }
 
     companion object {

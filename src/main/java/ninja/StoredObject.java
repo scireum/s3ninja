@@ -22,6 +22,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -229,6 +230,37 @@ public class StoredObject {
         properties.forEach(props::setProperty);
         try (FileOutputStream out = new FileOutputStream(getPropertiesFile())) {
             props.store(out, "");
+        }
+    }
+
+    /**
+     * Makes the given file and the given properties the new state of this object.
+     * <p>
+     * The content appears in one step, so that readers never see a partly written object. The properties are written
+     * before that: a reader which finds an object without an entity tag computes and stores one, which, the other way
+     * round, could replace the properties of an object which has just been written. Content and properties are still
+     * two files, so a reader may briefly see the previous content along with the new properties.
+     *
+     * @param content    the file holding the new content, which has to reside in the folder of the bucket
+     * @param properties the properties of the new object
+     * @throws IOException if the object cannot be written, in which case its previous state is kept
+     */
+    public void replaceWith(File content, Map<String, String> properties) throws IOException {
+        Map<String, String> previousProperties = getPropertiesFile().exists() ? getProperties() : null;
+        try {
+            // Guarded as well, as a write which fails halfway leaves a damaged properties file behind.
+            setProperties(properties);
+            java.nio.file.Files.move(content.toPath(),
+                                     file.toPath(),
+                                     StandardCopyOption.ATOMIC_MOVE,
+                                     StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            if (previousProperties != null) {
+                setProperties(previousProperties);
+            } else {
+                Files.delete(getPropertiesFile());
+            }
+            throw exception;
         }
     }
 

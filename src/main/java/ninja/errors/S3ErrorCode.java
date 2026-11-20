@@ -132,7 +132,12 @@ public enum S3ErrorCode {
     /**
      * The provided request signature does not match the one calculated by the server.
      */
-    SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN);
+    SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN),
+
+    /**
+     * The SHA-256 hash stated for the content of the request does not match the content received.
+     */
+    XAmzContentSHA256Mismatch(HttpResponseStatus.BAD_REQUEST);
 
     private final HttpResponseStatus httpStatusCode;
 

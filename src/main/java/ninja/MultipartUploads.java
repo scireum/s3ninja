@@ -132,7 +132,7 @@ public class MultipartUploads implements Startable, EveryHour {
      * <p>
      * Open uploads and their published parts are kept. Removed are parts which were received but never published,
      * uploads which could not be deleted completely or were never initiated completely, and objects which were still
-     * being assembled.
+     * being received or assembled.
      *
      * @param abandonedBefore the point in time before which a file must have been written last to count as leftover.
      *                        Everything written since then may belong to a request which is still being served.
@@ -189,7 +189,9 @@ public class MultipartUploads implements Startable, EveryHour {
     }
 
     private static boolean isAssemblingFile(File file) {
-        return file.getName().startsWith("$") && file.getName().endsWith(ASSEMBLING_FILE_SUFFIX);
+        return file.getName().startsWith("$") && (file.getName().endsWith(ASSEMBLING_FILE_SUFFIX) || file.getName()
+                                                                                                         .endsWith(
+                                                                                                                 ObjectHandler.RECEIVING_FILE_SUFFIX));
     }
 
     /**

@@ -19,6 +19,7 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Outcall;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Urls;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -28,13 +29,14 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Handles the S3 API calls which deal with single objects: storing, reading, copying and deleting them.
@@ -43,6 +45,13 @@ import java.util.Set;
 public class ObjectHandler {
 
     private static final String PATH_DELIMITER = "/";
+
+    /**
+     * Ends the names of the files into which objects are received within the folder of their bucket.
+     * <p>
+     * Such a file starts with "$", which no file of an object does, as "$" is encoded in object keys.
+     */
+    static final String RECEIVING_FILE_SUFFIX = ".receiving";
 
     /**
      * Starts the version which S3 permits at the end of an <tt>x-amz-copy-source</tt> header.
@@ -77,6 +86,9 @@ public class ObjectHandler {
     @Part
     private RequestAuthenticator authenticator;
 
+    @Part
+    private PayloadVerifier payloadVerifier;
+
     /**
      * Handles DELETE /bucket/id
      *
@@ -109,34 +121,38 @@ public class ObjectHandler {
                                         "No content posted");
             return;
         }
-        try (FileOutputStream out = new FileOutputStream(object.getFile())) {
-            ByteStreams.copy(inputStream, out);
-        }
 
-        Map<String, String> properties = parseUploadProperties(webContext);
-        byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
-        String md5 = Base64.getEncoder().encodeToString(hash);
-        // Read from the request, not from the properties, which carry the name of the header as spelled by the client.
-        String contentMd5 = webContext.getHeader("Content-MD5");
-        if (contentMd5 != null && !md5.equals(contentMd5)) {
-            object.delete();
-            responder.signalObjectError(webContext,
-                                        bucket.getName(),
-                                        id,
-                                        S3ErrorCode.BadDigest,
-                                        Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                                      contentMd5,
-                                                      md5));
-            return;
-        }
-        String etag = BaseEncoding.base16().encode(hash).toLowerCase();
-        properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-        object.setProperties(properties);
+        // Received next to the object, as only a file on the same file system can replace it in one step. A request
+        // which is refused therefore leaves the object as it was. Files starting with "$" are no objects.
+        File receivedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
+        try {
+            try (FileOutputStream out = new FileOutputStream(receivedFile)) {
+                ByteStreams.copy(inputStream, out);
+            }
 
-        Response response = webContext.respondWith();
-        response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
-        responder.signalObjectSuccess(webContext);
+            Optional<Tuple<S3ErrorCode, String>> payloadError = payloadVerifier.verify(webContext, receivedFile);
+            if (payloadError.isPresent()) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            payloadError.get().getFirst(),
+                                            payloadError.get().getSecond());
+                return;
+            }
+
+            String etag = Hasher.md5().hashFile(receivedFile).toHexString();
+            Map<String, String> properties = parseUploadProperties(webContext);
+            properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+            object.replaceWith(receivedFile, properties);
+
+            Response response = webContext.respondWith();
+            response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
+            response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+            responder.signalObjectSuccess(webContext);
+        } finally {
+            // Gone if the object has been written. Whatever else happened, the file must not stay behind.
+            sirius.kernel.commons.Files.delete(receivedFile);
+        }
     }
 
     /**

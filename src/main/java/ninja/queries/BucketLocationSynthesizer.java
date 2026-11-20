@@ -10,6 +10,7 @@ package ninja.queries;
 
 import ninja.Bucket;
 import sirius.kernel.di.std.Register;
+import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.WebContext;
 
@@ -28,9 +29,10 @@ public class BucketLocationSynthesizer implements S3QueryProcessor {
                              @Nonnull Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
+        // The location is the content of the root element itself, which is what clients parse.
         XMLStructuredOutput xml = webContext.respondWith().xml();
-        xml.beginOutput("GetBucketLocationOutput");
-        xml.property("LocationConstraint", "EU");
+        xml.beginOutput("LocationConstraint", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+        xml.text("EU");
         xml.endOutput();
     }
 }

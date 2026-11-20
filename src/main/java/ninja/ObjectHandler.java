@@ -36,6 +36,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Handles the S3 API calls which deal with single objects: storing, reading, copying and deleting them.
@@ -44,6 +46,11 @@ import java.util.UUID;
 public class ObjectHandler {
 
     private static final String PATH_DELIMITER = "/";
+
+    /**
+     * Matches a range which states its first byte, so that a range starting behind the end of an object is noticed.
+     */
+    private static final Pattern OPEN_RANGE_PATTERN = Pattern.compile("bytes=(\\d{1,18})-(\\d{0,18})");
 
     /**
      * Ends the names of the files into which objects are received within the folder of their bucket.
@@ -331,6 +338,28 @@ public class ObjectHandler {
                                         S3ErrorCode.NoSuchKey,
                                         "Object does not exist");
             return;
+        }
+
+        Matcher rangeMatcher =
+                OPEN_RANGE_PATTERN.matcher(webContext.getHeaderValue(HttpHeaderNames.RANGE).asString("").trim());
+        if (rangeMatcher.matches()) {
+            if (Long.parseLong(rangeMatcher.group(1)) >= object.getSizeBytes()) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.InvalidRange,
+                                            "The requested range is not satisfiable");
+                return;
+            }
+            if (Strings.isFilled(rangeMatcher.group(2))
+                && Long.parseLong(rangeMatcher.group(2)) >= object.getSizeBytes()) {
+                // S3 serves what is there of a range which reaches beyond the end, whereas sending the file would
+                // refuse it. The range is therefore cut to the size of the object.
+                webContext.getRequest()
+                          .headers()
+                          .set(HttpHeaderNames.RANGE,
+                               "bytes=" + rangeMatcher.group(1) + "-" + (object.getSizeBytes() - 1));
+            }
         }
 
         Preconditions.Outcome outcome = preconditions.evaluateRead(webContext, object);

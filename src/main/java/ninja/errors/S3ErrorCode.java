@@ -95,6 +95,11 @@ public enum S3ErrorCode {
     InvalidPartOrder(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The requested range of an object lies outside of it.
+     */
+    InvalidRange(HttpResponseStatus.REQUESTED_RANGE_NOT_SATISFIABLE),
+
+    /**
      * The current request is not valid.
      */
     InvalidRequest(HttpResponseStatus.BAD_REQUEST),
@@ -118,6 +123,11 @@ public enum S3ErrorCode {
      * The specified bucket does not exist.
      */
     NoSuchBucket(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified bucket does not have a CORS configuration.
+     */
+    NoSuchCORSConfiguration(HttpResponseStatus.NOT_FOUND),
 
     /**
      * The specified bucket does not have a policy.

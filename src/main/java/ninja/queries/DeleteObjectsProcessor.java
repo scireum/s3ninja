@@ -10,7 +10,6 @@ package ninja.queries;
 
 import ninja.Bucket;
 import ninja.StoredObject;
-import ninja.errors.S3ErrorCode;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.xml.StructuredNode;
 import sirius.kernel.xml.XMLStructuredInput;
@@ -63,16 +62,10 @@ public class DeleteObjectsProcessor implements S3QueryProcessor {
         String key = objectNode.queryValue("Key").asString();
 
         StoredObject object = bucket.getObject(key);
-        if (!object.exists()) {
-            output.beginObject("Error");
-            output.property("Key", key);
-            output.property("Code", S3ErrorCode.NoSuchKey);
-            output.property("Message", "No Such Key");
-            output.endObject();
-            return;
+        // Deleting an object which does not exist is no error for S3, it is reported as deleted like any other.
+        if (object.exists()) {
+            object.delete();
         }
-
-        object.delete();
 
         if (!quiet) {
             output.beginObject("Deleted");

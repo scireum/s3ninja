@@ -27,10 +27,14 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
 import software.amazon.awssdk.services.s3.model.BucketCannedACL
+import software.amazon.awssdk.services.s3.model.CORSRule
 import software.amazon.awssdk.services.s3.model.ChecksumMode
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
 import software.amazon.awssdk.services.s3.model.CompletedPart
 import software.amazon.awssdk.services.s3.model.MetadataDirective
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier
+import software.amazon.awssdk.services.s3.model.Payer
+import software.amazon.awssdk.services.s3.model.Permission
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -452,6 +456,68 @@ class RequestValidationTest {
                         .metadataDirective("REPLAC")
                 }
             }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Bucket queries answer with the documents of S3`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+
+            assertEquals("EU", client.getBucketLocation { it.bucket(BUCKET) }.locationConstraintAsString())
+
+            val acl = client.getBucketAcl { it.bucket(BUCKET) }
+            assertNotNull(acl.owner().id())
+            assertEquals(listOf(Permission.FULL_CONTROL), acl.grants().map { it.permission() })
+            client.putBucketAcl { it.bucket(BUCKET).acl(BucketCannedACL.PRIVATE) }
+
+            assertS3Error("NoSuchCORSConfiguration") { client.getBucketCors { it.bucket(BUCKET) } }
+            client.putBucketCors {
+                it.bucket(BUCKET).corsConfiguration { cors ->
+                    cors.corsRules(CORSRule.builder().allowedMethods("GET").allowedOrigins("*").build())
+                }
+            }
+            client.deleteBucketCors { it.bucket(BUCKET) }
+            assertEquals(Payer.BUCKET_OWNER, client.getBucketRequestPayment { it.bucket(BUCKET) }.payer())
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `DeleteObjects reports keys which do not exist as deleted`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+
+            val result = client.deleteObjects { request ->
+                request.bucket(BUCKET).delete { delete ->
+                    delete.objects(
+                        ObjectIdentifier.builder().key(KEY).build(),
+                        ObjectIdentifier.builder().key("missing").build()
+                    )
+                }
+            }
+
+            assertEquals(listOf(KEY, "missing"), result.deleted().map { it.key() })
+            assertTrue(result.errors().isEmpty())
+            assertTrue(client.listObjectsV2 { it.bucket(BUCKET) }.contents().isEmpty())
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `GetObject answers InvalidRange for a range behind the end of the object`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+
+            assertS3Error("InvalidRange") { client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=4-10") } }
+            val lastByte = client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=3-10") }
+            assertEquals("t", lastByte.use { String(it.readAllBytes()) })
 
             cleanupBuckets(client, BUCKET)
         }

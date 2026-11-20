@@ -21,6 +21,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.Base64;
 import java.util.regex.Matcher;
 
 /**
@@ -184,7 +185,7 @@ public class PostPolicyVerifier {
     private boolean matchesVersion2(String policy, String signature) {
         try {
             byte[] secretKey = storage.getAwsSecretKey().getBytes(StandardCharsets.UTF_8);
-            return BaseEncoding.base64().encode(hmac("HmacSHA1", secretKey, policy)).equals(signature);
+            return Base64.getEncoder().encodeToString(hmac("HmacSHA1", secretKey, policy)).equals(signature);
         } catch (GeneralSecurityException exception) {
             Exceptions.handle(Storage.LOG, exception);
             return false;

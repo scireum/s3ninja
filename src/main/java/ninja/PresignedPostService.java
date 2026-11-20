@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -63,7 +64,7 @@ public class PresignedPostService {
 
         ObjectNode policyJson = buildPolicy(request, credential, xAmzDate, expiration);
         String policyString = policyJson.toString();
-        String policyBase64 = BaseEncoding.base64().encode(policyString.getBytes(StandardCharsets.UTF_8));
+        String policyBase64 = Base64.getEncoder().encodeToString(policyString.getBytes(StandardCharsets.UTF_8));
         // As for S3, the policy is signed the way it is sent, i.e. in its Base64 encoding.
         String signature = signPolicy(policyBase64.getBytes(StandardCharsets.UTF_8), date, request.region());
 

@@ -34,6 +34,11 @@ public class BucketHandler {
 
     private static final String ERROR_BUCKET_ALREADY_OWNED_BY_YOU = "Bucket already owned by you";
 
+    /**
+     * Names the region in which S3 answers a request to create a bucket which exists already with success.
+     */
+    private static final String LEGACY_REGION = "us-east-1";
+
     @Part
     private Storage storage;
 
@@ -48,6 +53,9 @@ public class BucketHandler {
 
     @Part
     private RequestAuthenticator authenticator;
+
+    @Part
+    private CredentialVerifier credentialVerifier;
 
     /**
      * GET a list of all buckets
@@ -81,7 +89,7 @@ public class BucketHandler {
             out.endObject();
             out.endOutput();
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, null, null);
         }
     }
 
@@ -149,7 +157,7 @@ public class BucketHandler {
                 multipartUploads.abortAll(bucketName);
 
                 responder.signalObjectSuccess(webContext);
-                webContext.respondWith().status(HttpResponseStatus.OK);
+                webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
             }
         } else if (HttpMethod.POST.equals(method)) {
             String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
@@ -184,7 +192,12 @@ public class BucketHandler {
                 }
             }
         } else if (HttpMethod.PUT.equals(method)) {
-            if (bucket.exists()) {
+            // S3 refuses to create a bucket which its owner has created already, except in its oldest region. There
+            // it answers with success for legacy compatibility, and resets the access control list of the bucket.
+            boolean recreatedInLegacyRegion = bucket.exists() && credentialVerifier.determineRegion(webContext)
+                                                                                   .filter(LEGACY_REGION::equals)
+                                                                                   .isPresent();
+            if (bucket.exists() && !recreatedInLegacyRegion) {
                 responder.signalObjectError(webContext,
                                             bucketName,
                                             null,
@@ -193,7 +206,7 @@ public class BucketHandler {
                 return;
             }
 
-            if (!bucket.create()) {
+            if (recreatedInLegacyRegion ? !bucket.makePrivate() : !bucket.create()) {
                 responder.signalObjectError(webContext,
                                             bucketName,
                                             null,
@@ -216,7 +229,7 @@ public class BucketHandler {
             responder.signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, bucketName, null);
         }
     }
 
@@ -256,25 +269,23 @@ public class BucketHandler {
     }
 
     private void listObjectsV1(WebContext webContext, Bucket bucket) {
-        int maxKeys = webContext.get("max-keys").asInt(1000);
-        String marker = webContext.get("marker").asString();
-        String prefix = webContext.get("prefix").asString();
-
         Response response = webContext.respondWith();
         response.setHeader(S3Dispatcher.HTTP_HEADER_NAME_CONTENT_TYPE, S3Dispatcher.CONTENT_TYPE_XML);
-
-        bucket.outputObjectsV1(response.xml(), maxKeys, marker, prefix);
+        ObjectListing.outputVersion1(bucket, webContext, response.xml());
     }
 
     private void listObjectsV2(WebContext webContext, Bucket bucket) {
-        int maxKeys = webContext.get("max-keys").asInt(1000);
-        String marker = webContext.get("start-after").asString();
-        String prefix = webContext.get("prefix").asString();
-        String continuationToken = webContext.get("continuation-token").asString();
+        if (!ObjectListing.hasValidContinuationToken(webContext)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.InvalidArgument,
+                                        "The continuation token provided is incorrect");
+            return;
+        }
 
         Response response = webContext.respondWith();
         response.setHeader(S3Dispatcher.HTTP_HEADER_NAME_CONTENT_TYPE, S3Dispatcher.CONTENT_TYPE_XML);
-
-        bucket.outputObjectsV2(response.xml(), maxKeys, marker, prefix, continuationToken);
+        ObjectListing.outputVersion2(bucket, webContext, response.xml());
     }
 }

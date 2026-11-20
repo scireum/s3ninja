@@ -10,6 +10,7 @@ package ninja.queries;
 
 import ninja.Bucket;
 import sirius.kernel.di.std.Register;
+import sirius.kernel.xml.Attribute;
 import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.http.WebContext;
 
@@ -29,7 +30,8 @@ public class BucketRequestPaymentSynthesizer implements S3QueryProcessor {
                              @Nullable String key,
                              @Nonnull String query) {
         XMLStructuredOutput xml = webContext.respondWith().xml();
-        xml.beginOutput("GetBucketRequestPaymentOutput");
+        xml.beginOutput("RequestPaymentConfiguration",
+                        Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
         xml.property("Payer", "BucketOwner");
         xml.endOutput();
     }

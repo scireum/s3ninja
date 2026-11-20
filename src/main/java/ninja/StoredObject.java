@@ -22,6 +22,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,12 @@ import java.util.Properties;
 public class StoredObject {
 
     private static final String DELETED_MARKER = "DeletedMarker";
+
+    /**
+     * Contains the maximal length of an encoded key, which is what the 255 bytes of a file name leave once the name
+     * of the properties file, <tt>$[key].properties</tt>, has been built from it.
+     */
+    private static final int MAX_ENCODED_KEY_LENGTH = 255 - "$.properties".length();
 
     private final File file;
 
@@ -183,8 +190,7 @@ public class StoredObject {
     /**
      * Returns all meta information stored along with the object.
      * <p>
-     * These are the <tt>Cache-Control</tt>, <tt>Content-Disposition</tt>, <tt>Content-MD5</tt>, <tt>Content-Type</tt>,
-     * <tt>Expires</tt> and any <tt>x-amz-*</tt> headers.
+     * These are the entity tag and the headers named by {@link StoredHeaders}.
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *
@@ -233,6 +239,37 @@ public class StoredObject {
     }
 
     /**
+     * Makes the given file and the given properties the new state of this object.
+     * <p>
+     * The content appears in one step, so that readers never see a partly written object. The properties are written
+     * before that: a reader which finds an object without an entity tag computes and stores one, which, the other way
+     * round, could replace the properties of an object which has just been written. Content and properties are still
+     * two files, so a reader may briefly see the previous content along with the new properties.
+     *
+     * @param content    the file holding the new content, which has to reside in the folder of the bucket
+     * @param properties the properties of the new object
+     * @throws IOException if the object cannot be written, in which case its previous state is kept
+     */
+    public void replaceWith(File content, Map<String, String> properties) throws IOException {
+        Map<String, String> previousProperties = getPropertiesFile().exists() ? getProperties() : null;
+        try {
+            // Guarded as well, as a write which fails halfway leaves a damaged properties file behind.
+            setProperties(properties);
+            java.nio.file.Files.move(content.toPath(),
+                                     file.toPath(),
+                                     StandardCopyOption.ATOMIC_MOVE,
+                                     StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            if (previousProperties != null) {
+                setProperties(previousProperties);
+            } else {
+                Files.delete(getPropertiesFile());
+            }
+            throw exception;
+        }
+    }
+
+    /**
      * Checks if the marker for "deleted" is set.
      * When an object is marked as "deleted" it can not be requested anymore.
      *
@@ -252,6 +289,19 @@ public class StoredObject {
         Map<String, String> fileProperties = getProperties();
         fileProperties.put(DELETED_MARKER, "true");
         setProperties(fileProperties);
+    }
+
+    /**
+     * Checks whether an object with the given key can be stored.
+     * <p>
+     * An object is kept as a file named by its encoded key, next to a file for its properties. S3 permits keys of up
+     * to 1024 bytes, which is more than a file name can hold, so longer keys have to be refused.
+     *
+     * @param key the key to check
+     * @return <b>true</b> if the key is short enough to be stored, <b>false</b> else
+     */
+    public static boolean isStorableKey(String key) {
+        return encodeKey(key).length() <= MAX_ENCODED_KEY_LENGTH;
     }
 
     /**

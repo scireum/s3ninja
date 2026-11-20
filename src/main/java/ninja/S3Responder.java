@@ -37,7 +37,7 @@ public class S3Responder {
      */
     void signalObjectError(WebContext webContext, String bucket, String key, S3ErrorCode errorCode, String message) {
         if (HttpMethod.HEAD.equals(webContext.getRequest().method())) {
-            webContext.respondWith().status(errorCode.getHttpStatusCode());
+            errorSynthesizer.synthesiseErrorWithoutBody(webContext, errorCode);
         } else {
             errorSynthesizer.synthesiseError(webContext, bucket, key, errorCode, message);
         }
@@ -50,6 +50,21 @@ public class S3Responder {
     /**
      * Writes an API success entry to the log
      */
+    /**
+     * Answers a request of which the method is not supported for what it addresses.
+     *
+     * @param webContext the context describing the current request
+     * @param bucket     the bucket the request addresses, if any
+     * @param key        the key the request addresses, if any
+     */
+    void signalMethodNotAllowed(WebContext webContext, String bucket, String key) {
+        signalObjectError(webContext,
+                          bucket,
+                          key,
+                          S3ErrorCode.MethodNotAllowed,
+                          "The specified method is not allowed against this resource.");
+    }
+
     void signalObjectSuccess(WebContext webContext) {
         log.log(webContext.getRequest().method().name(),
                 webContext.getRequestedURI(),

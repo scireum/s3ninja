@@ -17,11 +17,13 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.cache.CacheManager;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Value;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
 
+import java.util.Optional;
 import java.util.regex.Matcher;
 
 /**
@@ -48,6 +50,12 @@ public class RequestAuthenticator {
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
+
+    @Part
+    private CredentialVerifier credentialVerifier;
+
+    @Part
+    private PostPolicyVerifier postPolicyVerifier;
 
     /**
      * Extracts the given hash from the given request. Returns null if no hash was given.
@@ -145,30 +153,18 @@ public class RequestAuthenticator {
             return true;
         }
 
-        // Allow policy-signed POST uploads without Authorization header; signature is validated later.
+        // A browser-based upload carries no signature of its own. Its policy is verified before anything is stored.
         if (isPolicyBasedPost(webContext)) {
             return true;
         }
 
+        if (hasMalformedAuthorization(webContext, bucket.getName(), key)) {
+            return false;
+        }
+
         String hash = getAuthHash(webContext);
-        if (Strings.isFilled(hash)) {
-            String expectedHash = hashCalculator.computeHash(webContext, "");
-            String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
-            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 key,
-                                                 S3ErrorCode.SignatureDoesNotMatch,
-                                                 Strings.apply(
-                                                         "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
-                                                         expectedHash,
-                                                         hash));
-                log.log(webContext.getRequest().method().name(),
-                        webContext.getRequestedURI(),
-                        APILog.Result.REJECTED,
-                        CallContext.getCurrent().getWatch());
-                return false;
-            }
+        if (Strings.isFilled(hash) && !verifySignature(webContext, hash, bucket.getName(), key)) {
+            return false;
         }
         if (bucket.isPrivate() && !webContext.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
             errorSynthesizer.synthesiseError(webContext,
@@ -186,11 +182,111 @@ public class RequestAuthenticator {
         return true;
     }
 
+    /**
+     * Verifies the signature of a request which addresses no bucket, i.e. which lists all buckets.
+     * <p>
+     * Such a request is served without a signature. One which is signed has to be signed correctly though, as a
+     * client would otherwise never learn that its credentials are wrong.
+     *
+     * @param webContext the request to verify
+     * @return <tt>true</tt> if the request may be served, <tt>false</tt> if it has been answered with an error
+     */
+    boolean checkSignatureIfPresent(WebContext webContext) {
+        String sessionToken = extractSessionToken(webContext);
+        if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
+            return true;
+        }
+
+        if (hasMalformedAuthorization(webContext, null, null)) {
+            return false;
+        }
+
+        String hash = getAuthHash(webContext);
+        return Strings.isEmpty(hash) || verifySignature(webContext, hash, null, null);
+    }
+
+    /**
+     * Refuses a request of which the <tt>Authorization</tt> header is of no form which is understood.
+     * <p>
+     * Such a request carries no signature which could be verified, but must not be served like one which was never
+     * meant to be signed.
+     *
+     * @return <tt>true</tt> if the request has been answered with an error, <tt>false</tt> if it may be processed
+     */
+    private boolean hasMalformedAuthorization(WebContext webContext, String bucketName, String key) {
+        if (webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION).isEmptyString() || Strings.isFilled(getAuthHash(
+                webContext))) {
+            return false;
+        }
+
+        errorSynthesizer.synthesiseError(webContext,
+                                         bucketName,
+                                         key,
+                                         S3ErrorCode.AuthorizationHeaderMalformed,
+                                         "The authorization header that you provided is not valid.");
+        log.log(webContext.getRequest().method().name(),
+                webContext.getRequestedURI(),
+                APILog.Result.REJECTED,
+                CallContext.getCurrent().getWatch());
+        return true;
+    }
+
+    /**
+     * Verifies the credentials and the signature of a signed request, and answers it with an error if they are wrong.
+     *
+     * @return <tt>true</tt> if the request is signed correctly, <tt>false</tt> if it has been answered with an error
+     */
+    private boolean verifySignature(WebContext webContext, String hash, String bucketName, String key) {
+        Optional<Tuple<S3ErrorCode, String>> credentialError = credentialVerifier.verify(webContext);
+        if (credentialError.isPresent()) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucketName,
+                                             key,
+                                             credentialError.get().getFirst(),
+                                             credentialError.get().getSecond());
+            log.log(webContext.getRequest().method().name(),
+                    webContext.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
+            return false;
+        }
+
+        String expectedHash = hashCalculator.computeHash(webContext, "");
+        String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
+        if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucketName,
+                                             key,
+                                             S3ErrorCode.SignatureDoesNotMatch,
+                                             Strings.apply(
+                                                     "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
+                                                     expectedHash,
+                                                     hash));
+            log.log(webContext.getRequest().method().name(),
+                    webContext.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines if the request is a browser-based upload, which is not signed itself, but carries a signed policy.
+     * <p>
+     * Such a request is let through here, as {@link PostPolicyVerifier} verifies its policy and signature before
+     * anything is stored. The other POST requests of the API, which initiate or complete a multipart upload or delete
+     * several objects, are never exempt, as nothing would verify a policy sent along with them.
+     */
     private boolean isPolicyBasedPost(WebContext webContext) {
         if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
             return false;
         }
-        return webContext.hasParameter("policy") || webContext.hasParameter("Policy") || webContext.hasParameter(
-                "x-amz-signature") || webContext.hasParameter("Signature");
+        if (webContext.hasParameter("uploads") || webContext.hasParameter("uploadId") || webContext.hasParameter(
+                "delete")) {
+            return false;
+        }
+        return postPolicyVerifier.hasPolicy(webContext);
     }
 }

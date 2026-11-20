@@ -19,6 +19,7 @@ import sirius.kernel.cache.Cache;
 import sirius.kernel.commons.Hasher;
 import sirius.kernel.commons.Outcall;
 import sirius.kernel.commons.Strings;
+import sirius.kernel.commons.Tuple;
 import sirius.kernel.commons.Urls;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
@@ -28,13 +29,16 @@ import sirius.web.http.MimeHelper;
 import sirius.web.http.Response;
 import sirius.web.http.WebContext;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.locks.Lock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Handles the S3 API calls which deal with single objects: storing, reading, copying and deleting them.
@@ -45,16 +49,26 @@ public class ObjectHandler {
     private static final String PATH_DELIMITER = "/";
 
     /**
+     * Matches a range which states its first byte, so that a range starting behind the end of an object is noticed.
+     */
+    private static final Pattern OPEN_RANGE_PATTERN = Pattern.compile("bytes=(\\d{1,18})-(\\d{0,18})");
+
+    /**
+     * Matches a range which asks for the given number of bytes at the end of an object.
+     */
+    private static final Pattern SUFFIX_RANGE_PATTERN = Pattern.compile("bytes=-(\\d{1,18})");
+
+    /**
+     * Ends the names of the files into which objects are received within the folder of their bucket.
+     * <p>
+     * Such a file starts with "$", which no file of an object does, as "$" is encoded in object keys.
+     */
+    static final String RECEIVING_FILE_SUFFIX = ".receiving";
+
+    /**
      * Starts the version which S3 permits at the end of an <tt>x-amz-copy-source</tt> header.
      */
     private static final String COPY_SOURCE_VERSION_SUFFIX = "?versionId=";
-
-    /**
-     * Lists the standard headers, in lower case, which are stored along with an object next to all headers starting
-     * with {@link S3Dispatcher#AMAZON_HEADER_PREFIX}.
-     */
-    private static final Set<String> STORED_HEADERS =
-            Set.of("cache-control", "content-disposition", "content-md5", "content-type", "expires");
 
     private static final Map<String, String> headerOverrides;
 
@@ -77,6 +91,15 @@ public class ObjectHandler {
     @Part
     private RequestAuthenticator authenticator;
 
+    @Part
+    private PayloadVerifier payloadVerifier;
+
+    @Part
+    private Preconditions preconditions;
+
+    @Part
+    private ObjectLocks objectLocks;
+
     /**
      * Handles DELETE /bucket/id
      *
@@ -86,7 +109,13 @@ public class ObjectHandler {
      */
     void deleteObject(final WebContext webContext, final Bucket bucket, final String id) {
         StoredObject object = bucket.getObject(id);
-        object.delete();
+        Lock lock = objectLocks.lockFor(object);
+        lock.lock();
+        try {
+            object.delete();
+        } finally {
+            lock.unlock();
+        }
 
         webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
         responder.signalObjectSuccess(webContext);
@@ -109,53 +138,125 @@ public class ObjectHandler {
                                         "No content posted");
             return;
         }
-        try (FileOutputStream out = new FileOutputStream(object.getFile())) {
-            ByteStreams.copy(inputStream, out);
-        }
-
-        Map<String, String> properties = parseUploadProperties(webContext);
-        byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
-        String md5 = Base64.getEncoder().encodeToString(hash);
-        // Read from the request, not from the properties, which carry the name of the header as spelled by the client.
-        String contentMd5 = webContext.getHeader("Content-MD5");
-        if (contentMd5 != null && !md5.equals(contentMd5)) {
-            object.delete();
+        if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+            ByteStreams.exhaust(inputStream);
             responder.signalObjectError(webContext,
                                         bucket.getName(),
                                         id,
-                                        S3ErrorCode.BadDigest,
-                                        Strings.apply("Invalid MD5 checksum (Input: %s, Expected: %s)",
-                                                      contentMd5,
-                                                      md5));
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
             return;
         }
-        String etag = BaseEncoding.base16().encode(hash).toLowerCase();
-        properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-        object.setProperties(properties);
 
-        Response response = webContext.respondWith();
-        response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
-        response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
-        responder.signalObjectSuccess(webContext);
+        // Received next to the object, as only a file on the same file system can replace it in one step. A request
+        // which is refused therefore leaves the object as it was. Files starting with "$" are no objects.
+        File receivedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
+        try {
+            try (FileOutputStream out = new FileOutputStream(receivedFile)) {
+                ByteStreams.copy(inputStream, out);
+            }
+
+            Optional<Tuple<S3ErrorCode, String>> payloadError = payloadVerifier.verify(webContext, receivedFile);
+            if (payloadError.isPresent()) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            payloadError.get().getFirst(),
+                                            payloadError.get().getSecond());
+                return;
+            }
+
+            String etag = Hasher.md5().hashFile(receivedFile).toHexString();
+            Map<String, String> properties = StoredHeaders.ofRequest(webContext);
+            properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+            if (!replaceIfPermitted(webContext, object, receivedFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
+
+            Response response = webContext.respondWith();
+            response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
+            response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+            responder.signalObjectSuccess(webContext);
+        } finally {
+            // Gone if the object has been written. Whatever else happened, the file must not stay behind.
+            sirius.kernel.commons.Files.delete(receivedFile);
+        }
     }
 
     /**
-     * Collects the request headers which are stored along with an object and sent again when it is read.
+     * Makes the given file and properties the new state of the object, unless the conditions of the request forbid
+     * it.
      * <p>
-     * This is used for plain and for multipart uploads alike, so that both keep the same set of headers.
+     * The conditions are evaluated and the object is replaced while holding the lock of the object. Of two requests
+     * which only want to create an object, exactly one therefore succeeds.
      *
-     * @param webContext the context describing the current request
-     * @return the headers to store, by their names as sent by the client
+     * @param webContext the request which writes the object
+     * @param object     the object to replace or to create
+     * @param content    the file holding the new content, which has to reside in the folder of the bucket
+     * @param properties the properties of the new object
+     * @return <tt>true</tt> if the object has been written, <tt>false</tt> if a condition of the request did not hold
+     * @throws IOException if the object cannot be written, in which case its previous state is kept
      */
-    Map<String, String> parseUploadProperties(WebContext webContext) {
-        Map<String, String> properties = Maps.newTreeMap();
-        for (String name : webContext.getRequest().headers().names()) {
-            String nameLower = name.toLowerCase();
-            if (nameLower.startsWith(S3Dispatcher.AMAZON_HEADER_PREFIX) || STORED_HEADERS.contains(nameLower)) {
-                properties.put(name, webContext.getHeader(name));
+    boolean replaceIfPermitted(WebContext webContext, StoredObject object, File content, Map<String, String> properties)
+            throws IOException {
+        Lock lock = objectLocks.lockFor(object);
+        lock.lock();
+        try {
+            if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+                return false;
+            }
+            object.replaceWith(content, properties);
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Takes the lock of the source of a copy, and verifies that it still is what the request asks for.
+     * <p>
+     * The conditions a request states for its source have been evaluated when the source was resolved. Until it is
+     * read, another request may replace it. The source is therefore read while holding its lock, after its conditions
+     * have been evaluated once more.
+     *
+     * @param webContext the request which copies the object
+     * @param source     the object to copy from
+     * @return the lock, which has to be released once the source has been read, or an empty optional if the request
+     * has been answered with an error as the source no longer meets its conditions
+     */
+    Optional<Lock> lockCopySource(WebContext webContext, StoredObject source) {
+        Lock lock = objectLocks.lockFor(source);
+        lock.lock();
+        boolean sourceMayBeRead = false;
+        try {
+            if (!source.getFile().isFile()) {
+                responder.signalObjectError(webContext,
+                                            null,
+                                            source.getKey(),
+                                            S3ErrorCode.NoSuchKey,
+                                            "The source object does not exist");
+            } else if (preconditions.evaluateCopySource(webContext, source) == Preconditions.Outcome.FAILED) {
+                responder.signalObjectError(webContext,
+                                            null,
+                                            source.getKey(),
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            } else {
+                sourceMayBeRead = true;
+            }
+        } finally {
+            // Also released if evaluating the conditions fails, as nothing else would ever release it.
+            if (!sourceMayBeRead) {
+                lock.unlock();
             }
         }
-        return properties;
+
+        return sourceMayBeRead ? Optional.of(lock) : Optional.empty();
     }
 
     static String quoteEtag(String etag) {
@@ -178,16 +279,57 @@ public class ObjectHandler {
         StoredObject sourceObject = source.get();
 
         StoredObject object = bucket.getObject(key);
-        Files.copy(sourceObject.getFile(), object.getFile());
-        if (sourceObject.getPropertiesFile().exists()) {
-            Files.copy(sourceObject.getPropertiesFile(), object.getPropertiesFile());
+        String metadataDirective = webContext.getHeader("x-amz-metadata-directive");
+        if (Strings.isFilled(metadataDirective) && !"COPY".equals(metadataDirective) && !"REPLACE".equals(
+                metadataDirective)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        key,
+                                        S3ErrorCode.InvalidArgument,
+                                        "Unknown metadata directive.");
+            return;
         }
 
-        // A copy is a plain object, even if its source has been uploaded in parts and thus carries another entity tag.
-        String etag = BaseEncoding.base16().encode(Hasher.md5().hashFile(object.getFile()).toHash()).toLowerCase();
-        Map<String, String> properties = object.getProperties();
-        properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-        object.setProperties(properties);
+        boolean replaceMetadata = "REPLACE".equals(metadataDirective);
+        if (!replaceMetadata && sourceObject.getFile().equals(object.getFile())) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        key,
+                                        S3ErrorCode.InvalidRequest,
+                                        "This copy request is illegal because it is trying to copy an object to itself without changing the object's metadata.");
+            return;
+        }
+
+        String etag;
+        File copiedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
+        try {
+            Map<String, String> properties;
+            Optional<Lock> sourceLock = lockCopySource(webContext, sourceObject);
+            if (sourceLock.isEmpty()) {
+                return;
+            }
+            try {
+                // A copy is a plain object, even if its source has been uploaded in parts and thus carries another
+                // entity tag.
+                etag = Hasher.md5().hashFile(sourceObject.getFile()).toHexString();
+                properties = replaceMetadata ? StoredHeaders.ofRequest(webContext) : sourceObject.getProperties();
+                properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
+                Files.copy(sourceObject.getFile(), copiedFile);
+            } finally {
+                sourceLock.get().unlock();
+            }
+
+            if (!replaceIfPermitted(webContext, object, copiedFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            key,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
+        } finally {
+            sirius.kernel.commons.Files.delete(copiedFile);
+        }
 
         XMLStructuredOutput structuredOutput =
                 webContext.respondWith().addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).xml();
@@ -277,6 +419,15 @@ public class ObjectHandler {
             return Optional.empty();
         }
 
+        if (preconditions.evaluateCopySource(webContext, sourceObject) == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        sourceBucketName,
+                                        sourceKey,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return Optional.empty();
+        }
+
         return Optional.of(sourceObject);
     }
 
@@ -299,11 +450,49 @@ public class ObjectHandler {
             return;
         }
 
+        Preconditions.Outcome outcome = preconditions.evaluateRead(webContext, object);
+        if (outcome == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return;
+        }
+        if (outcome == Preconditions.Outcome.NOT_MODIFIED) {
+            Response notModified = webContext.respondWith();
+            String storedEtag = object.getProperties().get(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+            if (Strings.isFilled(storedEtag)) {
+                notModified.setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(storedEtag.toLowerCase()));
+            }
+            notModified.setHeader(HttpHeaderNames.LAST_MODIFIED,
+                                  Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile()
+                                                                                            .lastModified())));
+            notModified.status(HttpResponseStatus.NOT_MODIFIED);
+            responder.signalObjectSuccess(webContext);
+            return;
+        }
+
+        // The conditions are settled. Sending the file would evaluate this one again, and on its own, without
+        // knowing that If-None-Match takes precedence over it.
+        webContext.getRequest().headers().remove(HttpHeaderNames.IF_MODIFIED_SINCE);
+
+        if (!applyRange(webContext, object)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.InvalidRange,
+                                        "The requested range is not satisfiable");
+            return;
+        }
+
         Response response = webContext.respondWith();
         Map<String, String> properties = object.getProperties();
+        // A checksum covers the whole object, so it must not accompany a part of it.
+        boolean partialContent = Strings.isFilled(webContext.getHeader(HttpHeaderNames.RANGE));
         for (Map.Entry<String, String> entry : properties.entrySet()) {
-            // The entity tag is stored without quotes, and is sent in its proper form below.
-            if (!S3Dispatcher.HTTP_HEADER_NAME_ETAG.equalsIgnoreCase(entry.getKey())) {
+            if (StoredHeaders.isStored(entry.getKey()) && !(partialContent
+                                                            && StoredHeaders.isChecksum(entry.getKey()))) {
                 response.setHeader(entry.getKey(), entry.getValue());
             }
         }
@@ -335,6 +524,47 @@ public class ObjectHandler {
             response.status(HttpResponseStatus.OK);
         }
         responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Checks the range of a request against the object, and adapts it to what sending a file expects.
+     * <p>
+     * S3 serves what is there of a range which reaches beyond the end of an object, and the whole object for a suffix
+     * which is longer than it, whereas sending the file would refuse the former and fail on the latter. Such a range
+     * is therefore cut to the size of the object. Everything else is left to sending the file.
+     *
+     * @param webContext the context describing the current request
+     * @param object     the object to read
+     * @return <tt>false</tt> if the range lies entirely outside of the object, <tt>true</tt> otherwise
+     */
+    private boolean applyRange(WebContext webContext, StoredObject object) {
+        String range = webContext.getHeaderValue(HttpHeaderNames.RANGE).asString("").trim();
+        long size = object.getSizeBytes();
+
+        Matcher suffixMatcher = SUFFIX_RANGE_PATTERN.matcher(range);
+        if (suffixMatcher.matches()) {
+            long length = Long.parseLong(suffixMatcher.group(1));
+            if (length == 0 || size == 0) {
+                return false;
+            }
+            if (length >= size) {
+                webContext.getRequest().headers().set(HttpHeaderNames.RANGE, "bytes=0-" + (size - 1));
+            }
+            return true;
+        }
+
+        Matcher rangeMatcher = OPEN_RANGE_PATTERN.matcher(range);
+        if (rangeMatcher.matches()) {
+            if (Long.parseLong(rangeMatcher.group(1)) >= size) {
+                return false;
+            }
+            if (Strings.isFilled(rangeMatcher.group(2)) && Long.parseLong(rangeMatcher.group(2)) >= size) {
+                webContext.getRequest()
+                          .headers()
+                          .set(HttpHeaderNames.RANGE, "bytes=" + rangeMatcher.group(1) + "-" + (size - 1));
+            }
+        }
+        return true;
     }
 
     private Map<String, String> getOverridenHeaders(WebContext webContext) {

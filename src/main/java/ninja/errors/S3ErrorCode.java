@@ -24,6 +24,16 @@ public enum S3ErrorCode {
     AccessDenied(HttpResponseStatus.FORBIDDEN),
 
     /**
+     * The <tt>Authorization</tt> header of the request is of no form which is understood.
+     */
+    AuthorizationHeaderMalformed(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * A parameter of a presigned URL which is part of its signature is not valid.
+     */
+    AuthorizationQueryParametersError(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * During upload, the specified checksum value did not match the calculated one.
      */
     BadDigest(HttpResponseStatus.BAD_REQUEST),
@@ -44,6 +54,11 @@ public enum S3ErrorCode {
     BucketNotEmpty(HttpResponseStatus.CONFLICT),
 
     /**
+     * The upload exceeds the maximum size which is permitted for it.
+     */
+    EntityTooLarge(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * A part of a multipart upload other than the last one is smaller than the minimum part size.
      */
     EntityTooSmall(HttpResponseStatus.BAD_REQUEST),
@@ -59,9 +74,19 @@ public enum S3ErrorCode {
     InternalError(HttpResponseStatus.INTERNAL_SERVER_ERROR),
 
     /**
+     * The access key the request was signed for is not known.
+     */
+    InvalidAccessKeyId(HttpResponseStatus.FORBIDDEN),
+
+    /**
      * An argument of the request is not valid.
      */
     InvalidArgument(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The specified bucket name does not adhere to the naming rules.
+     */
+    InvalidBucketName(HttpResponseStatus.BAD_REQUEST),
 
     /**
      * The specified checksum value is invalid.
@@ -80,9 +105,19 @@ public enum S3ErrorCode {
     InvalidPartOrder(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The requested range of an object lies outside of it.
+     */
+    InvalidRange(HttpResponseStatus.REQUESTED_RANGE_NOT_SATISFIABLE),
+
+    /**
      * The current request is not valid.
      */
     InvalidRequest(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The specified object key is longer than permitted.
+     */
+    KeyTooLongError(HttpResponseStatus.BAD_REQUEST),
 
     /**
      * The XML sent along with the request was not well-formed or did not match the expected structure.
@@ -90,9 +125,19 @@ public enum S3ErrorCode {
     MalformedXML(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The HTTP method of the request is not supported for the addressed resource.
+     */
+    MethodNotAllowed(HttpResponseStatus.METHOD_NOT_ALLOWED),
+
+    /**
      * The specified bucket does not exist.
      */
     NoSuchBucket(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The specified bucket does not have a CORS configuration.
+     */
+    NoSuchCORSConfiguration(HttpResponseStatus.NOT_FOUND),
 
     /**
      * The specified bucket does not have a policy.
@@ -115,9 +160,29 @@ public enum S3ErrorCode {
     NoSuchUpload(HttpResponseStatus.NOT_FOUND),
 
     /**
+     * The request asks for a part of the S3 API which is not provided.
+     */
+    NotImplemented(HttpResponseStatus.NOT_IMPLEMENTED),
+
+    /**
+     * A condition the request attached to reading, writing or copying an object does not hold.
+     */
+    PreconditionFailed(HttpResponseStatus.PRECONDITION_FAILED),
+
+    /**
+     * The time at which the request was signed is too far from the time of the server.
+     */
+    RequestTimeTooSkewed(HttpResponseStatus.FORBIDDEN),
+
+    /**
      * The provided request signature does not match the one calculated by the server.
      */
-    SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN);
+    SignatureDoesNotMatch(HttpResponseStatus.FORBIDDEN),
+
+    /**
+     * The SHA-256 hash stated for the content of the request does not match the content received.
+     */
+    XAmzContentSHA256Mismatch(HttpResponseStatus.BAD_REQUEST);
 
     private final HttpResponseStatus httpStatusCode;
 

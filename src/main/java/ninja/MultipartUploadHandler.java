@@ -32,10 +32,8 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,6 +96,12 @@ public class MultipartUploadHandler {
     private MultipartUploads multipartUploads;
 
     @Part
+    private PayloadVerifier payloadVerifier;
+
+    @Part
+    private Preconditions preconditions;
+
+    @Part
     private S3Responder responder;
 
     @Part
@@ -114,7 +118,7 @@ public class MultipartUploadHandler {
      * @param id         name of the object to upload
      */
     void startMultipartUpload(WebContext webContext, Bucket bucket, String id) {
-        Map<String, String> properties = objectHandler.parseUploadProperties(webContext);
+        Map<String, String> properties = StoredHeaders.ofRequest(webContext);
 
         MultipartUpload upload;
         try {
@@ -234,7 +238,7 @@ public class MultipartUploadHandler {
 
         // Compared instead of looked up, as the upload named as marker may have been completed or aborted meanwhile.
         return uploads.stream().filter(upload -> {
-            int keyOrder = MultipartUploads.compareKeys(upload.getKey(), keyMarker);
+            int keyOrder = ObjectListing.compareKeys(upload.getKey(), keyMarker);
             return keyOrder > 0 || (keyOrder == 0
                                     && Strings.isFilled(uploadIdMarker)
                                     && upload.getUploadId().compareTo(uploadIdMarker) > 0);
@@ -304,18 +308,19 @@ public class MultipartUploadHandler {
             part.close();
 
             // Checked on the staged file, so that a refused request never touches a part stored by another one.
-            byte[] md5 = stagedPart.md5();
-            String contentMd5 = webContext.getHeader("Content-MD5");
-            if (Strings.isFilled(contentMd5) && !Strings.areEqual(contentMd5,
-                                                                  Base64.getEncoder().encodeToString(md5))) {
+            Optional<Tuple<S3ErrorCode, String>> payloadError = payloadVerifier.verify(webContext, stagedPart.file());
+            if (payloadError.isPresent()) {
                 upload.get().discardPart(stagedPart);
                 responder.signalObjectError(webContext,
                                             bucket.getName(),
                                             id,
-                                            S3ErrorCode.BadDigest,
-                                            "The Content-MD5 you specified did not match what we received.");
+                                            payloadError.get().getFirst(),
+                                            payloadError.get().getSecond());
                 return;
             }
+
+            // Read before publishing, as a published part can be replaced or removed by another request at once.
+            byte[] md5 = stagedPart.md5();
 
             publishPart(bucket, id, uploadId, stagedPart);
 
@@ -470,9 +475,17 @@ public class MultipartUploadHandler {
         MultipartUpload.Part stagedPart = null;
         byte[] md5;
         Instant lastModified;
-        try (FileInputStream in = new FileInputStream(source.get().getFile())) {
-            ByteStreams.skipFully(in, firstByte);
-            stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
+        Optional<Lock> sourceLock = objectHandler.lockCopySource(webContext, source.get());
+        if (sourceLock.isEmpty()) {
+            return;
+        }
+        try {
+            try (FileInputStream in = new FileInputStream(source.get().getFile())) {
+                ByteStreams.skipFully(in, firstByte);
+                stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
+            } finally {
+                sourceLock.get().unlock();
+            }
 
             // Read from the staged file, as a published part can be replaced or removed by another request at once.
             md5 = stagedPart.md5();
@@ -581,6 +594,14 @@ public class MultipartUploadHandler {
         }
 
         StoredObject object = bucket.getObject(id);
+        if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return;
+        }
 
         // Assembled next to the object, as only a file on the same file system can replace it in one step.
         File assembledFile = multipartUploads.getAssemblingFile(bucket, upload);
@@ -590,7 +611,14 @@ public class MultipartUploadHandler {
             String etag = computeMultipartEtag(parts.values());
             Map<String, String> properties = upload.getProperties();
             properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-            publishObject(object, assembledFile, properties);
+            if (!objectHandler.replaceIfPermitted(webContext, object, assembledFile, properties)) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            id,
+                                            S3ErrorCode.PreconditionFailed,
+                                            S3Dispatcher.ERROR_PRECONDITION_FAILED);
+                return;
+            }
             removeCompletedUpload(upload);
 
             XMLStructuredOutput out = webContext.respondWith().xml();
@@ -627,39 +655,6 @@ public class MultipartUploadHandler {
             upload.delete();
         } catch (IOException exception) {
             Exceptions.handle(Storage.LOG, exception);
-        }
-    }
-
-    /**
-     * Makes the assembled file and its properties the new state of the given object.
-     * <p>
-     * The properties are written before the content appears. A reader which finds an object without an entity tag
-     * computes and stores one, which, the other way round, could replace the properties of a freshly completed
-     * upload by the hash of its content. Content and properties are still two files, so a reader may briefly see
-     * the previous content along with the new properties, as for any other way of writing an object.
-     *
-     * @param object        the object to replace or to create
-     * @param assembledFile the file holding the new content, which has to reside in the folder of the bucket
-     * @param properties    the properties of the new object
-     * @throws IOException if the object cannot be written, in which case its previous state is kept
-     */
-    private void publishObject(StoredObject object, File assembledFile, Map<String, String> properties)
-            throws IOException {
-        Map<String, String> previousProperties = object.getPropertiesFile().exists() ? object.getProperties() : null;
-        try {
-            // Guarded as well, as a write which fails halfway leaves a damaged properties file behind.
-            object.setProperties(properties);
-            java.nio.file.Files.move(assembledFile.toPath(),
-                                     object.getFile().toPath(),
-                                     StandardCopyOption.ATOMIC_MOVE,
-                                     StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException exception) {
-            if (previousProperties != null) {
-                object.setProperties(previousProperties);
-            } else {
-                sirius.kernel.commons.Files.delete(object.getPropertiesFile());
-            }
-            throw exception;
         }
     }
 

@@ -15,8 +15,11 @@ import BaseSdkSupportTest.Companion.putObjectWithContent
 import com.google.common.io.BaseEncoding
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import ninja.Storage
 import sirius.kernel.SiriusExtension
+import sirius.kernel.di.Injector
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.sync.RequestBody
@@ -24,10 +27,14 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
 import software.amazon.awssdk.services.s3.model.BucketCannedACL
+import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
+import software.amazon.awssdk.services.s3.model.CompletedPart
+import software.amazon.awssdk.services.s3.model.S3Exception
 import java.net.HttpURLConnection
 import java.net.URI
 import java.security.MessageDigest
 import java.time.Duration
+import java.time.Instant
 import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -186,6 +193,129 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    fun `GetObject and HeadObject honour conditions`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            val etag = client.headObject { it.bucket(BUCKET).key(KEY) }.eTag()
+            val past = Instant.now().minus(Duration.ofDays(1))
+            val future = Instant.now().plus(Duration.ofDays(1))
+
+            assertStatus(412) { client.headObject { it.bucket(BUCKET).key(KEY).ifMatch("\"other\"") } }
+            assertStatus(412) { client.getObject { it.bucket(BUCKET).key(KEY).ifMatch("\"other\"") } }
+
+            // If-Match compares to the letter and never matches a tag marked as weak, unlike If-None-Match.
+            assertStatus(412) { client.headObject { it.bucket(BUCKET).key(KEY).ifMatch("W/$etag") } }
+            assertStatus(412) { client.headObject { it.bucket(BUCKET).key(KEY).ifMatch(etag.uppercase()) } }
+            assertStatus(304) { client.headObject { it.bucket(BUCKET).key(KEY).ifNoneMatch("W/$etag") } }
+
+            // Early versions stored entity tags in upper case. They are sent in lower case, which has to match.
+            val storedObject = Injector.context().getPart(Storage::class.java)!!.getBucket(BUCKET).getObject(KEY)
+            storedObject.properties = mapOf("ETag" to etag.trim('"').uppercase())
+            assertEquals(etag, client.headObject { it.bucket(BUCKET).key(KEY) }.eTag())
+            client.headObject { it.bucket(BUCKET).key(KEY).ifMatch(etag) }
+            assertStatus(304) { client.headObject { it.bucket(BUCKET).key(KEY).ifNoneMatch(etag) } }
+            assertStatus(304) { client.getObject { it.bucket(BUCKET).key(KEY).ifNoneMatch(etag) } }
+            assertStatus(412) { client.headObject { it.bucket(BUCKET).key(KEY).ifUnmodifiedSince(past) } }
+            assertStatus(304) { client.headObject { it.bucket(BUCKET).key(KEY).ifModifiedSince(future) } }
+
+            client.headObject { it.bucket(BUCKET).key(KEY).ifMatch(etag).ifUnmodifiedSince(past) }
+            client.headObject { it.bucket(BUCKET).key(KEY).ifNoneMatch("\"other\"").ifModifiedSince(future) }
+            client.getObject { it.bucket(BUCKET).key(KEY).ifMatch(etag) }.close()
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `PutObject honours conditions and keeps the object if they do not hold`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            val body = RequestBody.fromBytes("Changed".toByteArray())
+
+            client.putObject(
+                { it.bucket(BUCKET).key(KEY).ifNoneMatch("*") },
+                RequestBody.fromBytes("Test".toByteArray())
+            )
+            val etag = client.headObject { it.bucket(BUCKET).key(KEY) }.eTag()
+
+            assertS3Error("PreconditionFailed") {
+                client.putObject(
+                    { it.bucket(BUCKET).key(KEY).ifNoneMatch("*") },
+                    body
+                )
+            }
+            assertS3Error("PreconditionFailed") {
+                client.putObject({ it.bucket(BUCKET).key(KEY).ifMatch("\"other\"") }, body)
+            }
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            client.putObject({ it.bucket(BUCKET).key(KEY).ifMatch(etag) }, body)
+            assertEquals("Changed", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `CompleteMultipartUpload honours If-None-Match`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+
+            val uploadId = client.createMultipartUpload { it.bucket(BUCKET).key(KEY) }.uploadId()
+            val part = client.uploadPart(
+                { it.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1) },
+                RequestBody.fromBytes("Changed".toByteArray())
+            )
+            val parts = CompletedMultipartUpload.builder()
+                .parts(CompletedPart.builder().partNumber(1).eTag(part.eTag()).build())
+                .build()
+
+            assertS3Error("PreconditionFailed") {
+                client.completeMultipartUpload {
+                    it.bucket(BUCKET).key(KEY).uploadId(uploadId).multipartUpload(parts).ifNoneMatch("*")
+                }
+            }
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            client.completeMultipartUpload { it.bucket(BUCKET).key(KEY).uploadId(uploadId).multipartUpload(parts) }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `CopyObject honours conditions on its source`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            val etag = client.headObject { it.bucket(BUCKET).key(KEY) }.eTag()
+
+            assertS3Error("PreconditionFailed") {
+                client.copyObject {
+                    it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("copy")
+                        .copySourceIfMatch("\"other\"")
+                }
+            }
+            assertS3Error("PreconditionFailed") {
+                client.copyObject {
+                    it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("copy")
+                        .copySourceIfNoneMatch(etag)
+                }
+            }
+            assertS3Error("NoSuchKey") { client.headObject { it.bucket(BUCKET).key("copy") } }
+
+            client.copyObject {
+                it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("copy")
+                    .copySourceIfMatch(etag)
+            }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
     /**
      * Starts every test without any bucket, so that tests neither depend on nor disturb each other.
      */
@@ -227,6 +357,14 @@ class RequestValidationTest {
             connection.outputStream.use { it.write(body.toByteArray()) }
         }
         return connection.responseCode.also { connection.disconnect() }
+    }
+
+    /**
+     * Asserts that the given block is answered with the given HTTP status.
+     */
+    private fun assertStatus(expectedStatus: Int, block: () -> Unit) {
+        val exception = assertThrows<S3Exception> { block() }
+        assertEquals(expectedStatus, exception.statusCode())
     }
 
     private fun sha256(data: ByteArray): ByteArray {

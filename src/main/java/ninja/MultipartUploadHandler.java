@@ -99,6 +99,9 @@ public class MultipartUploadHandler {
     private PayloadVerifier payloadVerifier;
 
     @Part
+    private Preconditions preconditions;
+
+    @Part
     private S3Responder responder;
 
     @Part
@@ -583,6 +586,14 @@ public class MultipartUploadHandler {
         }
 
         StoredObject object = bucket.getObject(id);
+        if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return;
+        }
 
         // Assembled next to the object, as only a file on the same file system can replace it in one step.
         File assembledFile = multipartUploads.getAssemblingFile(bucket, upload);

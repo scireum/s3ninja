@@ -57,6 +57,7 @@ public class S3Dispatcher implements WebDispatcher {
     static final String CONTENT_TYPE_XML = "application/xml";
     static final String RESPONSE_BUCKET = "Bucket";
     static final String ERROR_BUCKET_DOES_NOT_EXIST = "Bucket does not exist";
+    static final String ERROR_PRECONDITION_FAILED = "At least one of the pre-conditions you specified did not hold.";
     static final String ERROR_FILE_SYSTEM_ACCESS =
             "General problems accessing the file system — Permissions set correctly?";
     static final String AMAZON_HEADER_PREFIX = "x-amz-";

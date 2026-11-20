@@ -89,6 +89,9 @@ public class ObjectHandler {
     @Part
     private PayloadVerifier payloadVerifier;
 
+    @Part
+    private Preconditions preconditions;
+
     /**
      * Handles DELETE /bucket/id
      *
@@ -119,6 +122,15 @@ public class ObjectHandler {
                                         id,
                                         S3ErrorCode.IncompleteBody,
                                         "No content posted");
+            return;
+        }
+        if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
+            ByteStreams.exhaust(inputStream);
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
             return;
         }
 
@@ -293,6 +305,15 @@ public class ObjectHandler {
             return Optional.empty();
         }
 
+        if (preconditions.evaluateCopySource(webContext, sourceObject) == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        sourceBucketName,
+                                        sourceKey,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return Optional.empty();
+        }
+
         return Optional.of(sourceObject);
     }
 
@@ -312,6 +333,21 @@ public class ObjectHandler {
                                         id,
                                         S3ErrorCode.NoSuchKey,
                                         "Object does not exist");
+            return;
+        }
+
+        Preconditions.Outcome outcome = preconditions.evaluateRead(webContext, object);
+        if (outcome == Preconditions.Outcome.FAILED) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.PreconditionFailed,
+                                        S3Dispatcher.ERROR_PRECONDITION_FAILED);
+            return;
+        }
+        if (outcome == Preconditions.Outcome.NOT_MODIFIED) {
+            webContext.respondWith().status(HttpResponseStatus.NOT_MODIFIED);
+            responder.signalObjectSuccess(webContext);
             return;
         }
 

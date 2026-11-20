@@ -125,6 +125,11 @@ public enum S3ErrorCode {
     NoSuchUpload(HttpResponseStatus.NOT_FOUND),
 
     /**
+     * A condition the request attached to reading, writing or copying an object does not hold.
+     */
+    PreconditionFailed(HttpResponseStatus.PRECONDITION_FAILED),
+
+    /**
      * The time at which the request was signed is too far from the time of the server.
      */
     RequestTimeTooSkewed(HttpResponseStatus.FORBIDDEN),

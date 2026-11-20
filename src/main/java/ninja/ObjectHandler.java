@@ -218,21 +218,42 @@ public class ObjectHandler {
     }
 
     /**
-     * Takes the lock of the source of a copy, and verifies that it still is what the request asks for.
+     * Reads what a copy needs of its source.
+     *
+     * @param <T> the type of what is read
+     */
+    @FunctionalInterface
+    interface CopySourceReader<T> {
+
+        /**
+         * Reads the given source.
+         *
+         * @param source the object to copy from, which cannot change while it is read
+         * @return what has been read, which must not be <tt>null</tt>
+         * @throws IOException if the source cannot be read
+         */
+        T read(StoredObject source) throws IOException;
+    }
+
+    /**
+     * Reads the source of a copy while holding its lock, after verifying that it still is what the request asks for.
      * <p>
      * The conditions a request states for its source have been evaluated when the source was resolved. Until it is
      * read, another request may replace it. The source is therefore read while holding its lock, after its conditions
-     * have been evaluated once more.
+     * have been evaluated once more. The lock is held for the reading only.
      *
      * @param webContext the request which copies the object
      * @param source     the object to copy from
-     * @return the lock, which has to be released once the source has been read, or an empty optional if the request
-     * has been answered with an error as the source no longer meets its conditions
+     * @param reader     reads what the copy needs of the source
+     * @param <T>        the type of what is read
+     * @return what has been read, or an empty optional if the request has been answered with an error as the source
+     * no longer exists or no longer meets its conditions
+     * @throws IOException if the source cannot be read
      */
-    Optional<Lock> lockCopySource(WebContext webContext, StoredObject source) {
+    <T> Optional<T> readCopySource(WebContext webContext, StoredObject source, CopySourceReader<T> reader)
+            throws IOException {
         Lock lock = objectLocks.lockFor(source);
         lock.lock();
-        boolean sourceMayBeRead = false;
         try {
             if (!source.getFile().isFile()) {
                 responder.signalObjectError(webContext,
@@ -240,23 +261,20 @@ public class ObjectHandler {
                                             source.getKey(),
                                             S3ErrorCode.NoSuchKey,
                                             "The source object does not exist");
-            } else if (preconditions.evaluateCopySource(webContext, source) == Preconditions.Outcome.FAILED) {
+                return Optional.empty();
+            }
+            if (preconditions.evaluateCopySource(webContext, source) == Preconditions.Outcome.FAILED) {
                 responder.signalObjectError(webContext,
                                             null,
                                             source.getKey(),
                                             S3ErrorCode.PreconditionFailed,
                                             S3Dispatcher.ERROR_PRECONDITION_FAILED);
-            } else {
-                sourceMayBeRead = true;
+                return Optional.empty();
             }
+            return Optional.of(reader.read(source));
         } finally {
-            // Also released if evaluating the conditions fails, as nothing else would ever release it.
-            if (!sourceMayBeRead) {
-                lock.unlock();
-            }
+            lock.unlock();
         }
-
-        return sourceMayBeRead ? Optional.of(lock) : Optional.empty();
     }
 
     static String quoteEtag(String etag) {
@@ -303,21 +321,21 @@ public class ObjectHandler {
         String etag;
         File copiedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
         try {
-            Map<String, String> properties;
-            Optional<Lock> sourceLock = lockCopySource(webContext, sourceObject);
-            if (sourceLock.isEmpty()) {
-                return;
-            }
-            try {
+            Optional<Map<String, String>> copiedProperties = readCopySource(webContext, sourceObject, lockedSource -> {
                 // A copy is a plain object, even if its source has been uploaded in parts and thus carries another
                 // entity tag.
-                etag = Hasher.md5().hashFile(sourceObject.getFile()).toHexString();
-                properties = replaceMetadata ? StoredHeaders.ofRequest(webContext) : sourceObject.getProperties();
-                properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG, etag);
-                Files.copy(sourceObject.getFile(), copiedFile);
-            } finally {
-                sourceLock.get().unlock();
+                Map<String, String> properties =
+                        replaceMetadata ? StoredHeaders.ofRequest(webContext) : lockedSource.getProperties();
+                properties.put(S3Dispatcher.HTTP_HEADER_NAME_ETAG,
+                               Hasher.md5().hashFile(lockedSource.getFile()).toHexString());
+                Files.copy(lockedSource.getFile(), copiedFile);
+                return properties;
+            });
+            if (copiedProperties.isEmpty()) {
+                return;
             }
+            Map<String, String> properties = copiedProperties.get();
+            etag = properties.get(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
 
             if (!replaceIfPermitted(webContext, object, copiedFile, properties)) {
                 responder.signalObjectError(webContext,

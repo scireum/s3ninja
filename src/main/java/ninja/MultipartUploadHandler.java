@@ -475,17 +475,20 @@ public class MultipartUploadHandler {
         MultipartUpload.Part stagedPart = null;
         byte[] md5;
         Instant lastModified;
-        Optional<Lock> sourceLock = objectHandler.lockCopySource(webContext, source.get());
-        if (sourceLock.isEmpty()) {
-            return;
-        }
+        long offset = firstByte;
+        long length = lastByte - firstByte + 1;
         try {
-            try (FileInputStream in = new FileInputStream(source.get().getFile())) {
-                ByteStreams.skipFully(in, firstByte);
-                stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
-            } finally {
-                sourceLock.get().unlock();
+            Optional<MultipartUpload.Part> copiedPart =
+                    objectHandler.readCopySource(webContext, source.get(), sourceObject -> {
+                        try (FileInputStream in = new FileInputStream(sourceObject.getFile())) {
+                            ByteStreams.skipFully(in, offset);
+                            return upload.get().stagePart(number.get(), ByteStreams.limit(in, length));
+                        }
+                    });
+            if (copiedPart.isEmpty()) {
+                return;
             }
+            stagedPart = copiedPart.get();
 
             // Read from the staged file, as a published part can be replaced or removed by another request at once.
             md5 = stagedPart.md5();

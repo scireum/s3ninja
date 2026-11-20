@@ -116,8 +116,9 @@ public class ObjectHandler {
         Map<String, String> properties = parseUploadProperties(webContext);
         byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
         String md5 = Base64.getEncoder().encodeToString(hash);
-        String contentMd5 = properties.get("Content-MD5");
-        if (properties.containsKey("Content-MD5") && !md5.equals(contentMd5)) {
+        // Read from the request, not from the properties, which carry the name of the header as spelled by the client.
+        String contentMd5 = webContext.getHeader("Content-MD5");
+        if (contentMd5 != null && !md5.equals(contentMd5)) {
             object.delete();
             responder.signalObjectError(webContext,
                                         bucket.getName(),

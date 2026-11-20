@@ -1262,6 +1262,28 @@ abstract class BaseSdkSupportTest {
     }
 
     @Test
+    fun `PutObject verifies the Content-MD5 however the header is spelled`() {
+        val bucketName = "$DEFAULT_BUCKET_NAME-public"
+        val data = "Test".toByteArray()
+        val wrongMd5 = Base64.getEncoder().encodeToString(md5("Other".toByteArray()))
+        val correctMd5 = Base64.getEncoder().encodeToString(md5(data))
+
+        getClient().use { client ->
+            client.createBucket { it.bucket(bucketName).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+
+            assertEquals(400, putUnsigned("/$bucketName/lower", mapOf("content-md5" to wrongMd5), data))
+            assertS3Error("NoSuchKey") { getObject(client, bucketName, "lower") }
+            assertEquals(400, putUnsigned("/$bucketName/upper", mapOf("CONTENT-MD5" to wrongMd5), data))
+            assertS3Error("NoSuchKey") { getObject(client, bucketName, "upper") }
+
+            assertEquals(200, putUnsigned("/$bucketName/lower", mapOf("content-md5" to correctMd5), data))
+            assertEquals("Test", String(getObject(client, bucketName, "lower")!!.readAllBytes()))
+
+            cleanupBuckets(client, bucketName)
+        }
+    }
+
+    @Test
     fun `CompleteMultipartUpload leaves out the parts which it does not name`() {
         val bucketName = DEFAULT_BUCKET_NAME
         val key = DEFAULT_KEY
@@ -1543,10 +1565,14 @@ abstract class BaseSdkSupportTest {
         /**
          * Sends a PUT request without any signature and returns the status code of the response.
          */
-        fun putUnsigned(path: String, headers: Map<String, String>): Int {
+        fun putUnsigned(path: String, headers: Map<String, String>, body: ByteArray? = null): Int {
             val connection = URI(ENDPOINT + path).toURL().openConnection() as HttpURLConnection
             connection.requestMethod = "PUT"
             headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            if (body != null) {
+                connection.doOutput = true
+                connection.outputStream.use { it.write(body) }
+            }
             return connection.responseCode.also { connection.disconnect() }
         }
 

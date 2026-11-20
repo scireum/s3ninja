@@ -35,6 +35,12 @@ public class StoredObject {
 
     private static final String DELETED_MARKER = "DeletedMarker";
 
+    /**
+     * Contains the maximal length of an encoded key, which is what the 255 bytes of a file name leave once the name
+     * of the properties file, <tt>$[key].properties</tt>, has been built from it.
+     */
+    private static final int MAX_ENCODED_KEY_LENGTH = 255 - "$.properties".length();
+
     private final File file;
 
     private final String key;
@@ -284,6 +290,19 @@ public class StoredObject {
         Map<String, String> fileProperties = getProperties();
         fileProperties.put(DELETED_MARKER, "true");
         setProperties(fileProperties);
+    }
+
+    /**
+     * Checks whether an object with the given key can be stored.
+     * <p>
+     * An object is kept as a file named by its encoded key, next to a file for its properties. S3 permits keys of up
+     * to 1024 bytes, which is more than a file name can hold, so longer keys have to be refused.
+     *
+     * @param key the key to check
+     * @return <b>true</b> if the key is short enough to be stored, <b>false</b> else
+     */
+    public static boolean isStorableKey(String key) {
+        return encodeKey(key).length() <= MAX_ENCODED_KEY_LENGTH;
     }
 
     /**

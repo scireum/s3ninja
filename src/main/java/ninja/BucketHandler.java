@@ -81,7 +81,7 @@ public class BucketHandler {
             out.endObject();
             out.endOutput();
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, null, null);
         }
     }
 
@@ -149,7 +149,7 @@ public class BucketHandler {
                 multipartUploads.abortAll(bucketName);
 
                 responder.signalObjectSuccess(webContext);
-                webContext.respondWith().status(HttpResponseStatus.OK);
+                webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
             }
         } else if (HttpMethod.POST.equals(method)) {
             String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
@@ -216,7 +216,7 @@ public class BucketHandler {
             responder.signalObjectSuccess(webContext);
             webContext.respondWith().status(HttpResponseStatus.OK);
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, bucketName, null);
         }
     }
 

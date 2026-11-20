@@ -74,6 +74,11 @@ public enum S3ErrorCode {
     InvalidArgument(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The specified bucket name does not adhere to the naming rules.
+     */
+    InvalidBucketName(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * The specified checksum value is invalid.
      */
     InvalidDigest(HttpResponseStatus.BAD_REQUEST),
@@ -95,9 +100,19 @@ public enum S3ErrorCode {
     InvalidRequest(HttpResponseStatus.BAD_REQUEST),
 
     /**
+     * The specified object key is longer than permitted.
+     */
+    KeyTooLongError(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * The XML sent along with the request was not well-formed or did not match the expected structure.
      */
     MalformedXML(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * The HTTP method of the request is not supported for the addressed resource.
+     */
+    MethodNotAllowed(HttpResponseStatus.METHOD_NOT_ALLOWED),
 
     /**
      * The specified bucket does not exist.
@@ -123,6 +138,11 @@ public enum S3ErrorCode {
      * The specified multipart upload does not exist.
      */
     NoSuchUpload(HttpResponseStatus.NOT_FOUND),
+
+    /**
+     * The request asks for a part of the S3 API which is not provided.
+     */
+    NotImplemented(HttpResponseStatus.NOT_IMPLEMENTED),
 
     /**
      * A condition the request attached to reading, writing or copying an object does not hold.

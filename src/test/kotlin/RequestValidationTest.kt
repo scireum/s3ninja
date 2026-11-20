@@ -37,6 +37,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -311,6 +312,37 @@ class RequestValidationTest {
                 it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("copy")
                     .copySourceIfMatch(etag)
             }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Requests which cannot be served are answered with an S3 error`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+
+            assertEquals(400, sendUnsigned("GET", "/Invalid_Bucket_Name"))
+            assertS3Error("KeyTooLongError") { putObjectWithContent(client, BUCKET, "k".repeat(300), "Test") }
+            assertS3Error("NotImplemented") { client.getBucketVersioning { it.bucket(BUCKET) } }
+
+            val exception = assertThrows<S3Exception> { client.headObject { it.bucket(BUCKET).key("missing") } }
+            assertNotNull(exception.requestId())
+
+            assertEquals(204, client.deleteBucket { it.bucket(BUCKET) }.sdkHttpResponse().statusCode())
+        }
+    }
+
+    @Test
+    fun `Requests which are no valid upload do not overwrite the object`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+
+            assertEquals(405, sendUnsigned("POST", "/$BUCKET/$KEY", "Changed"))
+            assertEquals(400, sendUnsigned("PUT", "/$BUCKET/$KEY?partNumber=1", "Changed"))
+            assertEquals(400, sendUnsigned("PUT", "/$BUCKET/$KEY?partNumber=1&uploadId=", "Changed"))
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
 
             cleanupBuckets(client, BUCKET)
         }

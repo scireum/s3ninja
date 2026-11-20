@@ -9,6 +9,7 @@
 package ninja;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.common.io.ByteStreams;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import ninja.errors.S3ErrorCode;
@@ -148,6 +149,10 @@ public class S3Dispatcher implements WebDispatcher {
         if (request.uri.equals(API_PATH) || request.uri.startsWith(API_PATH_PREFIX)) {
             return null;
         }
+        if (hasInvalidBucketName(request)) {
+            // Answered by dispatch(...).
+            return null;
+        }
         if (Strings.isFilled(request.query)
             && !Strings.areEqual(request.query, "uploads")
             && !Strings.areEqual(request.query, "delete")) {
@@ -177,7 +182,13 @@ public class S3Dispatcher implements WebDispatcher {
 
         InputStreamHandler handler = createInputStreamHandler(webContext);
         webContext.setContentHandler(handler);
-        return req -> writeObject(req, request.bucket, request.key, handler);
+        return req -> {
+            try {
+                writeObject(req, request.bucket, request.key, handler);
+            } catch (Exception exception) {
+                answerUnexpectedError(req, exception);
+            }
+        };
     }
 
     private InputStreamHandler createInputStreamHandler(WebContext webContext) {
@@ -202,6 +213,40 @@ public class S3Dispatcher implements WebDispatcher {
             return DispatchDecision.CONTINUE;
         }
 
+        if (hasInvalidBucketName(request)) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             null,
+                                             null,
+                                             S3ErrorCode.InvalidBucketName,
+                                             "The specified bucket is not valid.");
+            return DispatchDecision.DONE;
+        }
+
+        try {
+            return dispatchRequest(webContext, request);
+        } catch (Exception exception) {
+            answerUnexpectedError(webContext, exception);
+            return DispatchDecision.DONE;
+        }
+    }
+
+    private boolean hasInvalidBucketName(S3Request request) {
+        return Strings.isFilled(request.bucket) && !Bucket.isValidName(request.bucket);
+    }
+
+    /**
+     * Answers a request which failed for a reason no handler has foreseen.
+     * <p>
+     * Clients of S3 expect an error in XML, where the error page of the web server would only confuse them.
+     */
+    private void answerUnexpectedError(WebContext webContext, Exception exception) {
+        String message = Exceptions.handle(LOG, exception).getMessage();
+        if (!webContext.isResponseCommitted()) {
+            errorSynthesizer.synthesiseError(webContext, null, null, S3ErrorCode.InternalError, message);
+        }
+    }
+
+    private DispatchDecision dispatchRequest(WebContext webContext, S3Request request) throws IOException {
         if (isListMultipartUploads(webContext, request)) {
             multipartUploadHandler.listMultipartUploads(webContext, request.bucket);
             return DispatchDecision.DONE;
@@ -354,7 +399,7 @@ public class S3Dispatcher implements WebDispatcher {
             errorSynthesizer.synthesiseError(webContext,
                                              request.bucket,
                                              request.key,
-                                             S3ErrorCode.InvalidRequest,
+                                             S3ErrorCode.NotImplemented,
                                              String.format("Received unknown query '%s'.", request.query));
         }
     }
@@ -392,7 +437,7 @@ public class S3Dispatcher implements WebDispatcher {
                 objectHandler.deleteObject(webContext, bucket, key);
             }
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, bucket.getName(), key);
         }
     }
 
@@ -417,7 +462,15 @@ public class S3Dispatcher implements WebDispatcher {
         HttpMethod method = webContext.getRequest().method();
         if (HttpMethod.PUT.equals(method)) {
             Value copy = webContext.getHeaderValue("x-amz-copy-source");
-            if (webContext.hasParameter("partNumber") && Strings.isFilled(uploadId)) {
+            if (webContext.hasParameter("partNumber") != Strings.isFilled(uploadId)) {
+                // Without this check, a part lacking its upload ID would be stored as the object itself.
+                ByteStreams.exhaust(in);
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            key,
+                                            S3ErrorCode.InvalidArgument,
+                                            "Uploading a part requires both partNumber and uploadId.");
+            } else if (webContext.hasParameter("partNumber")) {
                 // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
                 String partNumber = webContext.get("partNumber").asString();
                 if (copy.isFilled()) {
@@ -449,7 +502,7 @@ public class S3Dispatcher implements WebDispatcher {
                 postObjectHandler.handlePostObject(webContext, bucket, key, in);
             }
         } else {
-            throw new IllegalArgumentException(webContext.getRequest().method().name());
+            responder.signalMethodNotAllowed(webContext, bucket.getName(), key);
         }
     }
 
@@ -460,6 +513,14 @@ public class S3Dispatcher implements WebDispatcher {
                                         id,
                                         S3ErrorCode.NoSuchKey,
                                         "Please provide an object id.");
+            return false;
+        }
+        if (!StoredObject.isStorableKey(id)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.KeyTooLongError,
+                                        "Your key is too long");
             return false;
         }
         if (!authenticator.objectCheckAuth(webContext, bucket, id)) {

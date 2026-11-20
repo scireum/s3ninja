@@ -9,7 +9,7 @@
 package ninja;
 
 import com.google.common.io.BaseEncoding;
-import io.netty.handler.codec.http.HttpResponseStatus;
+import com.google.common.io.ByteStreams;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
 import sirius.kernel.commons.Strings;
@@ -71,9 +71,13 @@ public class PostObjectHandler {
         String signature = webContext.getParameter("Signature");
 
         if (!Strings.isFilled(policy)) {
-            // Simple POST without policy - just upload the object
-            objectHandler.putObject(webContext, bucket, key, data);
-            webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
+            // S3 only accepts a POST to an object as browser-based upload, which always carries a policy.
+            ByteStreams.exhaust(data);
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             key,
+                                             S3ErrorCode.MethodNotAllowed,
+                                             "The specified method is not allowed against this resource.");
             return;
         }
 

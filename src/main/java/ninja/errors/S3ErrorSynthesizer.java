@@ -15,6 +15,7 @@ import sirius.web.http.WebContext;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Synthesizes <em>S3</em> <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html">error
@@ -22,6 +23,8 @@ import javax.annotation.Nullable;
  */
 @Register(classes = S3ErrorSynthesizer.class)
 public class S3ErrorSynthesizer {
+
+    private static final String HEADER_REQUEST_ID = "x-amz-request-id";
 
     /**
      * Synthesizes an error response.
@@ -37,8 +40,11 @@ public class S3ErrorSynthesizer {
                                 @Nullable String key,
                                 @Nonnull S3ErrorCode code,
                                 @Nullable String message) {
-        XMLStructuredOutput xml =
-                new XMLStructuredOutput(webContext.respondWith().outputStream(code.getHttpStatusCode(), "text/xml"));
+        String requestId = createRequestId();
+        XMLStructuredOutput xml = new XMLStructuredOutput(webContext.respondWith()
+                                                                    .setHeader(HEADER_REQUEST_ID, requestId)
+                                                                    .outputStream(code.getHttpStatusCode(),
+                                                                                  "application/xml"));
 
         String resource = null;
         if (Strings.isFilled(bucket)) {
@@ -52,6 +58,21 @@ public class S3ErrorSynthesizer {
         xml.property("Code", code.toString());
         xml.propertyIfFilled("Message", message);
         xml.propertyIfFilled("Resource", resource);
+        xml.property("RequestId", requestId);
         xml.endOutput();
+    }
+
+    /**
+     * Synthesizes an error response without a body, as it is required for <tt>HEAD</tt> requests.
+     *
+     * @param webContext the request to process
+     * @param code       the error code which determines the HTTP status to send
+     */
+    public void synthesiseErrorWithoutBody(@Nonnull WebContext webContext, @Nonnull S3ErrorCode code) {
+        webContext.respondWith().setHeader(HEADER_REQUEST_ID, createRequestId()).status(code.getHttpStatusCode());
+    }
+
+    private String createRequestId() {
+        return Long.toHexString(ThreadLocalRandom.current().nextLong()).toUpperCase();
     }
 }

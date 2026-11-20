@@ -108,6 +108,50 @@ class RequestValidationTest {
     }
 
     @Test
+    fun `Request signed with a wrong secret is refused`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+        }
+
+        createClient(secretKey = "not-the-secret").use { client ->
+            assertS3Error("SignatureDoesNotMatch") { client.listBuckets() }
+            assertS3Error("SignatureDoesNotMatch") { client.listObjectsV2 { it.bucket(BUCKET) } }
+            assertS3Error("SignatureDoesNotMatch") { putObjectWithContent(client, BUCKET, KEY, "Changed") }
+            assertS3Error("SignatureDoesNotMatch") { client.deleteObject { it.bucket(BUCKET).key(KEY) } }
+        }
+
+        createClient().use { client ->
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Request signed at a time far from now, or stating no time at all, is refused`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            val authorization = "AWS4-HMAC-SHA256 Credential=${BaseSdkSupportTest.ACCESS_KEY}/20200101/eu-central-1/" +
+                    "s3/aws4_request, SignedHeaders=host;x-amz-date, Signature=${"0".repeat(64)}"
+
+            assertEquals(
+                "RequestTimeTooSkewed",
+                errorCodeOf(
+                    "GET", "/$BUCKET/$KEY", mapOf("Authorization" to authorization, "x-amz-date" to "20200101T000000Z")
+                )
+            )
+            assertEquals("AccessDenied", errorCodeOf("GET", "/$BUCKET/$KEY", mapOf("Authorization" to authorization)))
+
+            // A URL signed with signature version 2 states the second at which it expires.
+            val expiredUrl = "/$BUCKET/$KEY?AWSAccessKeyId=${BaseSdkSupportTest.ACCESS_KEY}&Expires=1&Signature=x"
+            assertEquals("AccessDenied", errorCodeOf("GET", expiredUrl, emptyMap()))
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
     fun `Expired presigned URL is refused`() {
         createClient().use { client ->
             createBucket(client, BUCKET)
@@ -136,10 +180,14 @@ class RequestValidationTest {
                 assertEquals(400, (URI(negativeExpiry).toURL().openConnection() as HttpURLConnection).responseCode)
 
                 // A URL signed with signature version 2 has to name its access key and the time it expires at.
-                assertEquals(403, sendUnsigned("GET", "/$BUCKET/$KEY?Signature=x&Expires=4102444800"))
                 assertEquals(
-                    403,
-                    sendUnsigned("GET", "/$BUCKET/$KEY?Signature=x&AWSAccessKeyId=${BaseSdkSupportTest.ACCESS_KEY}")
+                    "AccessDenied", errorCodeOf("GET", "/$BUCKET/$KEY?Signature=x&Expires=4102444800", emptyMap())
+                )
+                assertEquals(
+                    "AccessDenied",
+                    errorCodeOf(
+                        "GET", "/$BUCKET/$KEY?Signature=x&AWSAccessKeyId=${BaseSdkSupportTest.ACCESS_KEY}", emptyMap()
+                    )
                 )
             }
 
@@ -396,6 +444,21 @@ class RequestValidationTest {
                     .copySourceIfMatch(etag)
             }
 
+            // The source of a part is subject to the same conditions.
+            val uploadId = client.createMultipartUpload { it.bucket(BUCKET).key("upload") }.uploadId()
+            assertS3Error("PreconditionFailed") {
+                client.uploadPartCopy {
+                    it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("upload")
+                        .uploadId(uploadId).partNumber(1).copySourceIfMatch("\"other\"")
+                }
+            }
+            assertTrue(client.listParts { it.bucket(BUCKET).key("upload").uploadId(uploadId) }.parts().isEmpty())
+            client.uploadPartCopy {
+                it.sourceBucket(BUCKET).sourceKey(KEY).destinationBucket(BUCKET).destinationKey("upload")
+                    .uploadId(uploadId).partNumber(1).copySourceIfMatch(etag)
+            }
+            assertEquals(1, client.listParts { it.bucket(BUCKET).key("upload").uploadId(uploadId) }.parts().size)
+
             cleanupBuckets(client, BUCKET)
         }
     }
@@ -408,11 +471,27 @@ class RequestValidationTest {
             assertEquals(400, sendUnsigned("GET", "/Invalid_Bucket_Name"))
             assertS3Error("KeyTooLongError") { putObjectWithContent(client, BUCKET, "k".repeat(300), "Test") }
             assertS3Error("NotImplemented") { client.getBucketVersioning { it.bucket(BUCKET) } }
+            assertS3Error("NoSuchBucket") { client.getBucketLocation { it.bucket("missing-bucket") } }
 
             val exception = assertThrows<S3Exception> { client.headObject { it.bucket(BUCKET).key("missing") } }
             assertNotNull(exception.requestId())
 
             assertEquals(204, client.deleteBucket { it.bucket(BUCKET) }.sdkHttpResponse().statusCode())
+        }
+    }
+
+    @Test
+    fun `Methods which S3 does not offer are answered with MethodNotAllowed`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+
+            assertEquals(405, sendUnsigned("OPTIONS", "/"))
+            assertEquals(405, sendUnsigned("OPTIONS", "/$BUCKET"))
+            assertEquals(405, sendUnsigned("OPTIONS", "/$BUCKET/$KEY"))
+            assertEquals("Test", client.getObject { it.bucket(BUCKET).key(KEY) }.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
         }
     }
 
@@ -771,14 +850,11 @@ class RequestValidationTest {
 
     private fun createClient(
         accessKey: String = BaseSdkSupportTest.ACCESS_KEY,
-        region: Region = Region.EU_CENTRAL_1
+        region: Region = Region.EU_CENTRAL_1,
+        secretKey: String = BaseSdkSupportTest.SECRET_ACCESS_KEY
     ): S3Client {
         return S3Client.builder()
-            .credentialsProvider(
-                StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(accessKey, BaseSdkSupportTest.SECRET_ACCESS_KEY)
-                )
-            )
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
             .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
             .endpointOverride(URI.create(BaseSdkSupportTest.ENDPOINT))
             .region(region)
@@ -803,6 +879,19 @@ class RequestValidationTest {
             connection.outputStream.use { it.write(body.toByteArray()) }
         }
         return connection.responseCode.also { connection.disconnect() }
+    }
+
+    /**
+     * Sends a request which is not signed by an SDK, and returns the error code S3 ninja answers it with.
+     */
+    private fun errorCodeOf(method: String, path: String, headers: Map<String, String>): String? {
+        val connection = URI(BaseSdkSupportTest.ENDPOINT + path).toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = method
+        headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+        connection.responseCode
+        val body = connection.errorStream?.use { String(it.readAllBytes()) }.orEmpty()
+        connection.disconnect()
+        return Regex("<Code>([^<]+)</Code>").find(body)?.groupValues?.get(1)
     }
 
     /**

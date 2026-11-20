@@ -36,6 +36,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Handles S3 API Calls.
@@ -62,6 +63,21 @@ public class S3Dispatcher implements WebDispatcher {
     static final String ERROR_FILE_SYSTEM_ACCESS =
             "General problems accessing the file system — Permissions set correctly?";
     static final String AMAZON_HEADER_PREFIX = "x-amz-";
+
+    /**
+     * Names the parameters which refine a listing, and are therefore no sub-resource even if sent without a value.
+     */
+    private static final Set<String> LISTING_PARAMETERS = Set.of("prefix",
+                                                                 "delimiter",
+                                                                 "marker",
+                                                                 "max-keys",
+                                                                 "encoding-type",
+                                                                 "start-after",
+                                                                 "continuation-token",
+                                                                 "fetch-owner",
+                                                                 "key-marker",
+                                                                 "upload-id-marker",
+                                                                 "max-uploads");
 
     private static class S3Request {
 
@@ -342,12 +358,13 @@ public class S3Dispatcher implements WebDispatcher {
     private static S3Request parseRequest(WebContext webContext) {
         String uri = getEffectiveURI(webContext.getRequestedURI());
 
-        // we treat the first parameter without value as query string
+        // We treat the first parameter without value as query string, unless it is one which merely refines a
+        // listing. Clients send these without value as well, e.g. "?prefix=&max-keys=10".
         Iterator<String> parameterIterator = webContext.getParameterNames().iterator();
         String firstParameter = parameterIterator.hasNext() ? parameterIterator.next() : null;
-        String query = Strings.isFilled(firstParameter) && Strings.isEmpty(webContext.getParameter(firstParameter)) ?
-                       firstParameter :
-                       null;
+        String query = Strings.isFilled(firstParameter)
+                       && Strings.isEmpty(webContext.getParameter(firstParameter))
+                       && !LISTING_PARAMETERS.contains(firstParameter) ? firstParameter : null;
 
         // chop off potential port from host
         Tuple<String, String> hostAndPort = Strings.split(webContext.getHeader("Host"), ":");

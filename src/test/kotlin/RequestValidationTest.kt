@@ -621,6 +621,20 @@ class RequestValidationTest {
     }
 
     @Test
+    fun `Listing parameters without a value are not taken for a sub-resource`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+
+            assertEquals(200, sendUnsigned("GET", "/$BUCKET?prefix=&max-keys=10"))
+            assertEquals(200, sendUnsigned("GET", "/$BUCKET?delimiter=&list-type=2&prefix="))
+            assertEquals(200, sendUnsigned("GET", "/$BUCKET?encoding-type=&marker="))
+            assertEquals(501, sendUnsigned("GET", "/$BUCKET?versioning"))
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
     fun `Objects are rolled up into common prefixes by a delimiter`() {
         createClient().use { client ->
             createBucket(client, BUCKET)

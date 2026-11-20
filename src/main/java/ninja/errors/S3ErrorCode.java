@@ -24,6 +24,11 @@ public enum S3ErrorCode {
     AccessDenied(HttpResponseStatus.FORBIDDEN),
 
     /**
+     * The <tt>Authorization</tt> header of the request is of no form which is understood.
+     */
+    AuthorizationHeaderMalformed(HttpResponseStatus.BAD_REQUEST),
+
+    /**
      * A parameter of a presigned URL which is part of its signature is not valid.
      */
     AuthorizationQueryParametersError(HttpResponseStatus.BAD_REQUEST),
@@ -49,14 +54,14 @@ public enum S3ErrorCode {
     BucketNotEmpty(HttpResponseStatus.CONFLICT),
 
     /**
-     * A part of a multipart upload other than the last one is smaller than the minimum part size.
-     */
-    EntityTooSmall(HttpResponseStatus.BAD_REQUEST),
-
-    /**
      * The upload exceeds the maximum size which is permitted for it.
      */
     EntityTooLarge(HttpResponseStatus.BAD_REQUEST),
+
+    /**
+     * A part of a multipart upload other than the last one is smaller than the minimum part size.
+     */
+    EntityTooSmall(HttpResponseStatus.BAD_REQUEST),
 
     /**
      * During upload, less than the number of bytes specified have been transmitted.

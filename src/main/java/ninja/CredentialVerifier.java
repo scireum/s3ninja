@@ -53,8 +53,14 @@ public class CredentialVerifier {
      */
     private static final long MAX_PRESIGNED_SECONDS = 604800;
 
-    private static final String ERROR_EXPIRES_TOO_LARGE =
-            "X-Amz-Expires must be less than a week (in seconds); that is, the given X-Amz-Expires must be less than 604800 seconds";
+    private static final String ERROR_EXPIRES_INVALID =
+            "X-Amz-Expires must be a number of seconds which is not negative and less than a week, i.e. 604800 seconds";
+
+    private static final String ERROR_PARAMETERS_MISSING =
+            "A signed request has to name its access key, and a URL signed with signature version 2 the time it expires at.";
+
+    private static final String ERROR_DATE_MISSING =
+            "AWS authentication requires a valid x-amz-date header or X-Amz-Date parameter.";
 
     @Part
     private Storage storage;
@@ -67,13 +73,23 @@ public class CredentialVerifier {
      */
     public Optional<Tuple<S3ErrorCode, String>> verify(WebContext webContext) {
         String accessKey = determineAccessKey(webContext);
-        if (Strings.isFilled(accessKey) && !Strings.areEqual(accessKey, storage.getAwsAccessKey())) {
+        if (Strings.isEmpty(accessKey) || isVersion2UrlWithoutExpiry(webContext)) {
+            return Optional.of(Tuple.create(S3ErrorCode.AccessDenied, ERROR_PARAMETERS_MISSING));
+        }
+        if (!Strings.areEqual(accessKey, storage.getAwsAccessKey())) {
             return Optional.of(Tuple.create(S3ErrorCode.InvalidAccessKeyId, ERROR_INVALID_ACCESS_KEY));
         }
 
-        if (webContext.get("X-Amz-Signature").isFilled()
-            && webContext.get("X-Amz-Expires").asLong(0) > MAX_PRESIGNED_SECONDS) {
-            return Optional.of(Tuple.create(S3ErrorCode.AuthorizationQueryParametersError, ERROR_EXPIRES_TOO_LARGE));
+        if (isVersion4WithoutDate(webContext)) {
+            return Optional.of(Tuple.create(S3ErrorCode.AccessDenied, ERROR_DATE_MISSING));
+        }
+
+        if (webContext.get("X-Amz-Signature").isFilled()) {
+            // A value which is missing or no number is read as -1, and is refused like a negative one.
+            long validSeconds = webContext.get("X-Amz-Expires").asLong(-1);
+            if (validSeconds < 0 || validSeconds > MAX_PRESIGNED_SECONDS) {
+                return Optional.of(Tuple.create(S3ErrorCode.AuthorizationQueryParametersError, ERROR_EXPIRES_INVALID));
+            }
         }
 
         Instant now = Instant.now();
@@ -85,6 +101,30 @@ public class CredentialVerifier {
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * Determines if the request is a URL signed with signature version 2 which does not state when it expires.
+     * <p>
+     * The time is part of what is signed, and without it the URL would be valid forever.
+     */
+    private boolean isVersion2UrlWithoutExpiry(WebContext webContext) {
+        return webContext.get("Signature").isFilled()
+               && webContext.get("X-Amz-Signature").isEmptyString()
+               && webContext.get("Expires").asLong(-1) < 0;
+    }
+
+    /**
+     * Determines if the request is signed with signature version 4, but does not state when.
+     * <p>
+     * The time is part of what is signed, so no signature can be computed for such a request.
+     */
+    private boolean isVersion4WithoutDate(WebContext webContext) {
+        boolean version4 = webContext.get("X-Amz-Signature").isFilled()
+                           || Aws4HashCalculator.AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION)
+                                                                                     .asString("")).matches();
+        return version4 && parseAmazonDate(webContext.getHeaderValue("x-amz-date")
+                                                     .asString(webContext.get("X-Amz-Date").asString())).isEmpty();
     }
 
     /**

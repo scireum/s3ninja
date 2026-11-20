@@ -158,39 +158,13 @@ public class RequestAuthenticator {
             return true;
         }
 
-        String hash = getAuthHash(webContext);
-        if (Strings.isFilled(hash)) {
-            Optional<Tuple<S3ErrorCode, String>> credentialError = credentialVerifier.verify(webContext);
-            if (credentialError.isPresent()) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 key,
-                                                 credentialError.get().getFirst(),
-                                                 credentialError.get().getSecond());
-                log.log(webContext.getRequest().method().name(),
-                        webContext.getRequestedURI(),
-                        APILog.Result.REJECTED,
-                        CallContext.getCurrent().getWatch());
-                return false;
-            }
+        if (hasMalformedAuthorization(webContext, bucket.getName(), key)) {
+            return false;
+        }
 
-            String expectedHash = hashCalculator.computeHash(webContext, "");
-            String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
-            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 key,
-                                                 S3ErrorCode.SignatureDoesNotMatch,
-                                                 Strings.apply(
-                                                         "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
-                                                         expectedHash,
-                                                         hash));
-                log.log(webContext.getRequest().method().name(),
-                        webContext.getRequestedURI(),
-                        APILog.Result.REJECTED,
-                        CallContext.getCurrent().getWatch());
-                return false;
-            }
+        String hash = getAuthHash(webContext);
+        if (Strings.isFilled(hash) && !verifySignature(webContext, hash, bucket.getName(), key)) {
+            return false;
         }
         if (bucket.isPrivate() && !webContext.get("noAuth").isFilled() && Strings.isEmpty(hash)) {
             errorSynthesizer.synthesiseError(webContext,
@@ -198,6 +172,96 @@ public class RequestAuthenticator {
                                              key,
                                              S3ErrorCode.AccessDenied,
                                              "Authentication required");
+            log.log(webContext.getRequest().method().name(),
+                    webContext.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Verifies the signature of a request which addresses no bucket, i.e. which lists all buckets.
+     * <p>
+     * Such a request is served without a signature. One which is signed has to be signed correctly though, as a
+     * client would otherwise never learn that its credentials are wrong.
+     *
+     * @param webContext the request to verify
+     * @return <tt>true</tt> if the request may be served, <tt>false</tt> if it has been answered with an error
+     */
+    boolean checkSignatureIfPresent(WebContext webContext) {
+        String sessionToken = extractSessionToken(webContext);
+        if (Strings.isFilled(sessionToken) && validateSessionToken(sessionToken)) {
+            return true;
+        }
+
+        if (hasMalformedAuthorization(webContext, null, null)) {
+            return false;
+        }
+
+        String hash = getAuthHash(webContext);
+        return Strings.isEmpty(hash) || verifySignature(webContext, hash, null, null);
+    }
+
+    /**
+     * Refuses a request of which the <tt>Authorization</tt> header is of no form which is understood.
+     * <p>
+     * Such a request carries no signature which could be verified, but must not be served like one which was never
+     * meant to be signed.
+     *
+     * @return <tt>true</tt> if the request has been answered with an error, <tt>false</tt> if it may be processed
+     */
+    private boolean hasMalformedAuthorization(WebContext webContext, String bucketName, String key) {
+        if (webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION).isEmptyString() || Strings.isFilled(getAuthHash(
+                webContext))) {
+            return false;
+        }
+
+        errorSynthesizer.synthesiseError(webContext,
+                                         bucketName,
+                                         key,
+                                         S3ErrorCode.AuthorizationHeaderMalformed,
+                                         "The authorization header that you provided is not valid.");
+        log.log(webContext.getRequest().method().name(),
+                webContext.getRequestedURI(),
+                APILog.Result.REJECTED,
+                CallContext.getCurrent().getWatch());
+        return true;
+    }
+
+    /**
+     * Verifies the credentials and the signature of a signed request, and answers it with an error if they are wrong.
+     *
+     * @return <tt>true</tt> if the request is signed correctly, <tt>false</tt> if it has been answered with an error
+     */
+    private boolean verifySignature(WebContext webContext, String hash, String bucketName, String key) {
+        Optional<Tuple<S3ErrorCode, String>> credentialError = credentialVerifier.verify(webContext);
+        if (credentialError.isPresent()) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucketName,
+                                             key,
+                                             credentialError.get().getFirst(),
+                                             credentialError.get().getSecond());
+            log.log(webContext.getRequest().method().name(),
+                    webContext.getRequestedURI(),
+                    APILog.Result.REJECTED,
+                    CallContext.getCurrent().getWatch());
+            return false;
+        }
+
+        String expectedHash = hashCalculator.computeHash(webContext, "");
+        String alternativeHash = hashCalculator.computeHash(webContext, "/s3");
+        if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucketName,
+                                             key,
+                                             S3ErrorCode.SignatureDoesNotMatch,
+                                             Strings.apply(
+                                                     "The computed request signature does not match the one provided. Check login credentials. (Expected: %s, Found: %s)",
+                                                     expectedHash,
+                                                     hash));
             log.log(webContext.getRequest().method().name(),
                     webContext.getRequestedURI(),
                     APILog.Result.REJECTED,

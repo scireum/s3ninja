@@ -95,6 +95,16 @@ class RequestValidationTest {
     }
 
     @Test
+    fun `ListBuckets is served without a signature, but refuses a wrong one`() {
+        assertEquals(200, sendUnsigned("GET", "/"))
+        assertEquals(400, sendUnsigned("GET", "/", null, mapOf("Authorization" to "AWS4-HMAC-SHA256 nonsense")))
+        createClient().use { client -> client.listBuckets() }
+        createClient("AKIAUNKNOWNACCESSKEY").use { client ->
+            assertS3Error("InvalidAccessKeyId") { client.listBuckets() }
+        }
+    }
+
+    @Test
     fun `Expired presigned URL is refused`() {
         createClient().use { client ->
             createBucket(client, BUCKET)
@@ -117,6 +127,17 @@ class RequestValidationTest {
                 val validForTooLong =
                     longLivedUrl.toString().replace(Regex("X-Amz-Expires=\\d+"), "X-Amz-Expires=604801")
                 assertEquals(400, (URI(validForTooLong).toURL().openConnection() as HttpURLConnection).responseCode)
+                val withoutExpiry = longLivedUrl.toString().replace(Regex("X-Amz-Expires=\\d+"), "X-Amz-Expires=")
+                assertEquals(400, (URI(withoutExpiry).toURL().openConnection() as HttpURLConnection).responseCode)
+                val negativeExpiry = longLivedUrl.toString().replace(Regex("X-Amz-Expires=\\d+"), "X-Amz-Expires=-1")
+                assertEquals(400, (URI(negativeExpiry).toURL().openConnection() as HttpURLConnection).responseCode)
+
+                // A URL signed with signature version 2 has to name its access key and the time it expires at.
+                assertEquals(403, sendUnsigned("GET", "/$BUCKET/$KEY?Signature=x&Expires=4102444800"))
+                assertEquals(
+                    403,
+                    sendUnsigned("GET", "/$BUCKET/$KEY?Signature=x&AWSAccessKeyId=${BaseSdkSupportTest.ACCESS_KEY}")
+                )
             }
 
             cleanupBuckets(client, BUCKET)

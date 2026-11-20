@@ -258,7 +258,9 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isEmpty(request.bucket)) {
-            bucketHandler.listBuckets(webContext);
+            if (authenticator.checkSignatureIfPresent(webContext)) {
+                bucketHandler.listBuckets(webContext);
+            }
             return DispatchDecision.DONE;
         }
 

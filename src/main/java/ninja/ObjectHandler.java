@@ -54,6 +54,11 @@ public class ObjectHandler {
     private static final Pattern OPEN_RANGE_PATTERN = Pattern.compile("bytes=(\\d{1,18})-(\\d{0,18})");
 
     /**
+     * Matches a range which asks for the given number of bytes at the end of an object.
+     */
+    private static final Pattern SUFFIX_RANGE_PATTERN = Pattern.compile("bytes=-(\\d{1,18})");
+
+    /**
      * Ends the names of the files into which objects are received within the folder of their bucket.
      * <p>
      * Such a file starts with "$", which no file of an object does, as "$" is encoded in object keys.
@@ -445,28 +450,6 @@ public class ObjectHandler {
             return;
         }
 
-        Matcher rangeMatcher =
-                OPEN_RANGE_PATTERN.matcher(webContext.getHeaderValue(HttpHeaderNames.RANGE).asString("").trim());
-        if (rangeMatcher.matches()) {
-            if (Long.parseLong(rangeMatcher.group(1)) >= object.getSizeBytes()) {
-                responder.signalObjectError(webContext,
-                                            bucket.getName(),
-                                            id,
-                                            S3ErrorCode.InvalidRange,
-                                            "The requested range is not satisfiable");
-                return;
-            }
-            if (Strings.isFilled(rangeMatcher.group(2))
-                && Long.parseLong(rangeMatcher.group(2)) >= object.getSizeBytes()) {
-                // S3 serves what is there of a range which reaches beyond the end, whereas sending the file would
-                // refuse it. The range is therefore cut to the size of the object.
-                webContext.getRequest()
-                          .headers()
-                          .set(HttpHeaderNames.RANGE,
-                               "bytes=" + rangeMatcher.group(1) + "-" + (object.getSizeBytes() - 1));
-            }
-        }
-
         Preconditions.Outcome outcome = preconditions.evaluateRead(webContext, object);
         if (outcome == Preconditions.Outcome.FAILED) {
             responder.signalObjectError(webContext,
@@ -477,8 +460,29 @@ public class ObjectHandler {
             return;
         }
         if (outcome == Preconditions.Outcome.NOT_MODIFIED) {
-            webContext.respondWith().status(HttpResponseStatus.NOT_MODIFIED);
+            Response notModified = webContext.respondWith();
+            String storedEtag = object.getProperties().get(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+            if (Strings.isFilled(storedEtag)) {
+                notModified.setHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(storedEtag.toLowerCase()));
+            }
+            notModified.setHeader(HttpHeaderNames.LAST_MODIFIED,
+                                  Outcall.RFC2616_INSTANT.format(Instant.ofEpochMilli(object.getFile()
+                                                                                            .lastModified())));
+            notModified.status(HttpResponseStatus.NOT_MODIFIED);
             responder.signalObjectSuccess(webContext);
+            return;
+        }
+
+        // The conditions are settled. Sending the file would evaluate this one again, and on its own, without
+        // knowing that If-None-Match takes precedence over it.
+        webContext.getRequest().headers().remove(HttpHeaderNames.IF_MODIFIED_SINCE);
+
+        if (!applyRange(webContext, object)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        id,
+                                        S3ErrorCode.InvalidRange,
+                                        "The requested range is not satisfiable");
             return;
         }
 
@@ -520,6 +524,47 @@ public class ObjectHandler {
             response.status(HttpResponseStatus.OK);
         }
         responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Checks the range of a request against the object, and adapts it to what sending a file expects.
+     * <p>
+     * S3 serves what is there of a range which reaches beyond the end of an object, and the whole object for a suffix
+     * which is longer than it, whereas sending the file would refuse the former and fail on the latter. Such a range
+     * is therefore cut to the size of the object. Everything else is left to sending the file.
+     *
+     * @param webContext the context describing the current request
+     * @param object     the object to read
+     * @return <tt>false</tt> if the range lies entirely outside of the object, <tt>true</tt> otherwise
+     */
+    private boolean applyRange(WebContext webContext, StoredObject object) {
+        String range = webContext.getHeaderValue(HttpHeaderNames.RANGE).asString("").trim();
+        long size = object.getSizeBytes();
+
+        Matcher suffixMatcher = SUFFIX_RANGE_PATTERN.matcher(range);
+        if (suffixMatcher.matches()) {
+            long length = Long.parseLong(suffixMatcher.group(1));
+            if (length == 0 || size == 0) {
+                return false;
+            }
+            if (length >= size) {
+                webContext.getRequest().headers().set(HttpHeaderNames.RANGE, "bytes=0-" + (size - 1));
+            }
+            return true;
+        }
+
+        Matcher rangeMatcher = OPEN_RANGE_PATTERN.matcher(range);
+        if (rangeMatcher.matches()) {
+            if (Long.parseLong(rangeMatcher.group(1)) >= size) {
+                return false;
+            }
+            if (Strings.isFilled(rangeMatcher.group(2)) && Long.parseLong(rangeMatcher.group(2)) >= size) {
+                webContext.getRequest()
+                          .headers()
+                          .set(HttpHeaderNames.RANGE, "bytes=" + rangeMatcher.group(1) + "-" + (size - 1));
+            }
+        }
+        return true;
     }
 
     private Map<String, String> getOverridenHeaders(WebContext webContext) {

@@ -262,6 +262,12 @@ class RequestValidationTest {
             client.headObject { it.bucket(BUCKET).key(KEY).ifMatch(etag).ifUnmodifiedSince(past) }
             client.headObject { it.bucket(BUCKET).key(KEY).ifNoneMatch("\"other\"").ifModifiedSince(future) }
             client.getObject { it.bucket(BUCKET).key(KEY).ifMatch(etag) }.close()
+            client.getObject { it.bucket(BUCKET).key(KEY).ifNoneMatch("\"other\"").ifModifiedSince(future) }.close()
+
+            // Conditions are decided before the range is looked at.
+            assertStatus(304) {
+                client.getObject { it.bucket(BUCKET).key(KEY).ifNoneMatch(etag).range("bytes=100-") }
+            }
 
             cleanupBuckets(client, BUCKET)
         }
@@ -585,6 +591,16 @@ class RequestValidationTest {
             assertS3Error("InvalidRange") { client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=4-10") } }
             val lastByte = client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=3-10") }
             assertEquals("t", lastByte.use { String(it.readAllBytes()) })
+
+            val suffix = client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=-2") }
+            assertEquals("st", suffix.use { String(it.readAllBytes()) })
+            val suffixBeyondStart = client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=-10") }
+            assertEquals("bytes 0-3/4", suffixBeyondStart.response().contentRange())
+            assertEquals("Test", suffixBeyondStart.use { String(it.readAllBytes()) })
+            assertS3Error("InvalidRange") { client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=-0") } }
+
+            putObjectWithContent(client, BUCKET, "empty", "")
+            assertS3Error("InvalidRange") { client.getObject { it.bucket(BUCKET).key("empty").range("bytes=-1") } }
 
             cleanupBuckets(client, BUCKET)
         }

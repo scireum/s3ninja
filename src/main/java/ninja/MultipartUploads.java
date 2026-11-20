@@ -21,12 +21,10 @@ import sirius.kernel.timer.EveryHour;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -256,23 +254,9 @@ public class MultipartUploads implements Startable, EveryHour {
                                                                  .filter(upload -> Strings.areEqual(upload.getBucket(),
                                                                                                     bucket))
                                                                  .toList());
-        uploads.sort(Comparator.comparing(MultipartUpload::getKey, MultipartUploads::compareKeys)
+        uploads.sort(Comparator.comparing(MultipartUpload::getKey, ObjectListing::compareKeys)
                                .thenComparing(MultipartUpload::getUploadId));
         return uploads;
-    }
-
-    /**
-     * Compares two object keys in the order in which S3 lists them, which is the order of their bytes in UTF-8.
-     * <p>
-     * The order of Java strings differs from that for characters outside of the basic multilingual plane.
-     *
-     * @param key1 the first key
-     * @param key2 the second key
-     * @return a negative number, zero or a positive number if the first key is listed before, at the same position
-     * as, or after the second one
-     */
-    static int compareKeys(String key1, String key2) {
-        return Arrays.compareUnsigned(key1.getBytes(StandardCharsets.UTF_8), key2.getBytes(StandardCharsets.UTF_8));
     }
 
     private List<MultipartUpload> listAll() {

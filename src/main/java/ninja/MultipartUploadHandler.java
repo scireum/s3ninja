@@ -238,7 +238,7 @@ public class MultipartUploadHandler {
 
         // Compared instead of looked up, as the upload named as marker may have been completed or aborted meanwhile.
         return uploads.stream().filter(upload -> {
-            int keyOrder = MultipartUploads.compareKeys(upload.getKey(), keyMarker);
+            int keyOrder = ObjectListing.compareKeys(upload.getKey(), keyMarker);
             return keyOrder > 0 || (keyOrder == 0
                                     && Strings.isFilled(uploadIdMarker)
                                     && upload.getUploadId().compareTo(uploadIdMarker) > 0);

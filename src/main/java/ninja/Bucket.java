@@ -14,8 +14,6 @@ import sirius.kernel.commons.Limit;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.commons.Urls;
 import sirius.kernel.health.Exceptions;
-import sirius.kernel.xml.Attribute;
-import sirius.kernel.xml.XMLStructuredOutput;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -23,11 +21,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -172,117 +167,9 @@ public class Bucket {
         }
     }
 
-    /**
-     * Sends a list of at most the provided number of stored objects using
-     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV1.html">V1</a> format.
-     *
-     * @param output the xml structured output the list of objects should be written to
-     * @param limit  controls the maximum number of objects returned
-     * @param marker the key to start with when listing objects in a bucket
-     * @param prefix limits the response to keys that begin with the specified prefix
-     */
-    public void outputObjectsV1(XMLStructuredOutput output,
-                                int limit,
-                                @Nullable String marker,
-                                @Nullable String prefix) {
-        ListFileTreeVisitor visitor = new ListFileTreeVisitor(output, limit, marker, prefix, null);
-
-        output.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-        output.property("Name", getName());
-        output.property("MaxKeys", limit);
-        output.property("Marker", marker);
-        output.property("Prefix", prefix);
-        try {
-            walkFileTreeOurWay(folder.toPath(), visitor);
-        } catch (IOException exception) {
-            throw Exceptions.handle(Storage.LOG, exception);
-        }
-        output.property("IsTruncated", limit > 0 && visitor.getCount() > limit);
-        output.endOutput();
-    }
-
-    /**
-     * Sends a list of at most the provided number of stored objects using
-     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html">V2</a> format.
-     *
-     * @param output            the XML structured output the list of objects should be written to
-     * @param limit             controls the maximum number of objects returned
-     * @param marker            the key to start with when listing objects in a bucket
-     * @param prefix            limits the response to keys that begin with the specified prefix
-     * @param continuationToken used to specify where the listing should continue from
-     */
-    public void outputObjectsV2(XMLStructuredOutput output,
-                                int limit,
-                                @Nullable String marker,
-                                @Nullable String prefix,
-                                @Nullable String continuationToken) {
-        ListFileTreeVisitor visitor = new ListFileTreeVisitor(output, limit, marker, prefix, continuationToken);
-
-        output.beginOutput("ListBucketResult", Attribute.set("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-        output.property("Name", getName());
-        output.property("MaxKeys", limit);
-        output.property("StartAfter", marker);
-        output.property("Prefix", prefix);
-        if (Strings.isFilled(continuationToken)) {
-            output.property("ContinuationToken", continuationToken);
-        }
-
-        try {
-            walkFileTreeOurWay(folder.toPath(), visitor);
-        } catch (IOException exception) {
-            throw Exceptions.handle(Storage.LOG, exception);
-        }
-
-        boolean truncated = limit > 0 && visitor.getCount() > limit;
-        output.property("IsTruncated", truncated);
-        output.property("KeyCount", Math.min(limit, visitor.getCount()));
-        if (truncated) {
-            output.property("NextContinuationToken", visitor.getNextContinuationToken());
-        }
-
-        output.endOutput();
-    }
-
-    /**
-     * Very simplified stand-in for {@link Files#walkFileTree(Path, FileVisitor)} where we control the traversal order.
-     *
-     * @param path    the start path.
-     * @param visitor the visitor processing the files.
-     * @throws IOException forwarded from nested I/O operations.
-     */
-    private void walkFileTreeOurWay(Path path, FileVisitor<? super Path> visitor) throws IOException {
-        if (!path.toFile().isDirectory()) {
-            throw new IOException("Directory expected.");
-        }
-
-        try (Stream<Path> children = Files.list(path)) {
-            children.filter(childPath -> filterObjects(childPath.toFile()))
-                    .sorted(Bucket::compareUtf8Binary)
-                    .forEach(childPath -> {
-                        try {
-                            visitor.visitFile(childPath, Files.readAttributes(childPath, BasicFileAttributes.class));
-                        } catch (IOException exception) {
-                            throw Exceptions.handle(Storage.LOG, exception);
-                        }
-                    });
-        }
-    }
-
     private static int compareUtf8Binary(Path path1, Path path2) {
-        String string1 = StoredObject.decodeKey(path1.getFileName().toString());
-        String string2 = StoredObject.decodeKey(path2.getFileName().toString());
-
-        byte[] bytes1 = string1.getBytes(StandardCharsets.UTF_8);
-        byte[] bytes2 = string2.getBytes(StandardCharsets.UTF_8);
-
-        // unless we upgrade to java 9+ offering Arrays.compare(...), we need to compare the arrays manually :(
-        int length = Math.min(bytes1.length, bytes2.length);
-        for (int index = 0; index < length; ++index) {
-            if (bytes1[index] != bytes2[index]) {
-                return Byte.compare(bytes1[index], bytes2[index]);
-            }
-        }
-        return bytes1.length - bytes2.length;
+        return ObjectListing.compareKeys(StoredObject.decodeKey(path1.getFileName().toString()),
+                                         StoredObject.decodeKey(path2.getFileName().toString()));
     }
 
     /**

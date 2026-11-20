@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.model.CORSRule
 import software.amazon.awssdk.services.s3.model.ChecksumMode
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
 import software.amazon.awssdk.services.s3.model.CompletedPart
+import software.amazon.awssdk.services.s3.model.EncodingType
 import software.amazon.awssdk.services.s3.model.MetadataDirective
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.Payer
@@ -39,6 +40,8 @@ import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -46,6 +49,7 @@ import java.util.Base64
 import java.util.zip.GZIPOutputStream
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -518,6 +522,83 @@ class RequestValidationTest {
             assertS3Error("InvalidRange") { client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=4-10") } }
             val lastByte = client.getObject { it.bucket(BUCKET).key(KEY).range("bytes=3-10") }
             assertEquals("t", lastByte.use { String(it.readAllBytes()) })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Objects are listed in the binary order of their UTF-8 keys`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            listOf("ü", "a", "Z", "😇", "a/1").forEach { putObjectWithContent(client, BUCKET, it, "Test") }
+
+            val expectedKeys = listOf("Z", "a", "a/1", "ü", "😇")
+            assertEquals(expectedKeys, client.listObjectsV2 { it.bucket(BUCKET) }.contents().map { it.key() })
+            assertEquals(expectedKeys, client.listObjects { it.bucket(BUCKET) }.contents().map { it.key() })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Objects are rolled up into common prefixes by a delimiter`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            listOf("a/1", "a/2", "b/x/1", "c").forEach { putObjectWithContent(client, BUCKET, it, "Test") }
+
+            val root = client.listObjectsV2 { it.bucket(BUCKET).delimiter("/") }
+            assertEquals(listOf("c"), root.contents().map { it.key() })
+            assertEquals(listOf("a/", "b/"), root.commonPrefixes().map { it.prefix() })
+            assertEquals(3, root.keyCount())
+
+            val folder = client.listObjectsV2 { it.bucket(BUCKET).delimiter("/").prefix("a/") }
+            assertEquals(listOf("a/1", "a/2"), folder.contents().map { it.key() })
+            assertTrue(folder.commonPrefixes().isEmpty())
+
+            val pagesV2 = client.listObjectsV2Paginator { it.bucket(BUCKET).delimiter("/").maxKeys(1) }.toList()
+            assertEquals(3, pagesV2.size)
+            assertEquals(listOf("a/", "b/"), pagesV2.flatMap { it.commonPrefixes() }.map { it.prefix() })
+            assertEquals(listOf("c"), pagesV2.flatMap { it.contents() }.map { it.key() })
+
+            val firstPageV1 = client.listObjects { it.bucket(BUCKET).delimiter("/").maxKeys(1) }
+            assertEquals(listOf("a/"), firstPageV1.commonPrefixes().map { it.prefix() })
+            assertTrue(firstPageV1.isTruncated())
+            assertEquals("a/", firstPageV1.nextMarker())
+            val secondPageV1 = client.listObjects {
+                it.bucket(BUCKET).delimiter("/").maxKeys(1).marker(firstPageV1.nextMarker())
+            }
+            assertEquals(listOf("b/"), secondPageV1.commonPrefixes().map { it.prefix() })
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
+    fun `Listing continues after a key which does not have to exist`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            listOf("a/1", "a/2", "b/1", "sp ace").forEach { putObjectWithContent(client, BUCKET, it, "Test") }
+
+            val afterMissingKey = client.listObjectsV2 { it.bucket(BUCKET).startAfter("a/1x") }
+            assertEquals(listOf("a/2", "b/1", "sp ace"), afterMissingKey.contents().map { it.key() })
+            val afterMissingMarker = client.listObjects { it.bucket(BUCKET).marker("a/1x") }
+            assertEquals(listOf("a/2", "b/1", "sp ace"), afterMissingMarker.contents().map { it.key() })
+
+            assertS3Error("InvalidArgument") {
+                client.listObjectsV2 { it.bucket(BUCKET).continuationToken("not a token!") }
+            }
+
+            assertEquals(1000, client.listObjectsV2 { it.bucket(BUCKET).maxKeys(5000) }.maxKeys())
+            val nothing = client.listObjectsV2 { it.bucket(BUCKET).maxKeys(0) }
+            assertTrue(nothing.contents().isEmpty())
+            assertFalse(nothing.isTruncated())
+
+            val encoded = client.listObjectsV2 { it.bucket(BUCKET).prefix("sp").encodingType(EncodingType.URL) }
+            assertEquals(EncodingType.URL, encoded.encodingType())
+            assertEquals(
+                listOf("sp ace"), encoded.contents().map { URLDecoder.decode(it.key(), StandardCharsets.UTF_8) }
+            )
 
             cleanupBuckets(client, BUCKET)
         }

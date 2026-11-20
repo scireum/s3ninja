@@ -34,6 +34,11 @@ public class BucketHandler {
 
     private static final String ERROR_BUCKET_ALREADY_OWNED_BY_YOU = "Bucket already owned by you";
 
+    /**
+     * Names the region in which S3 answers a request to create a bucket which exists already with success.
+     */
+    private static final String LEGACY_REGION = "us-east-1";
+
     @Part
     private Storage storage;
 
@@ -48,6 +53,9 @@ public class BucketHandler {
 
     @Part
     private RequestAuthenticator authenticator;
+
+    @Part
+    private CredentialVerifier credentialVerifier;
 
     /**
      * GET a list of all buckets
@@ -184,7 +192,12 @@ public class BucketHandler {
                 }
             }
         } else if (HttpMethod.PUT.equals(method)) {
-            if (bucket.exists()) {
+            // S3 refuses to create a bucket which its owner has created already, except in its oldest region. There
+            // it answers with success for legacy compatibility, and resets the access control list of the bucket.
+            boolean recreatedInLegacyRegion = bucket.exists() && credentialVerifier.determineRegion(webContext)
+                                                                                   .filter(LEGACY_REGION::equals)
+                                                                                   .isPresent();
+            if (bucket.exists() && !recreatedInLegacyRegion) {
                 responder.signalObjectError(webContext,
                                             bucketName,
                                             null,
@@ -193,7 +206,7 @@ public class BucketHandler {
                 return;
             }
 
-            if (!bucket.create()) {
+            if (recreatedInLegacyRegion ? !bucket.makePrivate() : !bucket.create()) {
                 responder.signalObjectError(webContext,
                                             bucketName,
                                             null,

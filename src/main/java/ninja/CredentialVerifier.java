@@ -128,6 +128,30 @@ public class CredentialVerifier {
     }
 
     /**
+     * Determines the region the given request has been signed for.
+     * <p>
+     * Only signature version 4 names a region, as part of the scope of its credential.
+     *
+     * @param webContext the request to inspect
+     * @return the region, or an empty optional if the request is not signed with signature version 4
+     */
+    public Optional<String> determineRegion(WebContext webContext) {
+        Matcher matcher =
+                Aws4HashCalculator.AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION)
+                                                                       .asString(""));
+        if (matcher.matches()) {
+            return Optional.of(matcher.group(3));
+        }
+
+        matcher = Aws4HashCalculator.X_AMZ_CREDENTIAL_PATTERN.matcher(webContext.get("X-Amz-Credential").asString(""));
+        if (matcher.matches()) {
+            return Optional.of(matcher.group(3));
+        }
+
+        return Optional.empty();
+    }
+
+    /**
      * Extracts the access key from the <tt>Authorization</tt> header or, for presigned URLs, from the query string.
      *
      * @return the access key, or <tt>null</tt> if the request names none

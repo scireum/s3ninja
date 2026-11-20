@@ -722,6 +722,28 @@ class RequestValidationTest {
     }
 
     @Test
+    fun `Creating a bucket which exists already only succeeds in the region us-east-1`() {
+        createClient().use { client ->
+            client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+            putObjectWithContent(client, BUCKET, KEY, "Test")
+            assertS3Error("BucketAlreadyOwnedByYou") { createBucket(client, BUCKET) }
+            assertEquals(200, sendUnsigned("GET", "/$BUCKET/$KEY"))
+
+            createClient(region = Region.US_EAST_1).use { legacyClient ->
+                // Answered with success there, which resets the access control list and keeps the objects.
+                createBucket(legacyClient, BUCKET)
+                assertEquals(403, sendUnsigned("GET", "/$BUCKET/$KEY"))
+                assertEquals(listOf(KEY), legacyClient.listObjectsV2 { it.bucket(BUCKET) }.contents().map { it.key() })
+
+                legacyClient.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
+                assertEquals(200, sendUnsigned("GET", "/$BUCKET/$KEY"))
+            }
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
     fun `A bucket created anew is private, even if a public one of that name was deleted`() {
         createClient().use { client ->
             client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
@@ -747,7 +769,10 @@ class RequestValidationTest {
         }
     }
 
-    private fun createClient(accessKey: String = BaseSdkSupportTest.ACCESS_KEY): S3Client {
+    private fun createClient(
+        accessKey: String = BaseSdkSupportTest.ACCESS_KEY,
+        region: Region = Region.EU_CENTRAL_1
+    ): S3Client {
         return S3Client.builder()
             .credentialsProvider(
                 StaticCredentialsProvider.create(
@@ -756,7 +781,7 @@ class RequestValidationTest {
             )
             .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
             .endpointOverride(URI.create(BaseSdkSupportTest.ENDPOINT))
-            .region(Region.EU_CENTRAL_1)
+            .region(region)
             .build()
     }
 

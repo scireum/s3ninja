@@ -145,7 +145,7 @@ public class PayloadVerifier {
 
         try {
             return Base64.getDecoder().decode(value.trim());
-        } catch (IllegalArgumentException exception) {
+        } catch (IllegalArgumentException _) {
             return new byte[0];
         }
     }

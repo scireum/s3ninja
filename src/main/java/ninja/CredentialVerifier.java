@@ -221,7 +221,7 @@ public class CredentialVerifier {
 
         try {
             return Optional.of(LocalDateTime.parse(date, AMAZON_DATE_FORMAT).toInstant(ZoneOffset.UTC));
-        } catch (DateTimeParseException exception) {
+        } catch (DateTimeParseException _) {
             return Optional.empty();
         }
     }

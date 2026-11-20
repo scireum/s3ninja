@@ -273,7 +273,7 @@ public class ObjectListing {
     private static Optional<String> decodeContinuationToken(String continuationToken) {
         try {
             return Optional.of(new String(Base64.getUrlDecoder().decode(continuationToken), StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException exception) {
+        } catch (IllegalArgumentException _) {
             return Optional.empty();
         }
     }

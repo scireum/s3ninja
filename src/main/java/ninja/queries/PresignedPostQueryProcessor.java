@@ -92,7 +92,7 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                     if (partFile != null && partFile.exists()) {
                         contentStream = new FileInputStream(partFile);
                     }
-                } catch (IOException ignored) {
+                } catch (IOException _) {
                     // Data is not stored in a file, will use getByteBuf() later
                 }
             }

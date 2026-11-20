@@ -186,7 +186,7 @@ public class Preconditions {
 
         try {
             return Optional.of(ZonedDateTime.parse(date.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
-        } catch (DateTimeParseException exception) {
+        } catch (DateTimeParseException _) {
             // As demanded by RFC 7232, a date which cannot be read is ignored.
             return Optional.empty();
         }

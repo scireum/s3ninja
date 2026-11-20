@@ -13,6 +13,7 @@ import sirius.kernel.commons.Watch;
 import sirius.kernel.di.std.Register;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Iterator;
 import java.util.List;
 
@@ -34,7 +35,7 @@ public class APILog {
      * Represents a log entry.
      */
     public static class Entry {
-        private final LocalDateTime time = LocalDateTime.now();
+        private final LocalDateTime time = LocalDateTime.now(ZoneId.systemDefault());
         private final String function;
         private final String description;
         private final Result result;

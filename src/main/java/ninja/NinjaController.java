@@ -56,7 +56,10 @@ public class NinjaController extends BasicController {
     private APILog log;
 
     @Part
-    private S3Dispatcher s3Dispatcher;
+    private RequestAuthenticator authenticator;
+
+    @Part
+    private MultipartUploads multipartUploads;
 
     @Part
     private GlobalContext globalContext;
@@ -258,6 +261,7 @@ public class NinjaController extends BasicController {
                                 .withDirectMessage("Failed deleting bucket. Missing file system permission?")
                                 .handle();
             }
+            multipartUploads.abortAll(bucket.getName());
 
             UserContext.message(Message.info().withTextMessage("Bucket successfully deleted."));
             webContext.respondWith().redirectTemporarily("/ui");
@@ -393,7 +397,7 @@ public class NinjaController extends BasicController {
     @InternalService
     @Routed(value = "/.api/generate-session-token", methods = HttpMethod.POST)
     public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
-        String token = s3Dispatcher.generateSessionToken();
+        String token = authenticator.generateSessionToken();
 
         output.property("success", true)
               .property("token", token)

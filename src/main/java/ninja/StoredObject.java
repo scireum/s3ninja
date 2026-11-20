@@ -183,7 +183,8 @@ public class StoredObject {
     /**
      * Returns all meta information stored along with the object.
      * <p>
-     * These are the <tt>Content-MD5</tt>, <tt>Content-Type</tt> and any <tt>x-amz-*</tt> headers.
+     * These are the <tt>Cache-Control</tt>, <tt>Content-Disposition</tt>, <tt>Content-MD5</tt>, <tt>Content-Type</tt>,
+     * <tt>Expires</tt> and any <tt>x-amz-*</tt> headers.
      * <p>
      * Internally, a {@link Properties} file is loaded from disk and converted to a {@link Map}.
      *

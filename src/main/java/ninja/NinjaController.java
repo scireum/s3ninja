@@ -49,6 +49,16 @@ import java.util.Map;
 @Register
 public class NinjaController extends BasicController {
 
+    /**
+     * Names the field of a JSON answer which states whether the call succeeded.
+     */
+    private static final String RESPONSE_SUCCESS = "success";
+
+    /**
+     * Names the field of a JSON answer which explains its outcome.
+     */
+    private static final String RESPONSE_MESSAGE = "message";
+
     @Part
     private Storage storage;
 
@@ -282,9 +292,9 @@ public class NinjaController extends BasicController {
             webContext.respondWith()
                       .json()
                       .beginResult()
-                      .property("success", true)
+                      .property(RESPONSE_SUCCESS, true)
                       .property("error", false)
-                      .property("message", "File successfully uploaded.")
+                      .property(RESPONSE_MESSAGE, "File successfully uploaded.")
                       .property("action", "/ui/" + bucket)
                       .property("actionLabel", NLS.get("NLS.refresh"))
                       .property("refresh", "true")
@@ -293,9 +303,9 @@ public class NinjaController extends BasicController {
             webContext.respondWith()
                       .json(HttpResponseStatus.OK)
                       .beginResult()
-                      .property("success", false)
+                      .property(RESPONSE_SUCCESS, false)
                       .property("error", true)
-                      .property("message", Exceptions.handle(e).getMessage())
+                      .property(RESPONSE_MESSAGE, Exceptions.handle(e).getMessage())
                       .endResult();
         }
     }
@@ -378,7 +388,7 @@ public class NinjaController extends BasicController {
     public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
         String token = authenticator.generateSessionToken();
 
-        output.property("success", true)
+        output.property(RESPONSE_SUCCESS, true)
               .property("token", token)
               .property("expiresIn", "24 hours")
               .property("usage",
@@ -411,7 +421,7 @@ public class NinjaController extends BasicController {
             var jsonBuilder = webContext.respondWith()
                                         .json()
                                         .beginResult()
-                                        .property("success", true)
+                                        .property(RESPONSE_SUCCESS, true)
                                         .property("url", response.url());
 
             // Properly serialize the fields map as a JSON object
@@ -429,8 +439,8 @@ public class NinjaController extends BasicController {
             webContext.respondWith()
                       .json()
                       .beginResult()
-                      .property("success", false)
-                      .property("message", handled.getMessage())
+                      .property(RESPONSE_SUCCESS, false)
+                      .property(RESPONSE_MESSAGE, handled.getMessage())
                       .endResult();
         }
     }

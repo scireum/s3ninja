@@ -288,7 +288,7 @@ public class NinjaController extends BasicController {
                       .json()
                       .beginResult()
                       .property(RESPONSE_MESSAGE, "File successfully uploaded.")
-                      .property("action", "/ui/" + bucket)
+                      .property("action", "/ui/" + bucket.getEncodedName())
                       .property("actionLabel", NLS.get("NLS.refresh"))
                       .property("refresh", "true")
                       .endResult();

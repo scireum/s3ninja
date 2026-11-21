@@ -148,6 +148,7 @@ class CsrfProtectionTest {
                 .executeAndBlock()
             assertEquals(HttpResponseStatus.OK, accepted.status)
             assertEquals("File successfully uploaded.", accepted.contentAsJson["message"].asString(""))
+            assertEquals("/ui/$bucket", accepted.contentAsJson["action"].asString(""))
             assertTrue(storage.getBucket(bucket).getObject(key).exists(), "uploaded object must be stored")
         } finally {
             storage.getBucket(bucket).delete()

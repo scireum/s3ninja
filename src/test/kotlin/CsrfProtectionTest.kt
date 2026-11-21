@@ -51,8 +51,22 @@ class CsrfProtectionTest {
             .withParameter("accessKey", ACCESS_KEY)
             .executeAndBlock()
         assertEquals(HttpResponseStatus.OK, presignedPostResult.status)
-        assertTrue(presignedPostResult.contentAsJson["success"].asBoolean())
+        assertEquals("/csrf-test/test.txt", presignedPostResult.contentAsJson["url"].asString(""))
         assertTrue(presignedPostResult.contentAsString.contains("\"x-amz-signature\""))
+    }
+
+    @Test
+    fun `presigned POST helper answers invalid parameters with 400 and a message`() {
+        val result = TestRequest.SAFEPOST("/.api/generate-presigned-post")
+            .withParameter("bucket", "csrf-test")
+            .withParameter("key", "test.txt")
+            .withParameter("region", "eu-west-3")
+            .withParameter("expirationHours", "999")
+            .withParameter("sessionToken", "")
+            .withParameter("accessKey", ACCESS_KEY)
+            .executeAndBlock()
+        assertEquals(HttpResponseStatus.BAD_REQUEST, result.status)
+        assertEquals("Expiration hours must be between 1 and 168", result.contentAsJson["message"].asString(""))
     }
 
     @Test
@@ -133,7 +147,7 @@ class CsrfProtectionTest {
                 .sendResource(ByteArrayInputStream(content))
                 .executeAndBlock()
             assertEquals(HttpResponseStatus.OK, accepted.status)
-            assertTrue(accepted.contentAsJson["success"].asBoolean())
+            assertEquals("File successfully uploaded.", accepted.contentAsJson["message"].asString(""))
             assertTrue(storage.getBucket(bucket).getObject(key).exists(), "uploaded object must be stored")
         } finally {
             storage.getBucket(bucket).delete()

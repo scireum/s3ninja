@@ -339,7 +339,7 @@
                     body: params
                 });
                 const data = await response.json();
-                if (data.success) {
+                if (response.ok) {
                     document.getElementById('sessionToken').value = data.token;
                 } else {
                     alert('Failed to generate token');
@@ -384,7 +384,7 @@
 
                 const data = await response.json();
 
-                if (data.success) {
+                if (response.ok) {
                     displayResults(data);
                 } else {
                     alert('Error: ' + data.message);

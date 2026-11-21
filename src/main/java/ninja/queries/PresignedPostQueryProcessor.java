@@ -4,9 +4,9 @@ import com.google.common.collect.Maps;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.multipart.HttpData;
 import ninja.Bucket;
+import ninja.BrowserUploadResponder;
 import ninja.PostPolicyVerifier;
 import ninja.S3Policy;
 import ninja.StoredObject;
@@ -50,6 +50,9 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
     @Part
     private PostPolicyVerifier postPolicyVerifier;
+
+    @Part
+    private BrowserUploadResponder browserUploadResponder;
 
     @Override
     public void processQuery(@Nonnull WebContext webContext,
@@ -98,9 +101,10 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
             StoredObject object = bucket.getObject(objectKey);
             writeContent(object, contentStream, filePart);
-            object.setProperties(collectProperties(webContext, object));
+            Map<String, String> properties = collectProperties(webContext, object);
+            object.setProperties(properties);
 
-            webContext.respondWith().status(determineSuccessStatus(webContext));
+            browserUploadResponder.respond(webContext, bucket, objectKey, properties.get("ETag"));
         } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
@@ -239,20 +243,6 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             }
         }
         return properties;
-    }
-
-    /**
-     * Determines the status to answer a successful upload with.
-     * <p>
-     * The object is stored at this point, so the request has succeeded whatever status the form asks for. As for S3,
-     * a value which is not valid is answered like none at all, with 204.
-     */
-    private HttpResponseStatus determineSuccessStatus(WebContext webContext) {
-        return switch (webContext.get("success_action_status").asString("204")) {
-            case "200" -> HttpResponseStatus.OK;
-            case "201" -> HttpResponseStatus.CREATED;
-            default -> HttpResponseStatus.NO_CONTENT;
-        };
     }
 
     /**

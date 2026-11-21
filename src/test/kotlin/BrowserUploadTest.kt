@@ -6,6 +6,7 @@
  * https://www.scireum.de - info@scireum.de
  */
 
+import BaseSdkSupportTest.Companion.md5Hex
 import com.google.common.io.BaseEncoding
 import ninja.PresignedPostRequest
 import ninja.PresignedPostService
@@ -32,6 +33,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * Verifies that browser-based uploads, which are POST requests carrying a form with a signed policy, are only served
@@ -128,19 +130,89 @@ class BrowserUploadTest {
 
     @Test
     fun `Form is answered with the status it asks for, and with 204 if that is none S3 knows`() {
-        assertEquals(201, postForm("/$BUCKET", signedFields(KEY).also { it["success_action_status"] = "201" }))
-        assertEquals(200, postForm("/$BUCKET", signedFields(KEY).also { it["success_action_status"] = "200" }))
-        assertEquals(204, postForm("/$BUCKET", signedFields("other.txt").also { it["success_action_status"] = "999" }))
+        assertEquals(201, postForm("/$BUCKET", withStatus(KEY, "201")))
+        assertEquals(200, postForm("/$BUCKET", withStatus(KEY, "200")))
+        assertEquals(204, postForm("/$BUCKET", withStatus("other.txt", "999")))
         assertEquals(CONTENT, readObject("other.txt"))
     }
 
     @Test
+    fun `Form asking for 201 is answered with a document describing the object`() {
+        val answer = postFormForAnswer("/$BUCKET", withStatus(KEY, "201"))
+
+        assertEquals(201, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/$KEY"), answer.location)
+        assertTrue(answer.body.contains("<PostResponse>"), answer.body)
+        assertTrue(answer.body.contains("<Bucket>$BUCKET</Bucket>"), answer.body)
+        assertTrue(answer.body.contains("<Key>$KEY</Key>"), answer.body)
+        assertTrue(answer.body.contains(md5Hex(CONTENT.toByteArray())), answer.body)
+    }
+
+    @Test
+    fun `Form without a status is answered with 204, its entity tag and its location`() {
+        val answer = postFormForAnswer("/$BUCKET", signedFields(KEY))
+
+        assertEquals(204, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/$KEY"), answer.location)
+    }
+
+    @Test
+    fun `Form naming a redirect is redirected there with bucket, key and entity tag`() {
+        val redirect = "https://example.com/done?upload=1"
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "$redirect"}"""))
+        fields["success_action_redirect"] = redirect
+
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        assertEquals(303, answer.status)
+        val etag = URLEncoder.encode(ETAG, StandardCharsets.UTF_8)
+        assertEquals("$redirect&bucket=$BUCKET&key=$KEY&etag=$etag", answer.location)
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Parameters are added to a redirect in front of its fragment`() {
+        val redirect = "https://example.com/done#top"
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "$redirect"}"""))
+        fields["success_action_redirect"] = redirect
+
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        val etag = URLEncoder.encode(ETAG, StandardCharsets.UTF_8)
+        assertEquals("https://example.com/done?bucket=$BUCKET&key=$KEY&etag=$etag#top", answer.location)
+    }
+
+    @Test
+    fun `Location of an uploaded object encodes its key as a path`() {
+        val answer = postFormForAnswer("/$BUCKET", withStatus("my file.txt", "201"))
+
+        assertEquals(201, answer.status)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/my%20file.txt"), answer.location)
+        assertEquals(CONTENT, readObject("my file.txt"))
+    }
+
+    @Test
+    fun `Form naming a redirect which cannot be interpreted is answered as without one`() {
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "not a url"}"""))
+        fields["success_action_redirect"] = "not a url"
+
+        assertEquals(204, postForm("/$BUCKET", fields))
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Upload sent to the URL of an object is answered like a form`() {
+        val answer = postContentForAnswer("/$BUCKET/$KEY?${asQuery(withStatus(KEY, "201"))}", CONTENT)
+
+        assertEquals(201, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.body.contains("<Key>$KEY</Key>"), answer.body)
+    }
+
+    @Test
     fun `Upload sent to the URL of an object is verified like one sent to the bucket`() {
-        val asQuery = { fields: Map<String, String> ->
-            fields.entries.joinToString("&") { (name, value) ->
-                "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
-            }
-        }
         val wrongSignature = signedFields(KEY).also { it["x-amz-signature"] = "0".repeat(64) }
         val expired = signedFields(KEY, expiration = Instant.now().minusSeconds(60))
         val tooLarge = signedFields(KEY, furtherConditions = listOf("""["content-length-range", 0, 5]"""))
@@ -216,6 +288,22 @@ class BrowserUploadTest {
         )
     }
 
+    /**
+     * Builds the fields of a form which asks to be answered with the given status, which its policy permits.
+     */
+    private fun withStatus(key: String, status: String): MutableMap<String, String> {
+        val fields =
+            signedFields(key, furtherConditions = listOf("""["starts-with", "${'$'}success_action_status", ""]"""))
+        fields["success_action_status"] = status
+        return fields
+    }
+
+    private fun asQuery(fields: Map<String, String>): String {
+        return fields.entries.joinToString("&") { (name, value) ->
+            "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
+        }
+    }
+
     private fun encodePolicy(expiration: Instant, key: String, furtherConditions: List<String>): String {
         val conditions = listOf("""{"bucket": "$BUCKET"}""", """["eq", "${'$'}key", "$key"]""") + furtherConditions
         val policy = """{"expiration": "$expiration", "conditions": [${conditions.joinToString(", ")}]}"""
@@ -246,6 +334,14 @@ class BrowserUploadTest {
      * returns the status code of the response.
      */
     private fun postForm(path: String, fields: Map<String, String>): Int {
+        return postFormForAnswer(path, fields).status
+    }
+
+    /**
+     * Sends the given fields, followed by the file to upload, as a form without any signature of its own, and
+     * returns the answer without following a redirect.
+     */
+    private fun postFormForAnswer(path: String, fields: Map<String, String>): Answer {
         val body = buildString {
             fields.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
@@ -256,22 +352,36 @@ class BrowserUploadTest {
         return post(path, "multipart/form-data; boundary=$BOUNDARY", body)
     }
 
+    private fun postContentForAnswer(pathAndQuery: String, content: String): Answer {
+        return post(pathAndQuery, "text/plain", content)
+    }
+
     /**
      * Sends the given content as body of a request without any signature of its own, and returns the status code
      * of the response.
      */
     private fun postContent(pathAndQuery: String, content: String): Int {
-        return post(pathAndQuery, "text/plain", content)
+        return post(pathAndQuery, "text/plain", content).status
     }
 
-    private fun post(pathAndQuery: String, contentType: String, body: String): Int {
+    private fun post(pathAndQuery: String, contentType: String, body: String): Answer {
         val connection = URI(BaseSdkSupportTest.ENDPOINT + pathAndQuery).toURL().openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
+        connection.instanceFollowRedirects = false
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", contentType)
         connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-        return connection.responseCode.also { connection.disconnect() }
+        val status = connection.responseCode
+        val stream = if (status >= 400) connection.errorStream else connection.inputStream
+        val content = stream?.use { String(it.readAllBytes(), StandardCharsets.UTF_8) }.orEmpty()
+        return Answer(status, connection.getHeaderField("Location"), connection.getHeaderField("ETag"), content)
+            .also { connection.disconnect() }
     }
+
+    /**
+     * Describes the answer to an upload: its status, the headers which matter here, and its content.
+     */
+    private data class Answer(val status: Int, val location: String?, val etag: String?, val body: String)
 
     private fun readObject(key: String): String {
         return createClient().use { client ->
@@ -297,5 +407,6 @@ class BrowserUploadTest {
         const val KEY = "uploaded.txt"
         const val CONTENT = "Uploaded by a form"
         const val BOUNDARY = "----FormBoundary7MA4YWxkTrZu0gW"
+        val ETAG = "\"${md5Hex(CONTENT.toByteArray())}\""
     }
 }

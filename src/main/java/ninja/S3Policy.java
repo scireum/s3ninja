@@ -9,9 +9,6 @@
 package ninja;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import sirius.kernel.commons.Value;
 import sirius.web.http.WebContext;
 import tools.jackson.databind.JsonNode;
@@ -81,8 +78,6 @@ import java.util.Optional;
  * S3Policy policy = new S3Policy(base64Policy);
  *
  * if (policy.isRequestValid(webContext, bucket, key)) {
- *     HttpResponseStatus status = policy.getSuccessResponse();
- *     String redirectUrl = policy.getSuccessRedirect();
  *     // Process upload...
  * }
  * }</pre>
@@ -123,7 +118,6 @@ public class S3Policy {
     private static final String FIELD_SUCCESS_ACTION_STATUS = "success_action_status";
 
     private static final String CONTENT_LENGTH_RANGE = "content-length-range";
-    private static final Logger LOG = LoggerFactory.getLogger(S3Policy.class);
 
     /**
      * Jackson ObjectMapper for parsing JSON policy documents.
@@ -435,85 +429,5 @@ public class S3Policy {
                          .findFirst()
                          .map(condition -> Value.of(condition.get(CONDITION_VALUE)).asLong(-1))
                          .orElse(-1L);
-    }
-
-    /**
-     * Gets the success response HTTP status code configuration from the policy.
-     * <p>
-     * This method extracts the {@code success_action_status} field from the policy conditions.
-     * AWS S3 supports only three values:
-     * <ul>
-     *     <li>{@code 200}: Returns HTTP 200 OK with an empty body</li>
-     *     <li>{@code 201}: Returns HTTP 201 CREATED with XML document containing the object location</li>
-     *     <li>{@code 204}: Returns HTTP 204 NO_CONTENT with no response body (default)</li>
-     * </ul>
-     * <p>
-     * If an invalid status code is specified (not 200, 201, or 204), the method:
-     * <ul>
-     *     <li>Logs a warning message</li>
-     *     <li>Returns 204 (NO_CONTENT) as the fallback default</li>
-     * </ul>
-     * <p>
-     * <b>Example policy condition:</b>
-     * <pre>{@code
-     * {"success_action_status": "201"}
-     * }</pre>
-     *
-     * @return the HTTP status code to use for successful uploads (200, 201, or 204)
-     * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html">AWS S3 success_action_status</a>
-     */
-    public HttpResponseStatus getSuccessResponse() {
-        String status = conditions.stream()
-                                  .filter(condition -> condition.containsKey(FIELD_SUCCESS_ACTION_STATUS))
-                                  .findFirst()
-                                  .map(condition -> (String) condition.get(FIELD_SUCCESS_ACTION_STATUS))
-                                  .orElse("204");
-
-        return switch (status) {
-            case "200", "201", "204" -> HttpResponseStatus.valueOf(Integer.parseInt(status));
-            default -> {
-                LOG.warn("Success values\\_action\\_status unsupported: `{}`. 204\\(NO\\_CONTENT\\). "
-                         + "Allow values: 200\\, 201\\, 204\\.", status);
-                yield HttpResponseStatus.NO_CONTENT;
-            }
-        };
-    }
-
-    /**
-     * Gets the success redirect URL from the policy if specified.
-     * <p>
-     * This method extracts the {@code success_action_redirect} field from the policy conditions.
-     * When present, AWS S3 will redirect the client to this URL after a successful upload instead of
-     * returning a standard HTTP response.
-     * <p>
-     * The redirect URL will typically include query parameters with information about the uploaded object:
-     * <ul>
-     *     <li>{@code bucket}: The name of the bucket</li>
-     *     <li>{@code key}: The object key (filename)</li>
-     *     <li>{@code etag}: The ETag of the uploaded object</li>
-     * </ul>
-     * <p>
-     * <b>Example policy condition:</b>
-     * <pre>{@code
-     * {"success_action_redirect": "https://example.com/upload-success"}
-     * }</pre>
-     * <p>
-     * After a successful upload, the client would be redirected to:
-     * <pre>
-     * <a href="https://example.com/upload-success?bucket=mybucket&key=file.txt&etag=abc123">...</a>...
-     * </pre>
-     * <p>
-     * <b>Note:</b> If both {@code success_action_redirect} and {@code success_action_status}
-     * are specified, the redirect takes precedence.
-     *
-     * @return the URL to redirect to on successful upload, or null if not specified in the policy
-     * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html">AWS S3 success_action_redirect</a>
-     */
-    public String getSuccessRedirect() {
-        return conditions.stream()
-                         .filter(condition -> condition.containsKey(FIELD_SUCCESS_ACTION_REDIRECT))
-                         .findFirst()
-                         .map(condition -> (String) condition.get(FIELD_SUCCESS_ACTION_REDIRECT))
-                         .orElse(null);
     }
 }

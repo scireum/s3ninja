@@ -72,7 +72,7 @@ public class BrowserUploadResponder {
                                       .setHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS,
                                                  S3Dispatcher.HTTP_HEADER_NAME_ETAG)
                                       .setHeader(HttpHeaderNames.LOCATION, location);
-        switch (webContext.get(FIELD_SUCCESS_ACTION_STATUS).asString("")) {
+        switch (PostPolicyVerifier.readFormField(webContext, FIELD_SUCCESS_ACTION_STATUS).asString("")) {
             case "200" -> response.status(HttpResponseStatus.OK);
             case "201" -> {
                 XMLStructuredOutput out = response.xml(HttpResponseStatus.CREATED);
@@ -105,8 +105,9 @@ public class BrowserUploadResponder {
      * @return the URL, or an empty optional if the form names none, or none which is an absolute HTTP(S) URL
      */
     private Optional<String> determineRedirect(WebContext webContext) {
-        String redirect =
-                webContext.get(FIELD_SUCCESS_ACTION_REDIRECT).asString(webContext.get(FIELD_REDIRECT).asString());
+        String redirect = PostPolicyVerifier.readFormField(webContext, FIELD_SUCCESS_ACTION_REDIRECT)
+                                            .asString(PostPolicyVerifier.readFormField(webContext, FIELD_REDIRECT)
+                                                                        .asString());
         if (Strings.isEmpty(redirect)) {
             return Optional.empty();
         }

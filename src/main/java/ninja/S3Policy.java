@@ -371,12 +371,35 @@ public class S3Policy {
             case "key" -> key;
             case CONTENT_LENGTH_RANGE -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
             // The type of the object is a field of the form. The header describes the form itself.
-            case FIELD_CONTENT_TYPE ->
-                    webContext.get(FIELD_CONTENT_TYPE).asString(webContext.getHeader(HttpHeaderNames.CONTENT_TYPE));
-            case FIELD_SUCCESS_ACTION_REDIRECT -> webContext.get(FIELD_SUCCESS_ACTION_REDIRECT).asString();
-            case FIELD_SUCCESS_ACTION_STATUS -> webContext.get(FIELD_SUCCESS_ACTION_STATUS).asString();
-            default -> webContext.get(field).asString("");
+            case FIELD_CONTENT_TYPE -> PostPolicyVerifier.readFormField(webContext, FIELD_CONTENT_TYPE)
+                                                         .asString(webContext.getHeader(HttpHeaderNames.CONTENT_TYPE));
+            case FIELD_SUCCESS_ACTION_REDIRECT, FIELD_SUCCESS_ACTION_STATUS ->
+                    PostPolicyVerifier.readFormField(webContext, field).asString();
+            default -> PostPolicyVerifier.readFormField(webContext, field).asString("");
         };
+    }
+
+    /**
+     * Determines if a condition of this policy names the given form field.
+     * <p>
+     * Names are compared without regard to case.
+     *
+     * @param fieldName the name of a field of the form
+     * @return <tt>true</tt> if a condition is about the field, <tt>false</tt> otherwise
+     */
+    public boolean coversField(String fieldName) {
+        return conditions.stream().anyMatch(condition -> namesField(condition, fieldName));
+    }
+
+    private boolean namesField(Map<String, Object> condition, String fieldName) {
+        if (CONTENT_LENGTH_RANGE.equals(condition.get(CONDITION_OPERATOR))) {
+            // Limits the size of the file, and names no field of the form.
+            return false;
+        }
+        if (condition.containsKey(CONDITION_OPERATOR)) {
+            return fieldName.equalsIgnoreCase((String) condition.get(CONDITION_FIELD));
+        }
+        return condition.keySet().stream().anyMatch(fieldName::equalsIgnoreCase);
     }
 
     /**

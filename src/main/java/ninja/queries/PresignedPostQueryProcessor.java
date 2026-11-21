@@ -257,15 +257,17 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
         properties.put("ETag", etag);
 
         // Set content type if provided
-        String contentType = webContext.get("Content-Type").asString();
+        String contentType = PostPolicyVerifier.readFormField(webContext, "Content-Type").asString();
         if (Strings.isFilled(contentType)) {
             properties.put("Content-Type", contentType);
         }
 
-        // Store additional form parameters as metadata (excluding AWS and internal parameters)
+        // Store additional form parameters as metadata (excluding AWS and internal parameters, and fields after the
+        // file, which S3 ignores)
+        Set<String> fieldsAfterFile = PostPolicyVerifier.determineFieldsAfterFile(webContext);
         for (String paramName : webContext.getParameterNames()) {
             // Checked first, so that the uploaded file is never read as the value of a field.
-            if (!FIELDS_NOT_STORED.contains(paramName)) {
+            if (!FIELDS_NOT_STORED.contains(paramName) && !fieldsAfterFile.contains(paramName)) {
                 String value = webContext.get(paramName).asString();
                 if (Strings.isFilled(value)) {
                     properties.put(paramName, value);
@@ -282,21 +284,9 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
      * @return the extracted key or null if not found
      */
     private String extractKeyFromMultipartForm(WebContext webContext) {
-        // First try the standard parameter (works for both form fields and query params)
-        String key = webContext.getParameter("key");
-        if (Strings.isFilled(key)) {
-            return key;
-        }
-
-        // Try to get it from request parameter (different method for multipart)
-        if (webContext.hasParameter("key")) {
-            key = webContext.get("key").asString();
-            if (Strings.isFilled(key)) {
-                return key;
-            }
-        }
-
-        return null;
+        // Works for both form fields and parameters of the query.
+        String key = PostPolicyVerifier.readFormField(webContext, "key").getString();
+        return Strings.isFilled(key) ? key : null;
     }
 }
 

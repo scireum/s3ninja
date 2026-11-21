@@ -481,6 +481,20 @@ class RequestValidationTest {
     }
 
     @Test
+    fun `POST to a bucket which is no form is answered as by S3`() {
+        createClient().use { client ->
+            createBucket(client, BUCKET)
+            val headers = mapOf("Content-Type" to "text/plain")
+
+            assertEquals("PreconditionFailed", errorCodeOf("POST", "/$BUCKET?noAuth=1", headers))
+            // A bucket which does not exist got no answer at all.
+            assertEquals("NoSuchBucket", errorCodeOf("POST", "/missing-bucket?noAuth=1", headers))
+
+            cleanupBuckets(client, BUCKET)
+        }
+    }
+
+    @Test
     fun `Methods which S3 does not offer are answered with MethodNotAllowed`() {
         createClient().use { client ->
             client.createBucket { it.bucket(BUCKET).acl(BucketCannedACL.PUBLIC_READ_WRITE) }
@@ -887,6 +901,8 @@ class RequestValidationTest {
     private fun errorCodeOf(method: String, path: String, headers: Map<String, String>): String? {
         val connection = URI(BaseSdkSupportTest.ENDPOINT + path).toURL().openConnection() as HttpURLConnection
         connection.requestMethod = method
+        // A request which is never answered fails instead of keeping the suite waiting.
+        connection.readTimeout = 10_000
         headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
         connection.responseCode
         val body = connection.errorStream?.use { String(it.readAllBytes()) }.orEmpty()

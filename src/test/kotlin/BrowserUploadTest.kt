@@ -152,7 +152,8 @@ class BrowserUploadTest {
         assertFailsWith<S3Exception> { readObject(KEY) }
         assertFailsWith<S3Exception> { readObject("other.txt") }
 
-        assertEquals(200, postContent("/$BUCKET/$KEY?${asQuery(signedFields(KEY))}", CONTENT))
+        // Answered once, with the status S3 answers a form with that asks for none.
+        assertEquals(204, postContent("/$BUCKET/$KEY?${asQuery(signedFields(KEY))}", CONTENT))
         assertEquals(CONTENT, readObject(KEY))
     }
 
@@ -169,7 +170,7 @@ class BrowserUploadTest {
         val query = generated.fields().entries.joinToString("&") { (name, value) ->
             "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
         }
-        assertEquals(200, postContent("${generated.url()}?$query", "Sent as body"))
+        assertEquals(204, postContent("${generated.url()}?$query", "Sent as body"))
         assertEquals("Sent as body", readObject(KEY))
     }
 

@@ -84,7 +84,10 @@ public class PostObjectHandler {
             return;
         }
 
-        objectHandler.putObject(webContext, bucket, key, data);
+        // Stored without answering, as a browser-based upload is answered as its form asks for.
+        if (objectHandler.storeObject(webContext, bucket, key, data).isEmpty()) {
+            return;
+        }
 
         String redirectUrl = s3Policy.getSuccessRedirect();
         if (Strings.isFilled(redirectUrl)) {

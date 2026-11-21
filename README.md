@@ -33,8 +33,8 @@ S3 ninja aims to refuse what S3 refuses, so that mistakes of a client surface du
 - `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` are honoured when reading an object,
   and for the source when copying one. Writing honours `If-Match` and `If-None-Match`, and of several requests
   which create the same object with `If-None-Match: *`, exactly one succeeds.
-- Browser-based uploads are only served if the signature of their policy is correct, the policy has not expired
-  and its conditions are met.
+- Browser-based uploads are only served if the signature of their policy is correct, the policy has not expired,
+  its conditions are met and every field of the form is covered by a condition.
 - Creating a bucket which exists already answers `BucketAlreadyOwnedByYou`, unless the request is signed for the
   region `us-east-1`. As for S3, it then succeeds and resets the access control list of the bucket.
 - Objects are listed in the binary order of their UTF-8 keys, with `delimiter`, `prefix`, `marker`, `start-after`
@@ -134,6 +134,17 @@ The policy and its signature are verified as S3 does: the signature has to cover
 exactly as it is sent in the `policy` field. This is what `generate_presigned_post` of boto3 and the other SDKs
 produce. Both signature version 4 (`x-amz-signature`) and version 2 (`signature`) are accepted. An upload with a wrong
 signature, an expired policy or a condition which is not met is refused, also if the bucket is public.
+
+As for S3, every field of the form has to be named by a condition of the policy, except `policy`, `x-amz-signature`,
+`signature`, `AWSAccessKeyId`, `file` and fields starting with `x-ignore-`. A form with any other field is refused
+with `AccessDenied` ("Extra input fields"). `${filename}` in the key is replaced with the name of the uploaded file
+before the policy is evaluated, as S3 does; a condition for the key `uploads/${filename}` therefore has to be
+`["starts-with", "$key", "uploads/"]`.
+
+A successful upload is answered as the form asks for: with a `303` redirect to `success_action_redirect`, with
+`bucket`, `key` and `etag` appended, or with the status given in `success_action_status`. `201` comes with a
+`PostResponse` document, `200` and `204` come without content, and any other value, or none, is answered like `204`.
+Every answer carries the `ETag` and the `Location` of the object.
 
 The workbench of the UI sends the generated fields as query string to `POST /<bucket>/<key>`, with the file as body
 of the request. This is a convenience of S3 ninja which S3 does not offer.

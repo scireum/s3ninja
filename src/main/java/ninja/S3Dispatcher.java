@@ -61,7 +61,6 @@ public class S3Dispatcher implements WebDispatcher {
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
-    private static final String API_PATH = ".api/";
     private static final String API_PATH_PREFIX = ".api/";
 
     static final String HTTP_HEADER_NAME_ETAG = "ETag";
@@ -240,13 +239,12 @@ public class S3Dispatcher implements WebDispatcher {
 
     /**
      * Determines if the request addresses the web UI or its API instead of the S3 API.
+     * <p>
+     * The UI is served at <tt>/ui</tt> and below it, its API below <tt>/.api/</tt>.
      */
     private boolean isUiOrApiRequest(S3Request request) {
-        return isAtOrBelow(request.uri, UI_PATH, UI_PATH_PREFIX) || isAtOrBelow(request.uri, API_PATH, API_PATH_PREFIX);
-    }
-
-    private boolean isAtOrBelow(String uri, String path, String pathPrefix) {
-        return uri.equals(path) || uri.startsWith(pathPrefix);
+        return request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX) || request.uri.startsWith(
+                API_PATH_PREFIX);
     }
 
     /**

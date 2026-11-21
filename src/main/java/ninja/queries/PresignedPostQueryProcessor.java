@@ -262,10 +262,12 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             properties.put("Content-Type", contentType);
         }
 
-        // Store additional form parameters as metadata (excluding AWS and internal parameters)
+        // Store additional form parameters as metadata (excluding AWS and internal parameters, and fields after the
+        // file, which S3 ignores)
+        Set<String> fieldsAfterFile = PostPolicyVerifier.determineFieldsAfterFile(webContext);
         for (String paramName : webContext.getParameterNames()) {
             // Checked first, so that the uploaded file is never read as the value of a field.
-            if (!FIELDS_NOT_STORED.contains(paramName)) {
+            if (!FIELDS_NOT_STORED.contains(paramName) && !fieldsAfterFile.contains(paramName)) {
                 String value = webContext.get(paramName).asString();
                 if (Strings.isFilled(value)) {
                     properties.put(paramName, value);

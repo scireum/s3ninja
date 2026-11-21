@@ -380,6 +380,29 @@ public class S3Policy {
     }
 
     /**
+     * Determines if a condition of this policy names the given form field.
+     * <p>
+     * Names are compared without regard to case.
+     *
+     * @param fieldName the name of a field of the form
+     * @return <tt>true</tt> if a condition is about the field, <tt>false</tt> otherwise
+     */
+    public boolean coversField(String fieldName) {
+        return conditions.stream().anyMatch(condition -> namesField(condition, fieldName));
+    }
+
+    private boolean namesField(Map<String, Object> condition, String fieldName) {
+        if (CONTENT_LENGTH_RANGE.equals(condition.get(CONDITION_OPERATOR))) {
+            // Limits the size of the file, and names no field of the form.
+            return false;
+        }
+        if (condition.containsKey(CONDITION_OPERATOR)) {
+            return fieldName.equalsIgnoreCase((String) condition.get(CONDITION_FIELD));
+        }
+        return condition.keySet().stream().anyMatch(fieldName::equalsIgnoreCase);
+    }
+
+    /**
      * Determines if an upload of the given size meets the <tt>content-length-range</tt> condition of this policy.
      *
      * @param size the size of the uploaded content in bytes

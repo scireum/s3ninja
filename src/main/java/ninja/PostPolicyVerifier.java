@@ -9,6 +9,8 @@
 package ninja;
 
 import com.google.common.io.BaseEncoding;
+import io.netty.handler.codec.http.multipart.InterfaceHttpData;
+import io.netty.handler.codec.http.multipart.InterfaceHttpPostRequestDecoder;
 import ninja.errors.S3ErrorCode;
 import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.Part;
@@ -22,6 +24,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 
 /**
@@ -48,6 +54,19 @@ public class PostPolicyVerifier {
      */
     public static final String ERROR_SIZE_NOT_PERMITTED =
             "Your proposed upload does not meet the content-length-range condition of its policy.";
+
+    /**
+     * Lists, in lower case, the form fields which no condition of the policy has to cover.
+     */
+    private static final Set<String> FIELDS_EXEMPT_FROM_POLICY =
+            Set.of("policy", "x-amz-signature", "signature", "awsaccesskeyid", "file");
+
+    /**
+     * Starts the names of form fields which S3 ignores, and which therefore need no condition.
+     */
+    private static final String IGNORED_FIELD_PREFIX = "x-ignore-";
+
+    private static final String FIELD_FILE = "file";
 
     private static final String ERROR_SIGNATURE_DOES_NOT_MATCH =
             "The request signature we calculated does not match the signature you provided";
@@ -125,10 +144,78 @@ public class PostPolicyVerifier {
             if (!parsedPolicy.isRequestValid(webContext, bucket, key)) {
                 return Result.refused(S3ErrorCode.AccessDenied, "Policy conditions not met");
             }
+            Optional<String> uncoveredField = findUncoveredField(webContext, parsedPolicy);
+            if (uncoveredField.isPresent()) {
+                return Result.refused(S3ErrorCode.AccessDenied,
+                                      "Invalid according to Policy: Extra input fields: " + uncoveredField.get());
+            }
             return new Result(parsedPolicy, null, null);
         } catch (IllegalArgumentException exception) {
             return Result.refused(S3ErrorCode.InvalidRequest, "Policy parsing error: " + exception.getMessage());
         }
+    }
+
+    /**
+     * Finds a field of the form which no condition of the policy covers.
+     * <p>
+     * As for S3, every field has to be covered, except the policy, its signature, the access key of a form signed with
+     * signature version 2, the file, and fields starting with <tt>x-ignore-</tt>. Otherwise anyone holding a signed
+     * form could add fields, such as metadata, which its policy never permitted.
+     *
+     * @param webContext the request carrying the form
+     * @param policy     the policy of the form
+     * @return the name of the first field which is not covered, or an empty optional if all are
+     */
+    private Optional<String> findUncoveredField(WebContext webContext, S3Policy policy) {
+        Set<String> fieldsAfterFile = determineFieldsAfterFile(webContext);
+        return webContext.getParameterNames()
+                         .stream()
+                         .filter(name -> !isExemptFromPolicy(name))
+                         .filter(name -> !fieldsAfterFile.contains(name))
+                         .filter(name -> !policy.coversField(name))
+                         .findFirst();
+    }
+
+    /**
+     * Determines the fields of a form which only come after its file.
+     * <p>
+     * The file has to be the last field of a form, and S3 ignores every field after it. These fields therefore need
+     * no condition, and are not stored along with the object.
+     *
+     * @param webContext the request carrying the form
+     * @return the names of the fields which only come after the file, or an empty set if the request is no form
+     */
+    public static Set<String> determineFieldsAfterFile(WebContext webContext) {
+        InterfaceHttpPostRequestDecoder decoder = webContext.getPostDecoder();
+        if (decoder == null) {
+            return Set.of();
+        }
+
+        Set<String> fieldsBeforeFile = new HashSet<>();
+        Set<String> fieldsAfterFile = new HashSet<>();
+        boolean fileSeen = false;
+        try {
+            for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
+                if (fileSeen) {
+                    fieldsAfterFile.add(data.getName());
+                } else if (FIELD_FILE.equals(data.getName())) {
+                    fileSeen = true;
+                } else {
+                    fieldsBeforeFile.add(data.getName());
+                }
+            }
+        } catch (Exception exception) {
+            // A form which cannot be decoded is refused when its fields are read.
+            Exceptions.ignore(exception);
+            return Set.of();
+        }
+        fieldsAfterFile.removeAll(fieldsBeforeFile);
+        return fieldsAfterFile;
+    }
+
+    private boolean isExemptFromPolicy(String fieldName) {
+        String name = fieldName.toLowerCase(Locale.ROOT);
+        return FIELDS_EXEMPT_FROM_POLICY.contains(name) || name.startsWith(IGNORED_FIELD_PREFIX);
     }
 
     /**

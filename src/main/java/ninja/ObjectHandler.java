@@ -128,6 +128,32 @@ public class ObjectHandler {
      * @param id         name of the object to upload
      */
     void putObject(WebContext webContext, Bucket bucket, String id, InputStreamHandler inputStream) throws IOException {
+        Optional<String> etag = storeObject(webContext, bucket, id, inputStream);
+        if (etag.isPresent()) {
+            Response response = webContext.respondWith();
+            response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag.get())).status(HttpResponseStatus.OK);
+            response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+            responder.signalObjectSuccess(webContext);
+        }
+    }
+
+    /**
+     * Stores the content of a request as the given object, and answers the request with an error if it is refused.
+     * <p>
+     * The content is verified against what the request states about it, and the conditions of the request are
+     * evaluated, before the object is replaced. Answering a successful request is left to the caller, as PutObject and
+     * browser-based uploads answer differently.
+     *
+     * @param webContext  the request to store the content of
+     * @param bucket      the bucket containing the object
+     * @param id          the key of the object
+     * @param inputStream the content of the object
+     * @return the entity tag of the stored object, without quotes, or an empty optional if the request has been
+     * answered with an error
+     * @throws IOException if the content cannot be received or stored
+     */
+    Optional<String> storeObject(WebContext webContext, Bucket bucket, String id, InputStreamHandler inputStream)
+            throws IOException {
         StoredObject object = bucket.getObject(id);
         if (inputStream == null) {
             responder.signalObjectError(webContext,
@@ -135,7 +161,7 @@ public class ObjectHandler {
                                         id,
                                         S3ErrorCode.IncompleteBody,
                                         "No content posted");
-            return;
+            return Optional.empty();
         }
         if (preconditions.evaluateWrite(webContext, object) == Preconditions.Outcome.FAILED) {
             ByteStreams.exhaust(inputStream);
@@ -144,7 +170,7 @@ public class ObjectHandler {
                                         id,
                                         S3ErrorCode.PreconditionFailed,
                                         S3Dispatcher.ERROR_PRECONDITION_FAILED);
-            return;
+            return Optional.empty();
         }
 
         // Received next to the object, as only a file on the same file system can replace it in one step. A request
@@ -162,7 +188,7 @@ public class ObjectHandler {
                                             id,
                                             payloadError.get().getFirst(),
                                             payloadError.get().getSecond());
-                return;
+                return Optional.empty();
             }
 
             String etag = Hasher.md5().hashFile(receivedFile).toHexString();
@@ -174,13 +200,9 @@ public class ObjectHandler {
                                             id,
                                             S3ErrorCode.PreconditionFailed,
                                             S3Dispatcher.ERROR_PRECONDITION_FAILED);
-                return;
+                return Optional.empty();
             }
-
-            Response response = webContext.respondWith();
-            response.addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).status(HttpResponseStatus.OK);
-            response.addHeader(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, S3Dispatcher.HTTP_HEADER_NAME_ETAG);
-            responder.signalObjectSuccess(webContext);
+            return Optional.of(etag);
         } finally {
             // Gone if the object has been written. Whatever else happened, the file must not stay behind.
             sirius.kernel.commons.Files.delete(receivedFile);

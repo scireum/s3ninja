@@ -12,13 +12,13 @@ import com.google.common.io.ByteStreams;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
-import sirius.kernel.commons.Strings;
 import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.InputStreamHandler;
 import sirius.web.http.WebContext;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * Handles browser-based uploads, which are POST requests carrying a signed policy that states what may be
@@ -35,6 +35,9 @@ public class PostObjectHandler {
 
     @Part
     private PostPolicyVerifier postPolicyVerifier;
+
+    @Part
+    private BrowserUploadResponder browserUploadResponder;
 
     /**
      * Handles POST /bucket/id
@@ -84,13 +87,10 @@ public class PostObjectHandler {
             return;
         }
 
-        objectHandler.putObject(webContext, bucket, key, data);
-
-        String redirectUrl = s3Policy.getSuccessRedirect();
-        if (Strings.isFilled(redirectUrl)) {
-            webContext.respondWith().redirectToGet(redirectUrl);
-        } else {
-            webContext.respondWith().status(s3Policy.getSuccessResponse());
+        // Stored without answering, as a browser-based upload is answered as its form asks for.
+        Optional<String> etag = objectHandler.storeObject(webContext, bucket, key, data);
+        if (etag.isPresent()) {
+            browserUploadResponder.respond(webContext, bucket, key, etag.get());
         }
     }
 }

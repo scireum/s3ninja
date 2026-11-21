@@ -6,6 +6,7 @@
  * https://www.scireum.de - info@scireum.de
  */
 
+import BaseSdkSupportTest.Companion.md5Hex
 import com.google.common.io.BaseEncoding
 import ninja.PresignedPostRequest
 import ninja.PresignedPostService
@@ -32,6 +33,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * Verifies that browser-based uploads, which are POST requests carrying a form with a signed policy, are only served
@@ -50,7 +52,7 @@ class BrowserUploadTest {
 
     @Test
     fun `Form signed with signature version 2 is accepted for a private bucket`() {
-        val policy = encodePolicy(Instant.now().plusSeconds(3600), KEY, emptyList())
+        val policy = encodePolicy(Instant.now().plusSeconds(3600), keyEquals(KEY), emptyList())
         val fields = linkedMapOf(
             "key" to KEY,
             "AWSAccessKeyId" to BaseSdkSupportTest.ACCESS_KEY,
@@ -64,7 +66,7 @@ class BrowserUploadTest {
 
     @Test
     fun `Form signed with signature version 2 has to name the access key`() {
-        val policy = encodePolicy(Instant.now().plusSeconds(3600), KEY, emptyList())
+        val policy = encodePolicy(Instant.now().plusSeconds(3600), keyEquals(KEY), emptyList())
         val signature = BaseEncoding.base64().encode(hmac("HmacSHA1", secretKey(""), policy))
         val withoutAccessKey = linkedMapOf("key" to KEY, "policy" to policy, "signature" to signature)
         val withUnknownAccessKey = LinkedHashMap(withoutAccessKey).also { it["AWSAccessKeyId"] = "AKIAUNKNOWN" }
@@ -78,7 +80,7 @@ class BrowserUploadTest {
     fun `Form with a wrong or missing signature is refused and stores nothing`() {
         val wrongSignature = signedFields(KEY).also { it["x-amz-signature"] = "0".repeat(64) }
         val signedForOtherPolicy = signedFields(KEY).also {
-            it["policy"] = encodePolicy(Instant.now().plusSeconds(7200), KEY, emptyList())
+            it["policy"] = encodePolicy(Instant.now().plusSeconds(7200), keyEquals(KEY), emptyList())
         }
         val noSignature = signedFields(KEY).also { it.remove("x-amz-signature") }
 
@@ -128,19 +130,89 @@ class BrowserUploadTest {
 
     @Test
     fun `Form is answered with the status it asks for, and with 204 if that is none S3 knows`() {
-        assertEquals(201, postForm("/$BUCKET", signedFields(KEY).also { it["success_action_status"] = "201" }))
-        assertEquals(200, postForm("/$BUCKET", signedFields(KEY).also { it["success_action_status"] = "200" }))
-        assertEquals(204, postForm("/$BUCKET", signedFields("other.txt").also { it["success_action_status"] = "999" }))
+        assertEquals(201, postForm("/$BUCKET", withStatus(KEY, "201")))
+        assertEquals(200, postForm("/$BUCKET", withStatus(KEY, "200")))
+        assertEquals(204, postForm("/$BUCKET", withStatus("other.txt", "999")))
         assertEquals(CONTENT, readObject("other.txt"))
     }
 
     @Test
+    fun `Form asking for 201 is answered with a document describing the object`() {
+        val answer = postFormForAnswer("/$BUCKET", withStatus(KEY, "201"))
+
+        assertEquals(201, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/$KEY"), answer.location)
+        assertTrue(answer.body.contains("<PostResponse>"), answer.body)
+        assertTrue(answer.body.contains("<Bucket>$BUCKET</Bucket>"), answer.body)
+        assertTrue(answer.body.contains("<Key>$KEY</Key>"), answer.body)
+        assertTrue(answer.body.contains(md5Hex(CONTENT.toByteArray())), answer.body)
+    }
+
+    @Test
+    fun `Form without a status is answered with 204, its entity tag and its location`() {
+        val answer = postFormForAnswer("/$BUCKET", signedFields(KEY))
+
+        assertEquals(204, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/$KEY"), answer.location)
+    }
+
+    @Test
+    fun `Form naming a redirect is redirected there with bucket, key and entity tag`() {
+        val redirect = "https://example.com/done?upload=1"
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "$redirect"}"""))
+        fields["success_action_redirect"] = redirect
+
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        assertEquals(303, answer.status)
+        val etag = URLEncoder.encode(ETAG, StandardCharsets.UTF_8)
+        assertEquals("$redirect&bucket=$BUCKET&key=$KEY&etag=$etag", answer.location)
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Parameters are added to a redirect in front of its fragment`() {
+        val redirect = "https://example.com/done#top"
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "$redirect"}"""))
+        fields["success_action_redirect"] = redirect
+
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        val etag = URLEncoder.encode(ETAG, StandardCharsets.UTF_8)
+        assertEquals("https://example.com/done?bucket=$BUCKET&key=$KEY&etag=$etag#top", answer.location)
+    }
+
+    @Test
+    fun `Location of an uploaded object encodes its key as a path`() {
+        val answer = postFormForAnswer("/$BUCKET", withStatus("my file.txt", "201"))
+
+        assertEquals(201, answer.status)
+        assertTrue(answer.location.orEmpty().endsWith("/$BUCKET/my%20file.txt"), answer.location)
+        assertEquals(CONTENT, readObject("my file.txt"))
+    }
+
+    @Test
+    fun `Form naming a redirect which cannot be interpreted is answered as without one`() {
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"success_action_redirect": "not a url"}"""))
+        fields["success_action_redirect"] = "not a url"
+
+        assertEquals(204, postForm("/$BUCKET", fields))
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Upload sent to the URL of an object is answered like a form`() {
+        val answer = postContentForAnswer("/$BUCKET/$KEY?${asQuery(withStatus(KEY, "201"))}", CONTENT)
+
+        assertEquals(201, answer.status)
+        assertEquals(ETAG, answer.etag)
+        assertTrue(answer.body.contains("<Key>$KEY</Key>"), answer.body)
+    }
+
+    @Test
     fun `Upload sent to the URL of an object is verified like one sent to the bucket`() {
-        val asQuery = { fields: Map<String, String> ->
-            fields.entries.joinToString("&") { (name, value) ->
-                "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
-            }
-        }
         val wrongSignature = signedFields(KEY).also { it["x-amz-signature"] = "0".repeat(64) }
         val expired = signedFields(KEY, expiration = Instant.now().minusSeconds(60))
         val tooLarge = signedFields(KEY, furtherConditions = listOf("""["content-length-range", 0, 5]"""))
@@ -152,8 +224,99 @@ class BrowserUploadTest {
         assertFailsWith<S3Exception> { readObject(KEY) }
         assertFailsWith<S3Exception> { readObject("other.txt") }
 
-        assertEquals(200, postContent("/$BUCKET/$KEY?${asQuery(signedFields(KEY))}", CONTENT))
+        // Answered once, with the status S3 answers a form with that asks for none.
+        assertEquals(204, postContent("/$BUCKET/$KEY?${asQuery(signedFields(KEY))}", CONTENT))
         assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Name of the uploaded file is filled in where the key of the form contains a variable for it`() {
+        val formKey = "uploads/\${filename}"
+        val prefixCondition = """["starts-with", "${'$'}key", "uploads/"]"""
+
+        assertEquals(204, postForm("/$BUCKET", signedFields(formKey, keyCondition = prefixCondition)))
+        assertEquals(CONTENT, readObject("uploads/test.txt"))
+        assertFailsWith<S3Exception> { readObject(formKey) }
+    }
+
+    @Test
+    fun `Policy is evaluated for the key with the name of the file filled in`() {
+        // As for S3, which expands the variable before it validates the policy.
+        val formKey = "uploads/\${filename}"
+        val literalCondition = """["eq", "${'$'}key", "uploads/${'$'}{filename}"]"""
+
+        assertEquals(403, postForm("/$BUCKET", signedFields(formKey, keyCondition = literalCondition)))
+        assertFailsWith<S3Exception> { readObject("uploads/test.txt") }
+    }
+
+    @Test
+    fun `Form with the field names of the AWS SDK for JavaScript is accepted`() {
+        // The SDK capitalises the names of the fields and of its conditions, and sends the bucket as a field as well.
+        val now = Instant.now().atZone(ZoneOffset.UTC)
+        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").format(now)
+        val credential = "${BaseSdkSupportTest.ACCESS_KEY}/${DateTimeFormatter.ofPattern("yyyyMMdd").format(now)}" +
+                "/eu-central-1/s3/aws4_request"
+        val policy = encodePolicy(
+            Instant.now().plusSeconds(3600),
+            keyEquals(KEY),
+            listOf(
+                """{"X-Amz-Algorithm": "AWS4-HMAC-SHA256"}""",
+                """{"X-Amz-Credential": "$credential"}""",
+                """{"X-Amz-Date": "$timestamp"}"""
+            )
+        )
+        val fields = linkedMapOf(
+            "bucket" to BUCKET,
+            "key" to KEY,
+            "X-Amz-Algorithm" to "AWS4-HMAC-SHA256",
+            "X-Amz-Credential" to credential,
+            "X-Amz-Date" to timestamp,
+            "Policy" to policy,
+            "X-Amz-Signature" to signVersion4(policy, credential)
+        )
+
+        assertEquals(204, postForm("/$BUCKET", fields))
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
+    fun `Form with a field which its policy does not cover is refused`() {
+        val uncovered = signedFields(KEY).also { it["x-amz-meta-color"] = "blue" }
+        val answer = postFormForAnswer("/$BUCKET", uncovered)
+
+        assertEquals(403, answer.status)
+        assertTrue(answer.body.contains("Extra input fields: x-amz-meta-color"), answer.body)
+        assertFailsWith<S3Exception> { readObject(KEY) }
+    }
+
+    @Test
+    fun `Condition on the size of the file covers no field of that name`() {
+        val fields = signedFields(KEY, furtherConditions = listOf("""["content-length-range", 0, 1024]"""))
+        fields["content-length-range"] = "1024"
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        assertEquals(403, answer.status)
+        assertTrue(answer.body.contains("Extra input fields: content-length-range"), answer.body)
+    }
+
+    @Test
+    fun `Fields after the file are ignored, as by S3`() {
+        val answer = postFormForAnswer("/$BUCKET", signedFields(KEY), mapOf("x-amz-meta-late" to "ignored"))
+
+        assertEquals(204, answer.status)
+        val metadata = createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.metadata() }
+        assertEquals(null, metadata["late"])
+    }
+
+    @Test
+    fun `Form with fields its policy covers or which are to be ignored is accepted`() {
+        val covered = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
+        covered["x-amz-meta-color"] = "blue"
+        covered["x-ignore-tracking"] = "anything"
+
+        assertEquals(204, postForm("/$BUCKET", covered))
+        val metadata = createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.metadata() }
+        assertEquals("blue", metadata["color"])
     }
 
     @Test
@@ -169,7 +332,7 @@ class BrowserUploadTest {
         val query = generated.fields().entries.joinToString("&") { (name, value) ->
             "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
         }
-        assertEquals(200, postContent("${generated.url()}?$query", "Sent as body"))
+        assertEquals(204, postContent("${generated.url()}?$query", "Sent as body"))
         assertEquals("Sent as body", readObject(KEY))
     }
 
@@ -189,7 +352,8 @@ class BrowserUploadTest {
     private fun signedFields(
         key: String,
         expiration: Instant = Instant.now().plusSeconds(3600),
-        furtherConditions: List<String> = emptyList()
+        furtherConditions: List<String> = emptyList(),
+        keyCondition: String = keyEquals(key)
     ): MutableMap<String, String> {
         val now = Instant.now().atZone(ZoneOffset.UTC)
         val date = DateTimeFormatter.ofPattern("yyyyMMdd").format(now)
@@ -197,7 +361,7 @@ class BrowserUploadTest {
         val credential = "${BaseSdkSupportTest.ACCESS_KEY}/$date/eu-central-1/s3/aws4_request"
         val policy = encodePolicy(
             expiration,
-            key,
+            keyCondition,
             listOf(
                 """{"x-amz-algorithm": "AWS4-HMAC-SHA256"}""",
                 """{"x-amz-credential": "$credential"}""",
@@ -215,8 +379,28 @@ class BrowserUploadTest {
         )
     }
 
-    private fun encodePolicy(expiration: Instant, key: String, furtherConditions: List<String>): String {
-        val conditions = listOf("""{"bucket": "$BUCKET"}""", """["eq", "${'$'}key", "$key"]""") + furtherConditions
+    /**
+     * Builds the fields of a form which asks to be answered with the given status, which its policy permits.
+     */
+    private fun withStatus(key: String, status: String): MutableMap<String, String> {
+        val fields =
+            signedFields(key, furtherConditions = listOf("""["starts-with", "${'$'}success_action_status", ""]"""))
+        fields["success_action_status"] = status
+        return fields
+    }
+
+    private fun asQuery(fields: Map<String, String>): String {
+        return fields.entries.joinToString("&") { (name, value) ->
+            "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
+        }
+    }
+
+    private fun keyEquals(key: String): String {
+        return """["eq", "${'$'}key", "$key"]"""
+    }
+
+    private fun encodePolicy(expiration: Instant, keyCondition: String, furtherConditions: List<String>): String {
+        val conditions = listOf("""{"bucket": "$BUCKET"}""", keyCondition) + furtherConditions
         val policy = """{"expiration": "$expiration", "conditions": [${conditions.joinToString(", ")}]}"""
         return BaseEncoding.base64().encode(policy.toByteArray(StandardCharsets.UTF_8))
     }
@@ -245,14 +429,34 @@ class BrowserUploadTest {
      * returns the status code of the response.
      */
     private fun postForm(path: String, fields: Map<String, String>): Int {
+        return postFormForAnswer(path, fields).status
+    }
+
+    /**
+     * Sends the given fields, followed by the file to upload, as a form without any signature of its own, and
+     * returns the answer without following a redirect.
+     */
+    private fun postFormForAnswer(
+        path: String,
+        fields: Map<String, String>,
+        fieldsAfterFile: Map<String, String> = emptyMap()
+    ): Answer {
         val body = buildString {
             fields.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
             }
             append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\n")
-            append("Content-Type: text/plain\r\n\r\n$CONTENT\r\n--$BOUNDARY--\r\n")
+            append("Content-Type: text/plain\r\n\r\n$CONTENT\r\n")
+            fieldsAfterFile.forEach { (name, value) ->
+                append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
+            }
+            append("--$BOUNDARY--\r\n")
         }
         return post(path, "multipart/form-data; boundary=$BOUNDARY", body)
+    }
+
+    private fun postContentForAnswer(pathAndQuery: String, content: String): Answer {
+        return post(pathAndQuery, "text/plain", content)
     }
 
     /**
@@ -260,17 +464,27 @@ class BrowserUploadTest {
      * of the response.
      */
     private fun postContent(pathAndQuery: String, content: String): Int {
-        return post(pathAndQuery, "text/plain", content)
+        return post(pathAndQuery, "text/plain", content).status
     }
 
-    private fun post(pathAndQuery: String, contentType: String, body: String): Int {
+    private fun post(pathAndQuery: String, contentType: String, body: String): Answer {
         val connection = URI(BaseSdkSupportTest.ENDPOINT + pathAndQuery).toURL().openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
+        connection.instanceFollowRedirects = false
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", contentType)
         connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-        return connection.responseCode.also { connection.disconnect() }
+        val status = connection.responseCode
+        val stream = if (status >= 400) connection.errorStream else connection.inputStream
+        val content = stream?.use { String(it.readAllBytes(), StandardCharsets.UTF_8) }.orEmpty()
+        return Answer(status, connection.getHeaderField("Location"), connection.getHeaderField("ETag"), content)
+            .also { connection.disconnect() }
     }
+
+    /**
+     * Describes the answer to an upload: its status, the headers which matter here, and its content.
+     */
+    private data class Answer(val status: Int, val location: String?, val etag: String?, val body: String)
 
     private fun readObject(key: String): String {
         return createClient().use { client ->
@@ -296,5 +510,6 @@ class BrowserUploadTest {
         const val KEY = "uploaded.txt"
         const val CONTENT = "Uploaded by a form"
         const val BOUNDARY = "----FormBoundary7MA4YWxkTrZu0gW"
+        val ETAG = "\"${md5Hex(CONTENT.toByteArray())}\""
     }
 }

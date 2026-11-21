@@ -52,7 +52,7 @@ class BrowserUploadTest {
 
     @Test
     fun `Form signed with signature version 2 is accepted for a private bucket`() {
-        val policy = encodePolicy(Instant.now().plusSeconds(3600), KEY, emptyList())
+        val policy = encodePolicy(Instant.now().plusSeconds(3600), keyEquals(KEY), emptyList())
         val fields = linkedMapOf(
             "key" to KEY,
             "AWSAccessKeyId" to BaseSdkSupportTest.ACCESS_KEY,
@@ -66,7 +66,7 @@ class BrowserUploadTest {
 
     @Test
     fun `Form signed with signature version 2 has to name the access key`() {
-        val policy = encodePolicy(Instant.now().plusSeconds(3600), KEY, emptyList())
+        val policy = encodePolicy(Instant.now().plusSeconds(3600), keyEquals(KEY), emptyList())
         val signature = BaseEncoding.base64().encode(hmac("HmacSHA1", secretKey(""), policy))
         val withoutAccessKey = linkedMapOf("key" to KEY, "policy" to policy, "signature" to signature)
         val withUnknownAccessKey = LinkedHashMap(withoutAccessKey).also { it["AWSAccessKeyId"] = "AKIAUNKNOWN" }
@@ -80,7 +80,7 @@ class BrowserUploadTest {
     fun `Form with a wrong or missing signature is refused and stores nothing`() {
         val wrongSignature = signedFields(KEY).also { it["x-amz-signature"] = "0".repeat(64) }
         val signedForOtherPolicy = signedFields(KEY).also {
-            it["policy"] = encodePolicy(Instant.now().plusSeconds(7200), KEY, emptyList())
+            it["policy"] = encodePolicy(Instant.now().plusSeconds(7200), keyEquals(KEY), emptyList())
         }
         val noSignature = signedFields(KEY).also { it.remove("x-amz-signature") }
 
@@ -230,6 +230,26 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Name of the uploaded file is filled in where the key of the form contains a variable for it`() {
+        val formKey = "uploads/\${filename}"
+        val prefixCondition = """["starts-with", "${'$'}key", "uploads/"]"""
+
+        assertEquals(204, postForm("/$BUCKET", signedFields(formKey, keyCondition = prefixCondition)))
+        assertEquals(CONTENT, readObject("uploads/test.txt"))
+        assertFailsWith<S3Exception> { readObject(formKey) }
+    }
+
+    @Test
+    fun `Policy is evaluated for the key with the name of the file filled in`() {
+        // As for S3, which expands the variable before it validates the policy.
+        val formKey = "uploads/\${filename}"
+        val literalCondition = """["eq", "${'$'}key", "uploads/${'$'}{filename}"]"""
+
+        assertEquals(403, postForm("/$BUCKET", signedFields(formKey, keyCondition = literalCondition)))
+        assertFailsWith<S3Exception> { readObject("uploads/test.txt") }
+    }
+
+    @Test
     fun `Form created by the generator of the UI is accepted, as form and as query string`() {
         val service = Injector.context().getPart(PresignedPostService::class.java)!!
         val generated = service.generate(
@@ -262,7 +282,8 @@ class BrowserUploadTest {
     private fun signedFields(
         key: String,
         expiration: Instant = Instant.now().plusSeconds(3600),
-        furtherConditions: List<String> = emptyList()
+        furtherConditions: List<String> = emptyList(),
+        keyCondition: String = keyEquals(key)
     ): MutableMap<String, String> {
         val now = Instant.now().atZone(ZoneOffset.UTC)
         val date = DateTimeFormatter.ofPattern("yyyyMMdd").format(now)
@@ -270,7 +291,7 @@ class BrowserUploadTest {
         val credential = "${BaseSdkSupportTest.ACCESS_KEY}/$date/eu-central-1/s3/aws4_request"
         val policy = encodePolicy(
             expiration,
-            key,
+            keyCondition,
             listOf(
                 """{"x-amz-algorithm": "AWS4-HMAC-SHA256"}""",
                 """{"x-amz-credential": "$credential"}""",
@@ -304,8 +325,12 @@ class BrowserUploadTest {
         }
     }
 
-    private fun encodePolicy(expiration: Instant, key: String, furtherConditions: List<String>): String {
-        val conditions = listOf("""{"bucket": "$BUCKET"}""", """["eq", "${'$'}key", "$key"]""") + furtherConditions
+    private fun keyEquals(key: String): String {
+        return """["eq", "${'$'}key", "$key"]"""
+    }
+
+    private fun encodePolicy(expiration: Instant, keyCondition: String, furtherConditions: List<String>): String {
+        val conditions = listOf("""{"bucket": "$BUCKET"}""", keyCondition) + furtherConditions
         val policy = """{"expiration": "$expiration", "conditions": [${conditions.joinToString(", ")}]}"""
         return BaseEncoding.base64().encode(policy.toByteArray(StandardCharsets.UTF_8))
     }

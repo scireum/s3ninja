@@ -720,16 +720,10 @@ public class MultipartUploadHandler {
     private Optional<Tuple<S3ErrorCode, String>> verifyRequestedParts(MultipartUpload upload,
                                                                       List<Tuple<Integer, String>> requestedParts,
                                                                       Map<MultipartUpload.Part, String> parts) {
-        int previousPartNumber = 0;
-        for (Tuple<Integer, String> requestedPart : requestedParts) {
-            if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
-                || requestedPart.getFirst() > MultipartUpload.MAX_PART_NUMBER) {
-                return Optional.of(Tuple.create(S3ErrorCode.InvalidArgument, ERROR_INVALID_PART_NUMBER));
-            }
-            if (requestedPart.getFirst() <= previousPartNumber) {
-                return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
-            }
-            previousPartNumber = requestedPart.getFirst();
+        // All numbers are checked before any part is hashed, so that these errors take precedence.
+        Optional<Tuple<S3ErrorCode, String>> numberError = verifyPartNumbers(requestedParts);
+        if (numberError.isPresent()) {
+            return numberError;
         }
 
         for (Tuple<Integer, String> requestedPart : requestedParts) {
@@ -746,13 +740,34 @@ public class MultipartUploadHandler {
         }
 
         // Only the last part may be smaller than the minimum, which is why this cannot be checked on upload.
-        MultipartUpload.Part lastPart = upload.getPart(previousPartNumber).orElse(null);
+        MultipartUpload.Part lastPart = upload.getPart(requestedParts.getLast().getFirst()).orElse(null);
         for (MultipartUpload.Part part : parts.keySet()) {
             if (!part.equals(lastPart) && part.size() < multipartUploads.getMinPartSize()) {
                 return Optional.of(Tuple.create(S3ErrorCode.EntityTooSmall, ERROR_ENTITY_TOO_SMALL));
             }
         }
 
+        return Optional.empty();
+    }
+
+    /**
+     * Checks that the requested part numbers lie within the range S3 permits, and are given in ascending order.
+     *
+     * @param requestedParts the number and the entity tag of each part, in the order given by the client
+     * @return the error to answer the request with, or an empty optional if the numbers are valid
+     */
+    private Optional<Tuple<S3ErrorCode, String>> verifyPartNumbers(List<Tuple<Integer, String>> requestedParts) {
+        int previousPartNumber = 0;
+        for (Tuple<Integer, String> requestedPart : requestedParts) {
+            if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
+                || requestedPart.getFirst() > MultipartUpload.MAX_PART_NUMBER) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidArgument, ERROR_INVALID_PART_NUMBER));
+            }
+            if (requestedPart.getFirst() <= previousPartNumber) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
+            }
+            previousPartNumber = requestedPart.getFirst();
+        }
         return Optional.empty();
     }
 

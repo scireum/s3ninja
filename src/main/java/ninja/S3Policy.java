@@ -25,6 +25,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Handles AWS S3 POST policies validation and parsing.
@@ -203,37 +204,50 @@ public class S3Policy {
     private List<Map<String, Object>> parseConditions(JsonNode conditionsNode) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (conditionsNode instanceof ArrayNode arrayNode) {
-            arrayNode.forEach(condition -> {
-                if (condition.isArray() && CONTENT_LENGTH_RANGE.equals(condition.get(0).asString(""))) {
-                    // Format: ["content-length-range", 0, 1048576], which names no field but the permitted sizes.
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    conditionMap.put(CONDITION_OPERATOR, CONTENT_LENGTH_RANGE);
-                    conditionMap.put(CONDITION_FIELD, CONTENT_LENGTH_RANGE);
-                    conditionMap.put("minimum", condition.get(1).asString(""));
-                    conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
-                    result.add(conditionMap);
-                } else if (condition.isArray()) {
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    conditionMap.put(CONDITION_OPERATOR, condition.get(0).asString(""));
-                    String field = condition.get(1).asString("");
-                    if (field.startsWith("$") && field.length() > 1) {
-                        field = field.substring(1); // Remove '$' prefix
-                    }
-                    conditionMap.put(CONDITION_FIELD, field);
-                    conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
-                    result.add(conditionMap);
-                } else if (condition.isObject()) {
-                    if (condition.isEmpty()) {
-                        throw new IllegalArgumentException("A condition must name a field.");
-                    }
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    condition.properties()
-                             .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
-                    result.add(conditionMap);
-                }
-            });
+            arrayNode.forEach(condition -> parseCondition(condition).ifPresent(result::add));
         }
         return result;
+    }
+
+    /**
+     * Parses a single condition of a policy.
+     *
+     * @param condition the condition, given as array or as object
+     * @return the condition as map, or an empty optional if it is of neither form
+     */
+    private Optional<Map<String, Object>> parseCondition(JsonNode condition) {
+        if (condition.isArray() && CONTENT_LENGTH_RANGE.equals(condition.get(0).asString(""))) {
+            // Format: ["content-length-range", 0, 1048576], which names no field but the permitted sizes.
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CONDITION_OPERATOR, CONTENT_LENGTH_RANGE);
+            conditionMap.put(CONDITION_FIELD, CONTENT_LENGTH_RANGE);
+            conditionMap.put("minimum", condition.get(1).asString(""));
+            conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
+            return Optional.of(conditionMap);
+        }
+
+        if (condition.isArray()) {
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CONDITION_OPERATOR, condition.get(0).asString(""));
+            String field = condition.get(1).asString("");
+            if (field.startsWith("$") && field.length() > 1) {
+                field = field.substring(1); // Remove '$' prefix
+            }
+            conditionMap.put(CONDITION_FIELD, field);
+            conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
+            return Optional.of(conditionMap);
+        }
+
+        if (condition.isObject()) {
+            if (condition.isEmpty()) {
+                throw new IllegalArgumentException("A condition must name a field.");
+            }
+            Map<String, Object> conditionMap = new HashMap<>();
+            condition.properties().forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
+            return Optional.of(conditionMap);
+        }
+
+        return Optional.empty();
     }
 
     /**

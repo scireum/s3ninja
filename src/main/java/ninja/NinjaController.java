@@ -49,6 +49,11 @@ import java.util.Map;
 @Register
 public class NinjaController extends BasicController {
 
+    /**
+     * Names the field of a JSON answer which explains its outcome.
+     */
+    private static final String RESPONSE_MESSAGE = "message";
+
     @Part
     private Storage storage;
 
@@ -184,23 +189,7 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?create
         if (webContext.hasParameter("create")) {
-            assertPostRequest(webContext);
-
-            if (bucket.exists()) {
-                UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            if (!bucket.create()) {
-                throw Exceptions.createHandled()
-                                .to(Storage.LOG)
-                                .withDirectMessage("Failed creating bucket. Missing file system permission?")
-                                .handle();
-            }
-
-            UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
-            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            createBucket(webContext, bucket);
             return;
         }
 
@@ -212,12 +201,7 @@ public class NinjaController extends BasicController {
         }
 
         // we only accept known paths below /ui as return address
-        String address = webContext.getParameter("return");
-        if (Strings.areEqual(address, "/ui") || Strings.areEqual(address, "/ui/") || Strings.areEqual(address, "ui")) {
-            address = "/ui";
-        } else {
-            address = "/ui/" + bucket.getEncodedName();
-        }
+        String address = determineReturnAddress(webContext, bucket);
 
         // handle /ui/[bucket]?make-public
         if (webContext.hasParameter("make-public")) {
@@ -303,20 +287,17 @@ public class NinjaController extends BasicController {
             webContext.respondWith()
                       .json()
                       .beginResult()
-                      .property("success", true)
-                      .property("error", false)
-                      .property("message", "File successfully uploaded.")
-                      .property("action", "/ui/" + bucket)
+                      .property(RESPONSE_MESSAGE, "File successfully uploaded.")
+                      .property("action", "/ui/" + bucket.getEncodedName())
                       .property("actionLabel", NLS.get("NLS.refresh"))
                       .property("refresh", "true")
                       .endResult();
         } catch (IOException e) {
+            // The upload component of the page shows the message of an answer with an error status.
             webContext.respondWith()
-                      .json(HttpResponseStatus.OK)
+                      .json(HttpResponseStatus.INTERNAL_SERVER_ERROR)
                       .beginResult()
-                      .property("success", false)
-                      .property("error", true)
-                      .property("message", Exceptions.handle(e).getMessage())
+                      .property(RESPONSE_MESSAGE, Exceptions.handle(e).getMessage())
                       .endResult();
         }
     }
@@ -399,8 +380,8 @@ public class NinjaController extends BasicController {
     public void generateSessionToken(WebContext webContext, JSONStructuredOutput output) {
         String token = authenticator.generateSessionToken();
 
-        output.property("success", true)
-              .property("token", token)
+        // The framework states success and error in the answer itself, and answers failures with their status.
+        output.property("token", token)
               .property("expiresIn", "24 hours")
               .property("usage",
                         "Add 'X-Session-Token: "
@@ -429,11 +410,7 @@ public class NinjaController extends BasicController {
             PresignedPostRequest request = PresignedPostRequest.from(webContext);
             PresignedPostResponse response = presignedPostService.generate(request);
 
-            var jsonBuilder = webContext.respondWith()
-                                        .json()
-                                        .beginResult()
-                                        .property("success", true)
-                                        .property("url", response.url());
+            var jsonBuilder = webContext.respondWith().json().beginResult().property("url", response.url());
 
             // Properly serialize the fields map as a JSON object
             jsonBuilder.beginObject("fields");
@@ -447,13 +424,49 @@ public class NinjaController extends BasicController {
                        .property("signature", response.signature())
                        .endResult();
         } catch (HandledException handled) {
+            // Only the parameters of the request can be at fault here, e.g. a validity which is out of range.
             webContext.respondWith()
-                      .json()
+                      .json(HttpResponseStatus.BAD_REQUEST)
                       .beginResult()
-                      .property("success", false)
-                      .property("message", handled.getMessage())
+                      .property(RESPONSE_MESSAGE, handled.getMessage())
                       .endResult();
         }
+    }
+
+    /**
+     * Handles <tt>/ui/[bucket]?create</tt>, which creates the bucket unless it exists already.
+     */
+    private void createBucket(WebContext webContext, Bucket bucket) {
+        assertPostRequest(webContext);
+
+        if (bucket.exists()) {
+            UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        if (!bucket.create()) {
+            throw Exceptions.createHandled()
+                            .to(Storage.LOG)
+                            .withDirectMessage("Failed creating bucket. Missing file system permission?")
+                            .handle();
+        }
+
+        UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
+        webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+    }
+
+    /**
+     * Determines where to return to after changing a bucket.
+     * <p>
+     * Only known paths below <tt>/ui</tt> are accepted: the list of buckets, or the bucket itself.
+     */
+    private String determineReturnAddress(WebContext webContext, Bucket bucket) {
+        String address = webContext.getParameter("return");
+        if (Strings.areEqual(address, "/ui") || Strings.areEqual(address, "/ui/") || Strings.areEqual(address, "ui")) {
+            return "/ui";
+        }
+        return "/ui/" + bucket.getEncodedName();
     }
 
     /**

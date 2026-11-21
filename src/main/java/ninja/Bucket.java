@@ -390,7 +390,7 @@ public class Bucket {
             if (IP_ADDRESS_PATTERN.matcher(name).matches() && InetAddress.getByName(name) != null) {
                 return false;
             }
-        } catch (Exception ignored) {
+        } catch (Exception _) {
             // ignore this, we want the conversion to fail and thus to end up here
         }
 

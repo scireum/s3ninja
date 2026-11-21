@@ -161,28 +161,48 @@ public class ObjectListing {
         String lastCommonPrefix = null;
         for (StoredObject object : bucket.getObjects(null, Limit.UNLIMITED)) {
             String key = object.getKey();
-            if (!key.startsWith(prefix) || (Strings.isFilled(continueAfter) && compareKeys(key, continueAfter) <= 0)) {
+            if (!isOnPage(key, continueAfter)) {
                 continue;
             }
 
             String commonPrefix = determineCommonPrefix(key);
-            if (commonPrefix != null && (commonPrefix.equals(lastCommonPrefix) || commonPrefix.equals(continueAfter))) {
-                // Either listed already, or the previous page ended with this very prefix.
-                continue;
-            }
-
-            if (entries.size() >= maxKeys) {
-                truncated = maxKeys > 0;
-                return;
-            }
-
-            if (commonPrefix != null) {
-                entries.add(new Entry(commonPrefix, null));
-                lastCommonPrefix = commonPrefix;
-            } else {
-                entries.add(new Entry(key, object));
+            if (!isListedAlready(commonPrefix, lastCommonPrefix, continueAfter)) {
+                if (entries.size() >= maxKeys) {
+                    truncated = maxKeys > 0;
+                    return;
+                }
+                lastCommonPrefix = addEntry(key, object, commonPrefix, lastCommonPrefix);
             }
         }
+    }
+
+    /**
+     * Determines if the given key matches the prefix of the listing and follows the point the page starts after.
+     */
+    private boolean isOnPage(String key, String continueAfter) {
+        return key.startsWith(prefix) && (Strings.isEmpty(continueAfter) || compareKeys(key, continueAfter) > 0);
+    }
+
+    /**
+     * Determines if the given common prefix has been listed already, on this page or as last entry of the previous
+     * one.
+     */
+    private boolean isListedAlready(@Nullable String commonPrefix, String lastCommonPrefix, String continueAfter) {
+        return commonPrefix != null && (commonPrefix.equals(lastCommonPrefix) || commonPrefix.equals(continueAfter));
+    }
+
+    /**
+     * Adds the given key to the page, or the common prefix it is rolled up into.
+     *
+     * @return the common prefix listed last, which is the given one if it has been added
+     */
+    private String addEntry(String key, StoredObject object, @Nullable String commonPrefix, String lastCommonPrefix) {
+        if (commonPrefix != null) {
+            entries.add(new Entry(commonPrefix, null));
+            return commonPrefix;
+        }
+        entries.add(new Entry(key, object));
+        return lastCommonPrefix;
     }
 
     /**
@@ -273,7 +293,7 @@ public class ObjectListing {
     private static Optional<String> decodeContinuationToken(String continuationToken) {
         try {
             return Optional.of(new String(Base64.getUrlDecoder().decode(continuationToken), StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException exception) {
+        } catch (IllegalArgumentException _) {
             return Optional.empty();
         }
     }

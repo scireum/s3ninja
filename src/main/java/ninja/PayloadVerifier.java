@@ -16,6 +16,7 @@ import sirius.kernel.commons.Tuple;
 import sirius.kernel.di.std.Register;
 import sirius.web.http.WebContext;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -89,9 +90,8 @@ public class PayloadVerifier {
      * @throws IOException if the content cannot be read
      */
     public Optional<Tuple<S3ErrorCode, String>> verify(WebContext webContext, File content) throws IOException {
-        String contentMd5 = webContext.getHeader(HEADER_CONTENT_MD5);
-        byte[] expectedMd5 = decodeBase64(contentMd5);
-        if (Strings.isFilled(contentMd5) && (expectedMd5 == null || expectedMd5.length != MD5_LENGTH)) {
+        Optional<byte[]> expectedMd5 = decodeBase64(webContext.getHeader(HEADER_CONTENT_MD5));
+        if (expectedMd5.filter(md5 -> md5.length != MD5_LENGTH).isPresent()) {
             return Optional.of(Tuple.create(S3ErrorCode.InvalidDigest, "The Content-MD5 you specified was invalid."));
         }
 
@@ -102,6 +102,23 @@ public class PayloadVerifier {
                                             "x-amz-content-sha256 must be UNSIGNED-PAYLOAD, one of the STREAMING markers, or a valid sha256 value."));
         }
 
+        Map<String, String> statedChecksums = collectStatedChecksums(webContext);
+        if (expectedMd5.isEmpty() && !verifySha256 && statedChecksums.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return compareWithContent(content,
+                                  expectedMd5.orElse(null),
+                                  verifySha256 ? contentSha256 : null,
+                                  statedChecksums);
+    }
+
+    /**
+     * Collects the checksums the request states in <tt>x-amz-checksum-*</tt> headers.
+     *
+     * @return the stated checksums by the name of their algorithm
+     */
+    private Map<String, String> collectStatedChecksums(WebContext webContext) {
         Map<String, String> statedChecksums = new LinkedHashMap<>();
         for (String algorithm : new String[]{CHECKSUM_CRC32, CHECKSUM_CRC32C, CHECKSUM_SHA1, CHECKSUM_SHA256}) {
             String value = webContext.getHeader(HEADER_CHECKSUM_PREFIX + algorithm);
@@ -109,20 +126,34 @@ public class PayloadVerifier {
                 statedChecksums.put(algorithm, value.trim());
             }
         }
+        return statedChecksums;
+    }
 
-        if (expectedMd5 == null && !verifySha256 && statedChecksums.isEmpty()) {
-            return Optional.empty();
-        }
-
+    /**
+     * Compares the given content with what the request states about it.
+     *
+     * @param content         the received content
+     * @param expectedMd5     the MD5 hash stated as <tt>Content-MD5</tt>, or <tt>null</tt> if none is stated
+     * @param contentSha256   the SHA-256 hash in hex stated as <tt>x-amz-content-sha256</tt>, or <tt>null</tt> if
+     *                        none is to be verified
+     * @param statedChecksums the checksums stated in <tt>x-amz-checksum-*</tt> headers
+     * @return the error to answer the request with, or an empty optional if the content is what the client stated
+     * @throws IOException if the content cannot be read
+     */
+    private Optional<Tuple<S3ErrorCode, String>> compareWithContent(File content,
+                                                                    @Nullable byte[] expectedMd5,
+                                                                    @Nullable String contentSha256,
+                                                                    Map<String, String> statedChecksums)
+            throws IOException {
         Digests digests = Digests.of(content);
 
         if (expectedMd5 != null && !MessageDigest.isEqual(expectedMd5, digests.md5.digest())) {
             return Optional.of(Tuple.create(S3ErrorCode.BadDigest,
                                             "The Content-MD5 you specified did not match what we received."));
         }
-        if (verifySha256 && !contentSha256.equalsIgnoreCase(BaseEncoding.base16()
-                                                                        .lowerCase()
-                                                                        .encode(digests.sha256.digest()))) {
+        if (contentSha256 != null && !contentSha256.equalsIgnoreCase(BaseEncoding.base16()
+                                                                                 .lowerCase()
+                                                                                 .encode(digests.sha256.digest()))) {
             return Optional.of(Tuple.create(S3ErrorCode.XAmzContentSHA256Mismatch,
                                             "The provided 'x-amz-content-sha256' header does not match what was computed."));
         }
@@ -138,15 +169,21 @@ public class PayloadVerifier {
         return Optional.empty();
     }
 
-    private byte[] decodeBase64(String value) {
+    /**
+     * Decodes the given header value.
+     *
+     * @return the decoded bytes, no bytes at all if the value is no valid Base64, or an empty optional if there is
+     * no value
+     */
+    private Optional<byte[]> decodeBase64(String value) {
         if (Strings.isEmpty(value)) {
-            return null;
+            return Optional.empty();
         }
 
         try {
-            return Base64.getDecoder().decode(value.trim());
-        } catch (IllegalArgumentException exception) {
-            return new byte[0];
+            return Optional.of(Base64.getDecoder().decode(value.trim()));
+        } catch (IllegalArgumentException _) {
+            return Optional.of(new byte[0]);
         }
     }
 

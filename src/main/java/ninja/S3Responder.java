@@ -48,9 +48,6 @@ public class S3Responder {
     }
 
     /**
-     * Writes an API success entry to the log
-     */
-    /**
      * Answers a request of which the method is not supported for what it addresses.
      *
      * @param webContext the context describing the current request
@@ -65,6 +62,9 @@ public class S3Responder {
                           "The specified method is not allowed against this resource.");
     }
 
+    /**
+     * Writes an API success entry to the log
+     */
     void signalObjectSuccess(WebContext webContext) {
         log.log(webContext.getRequest().method().name(),
                 webContext.getRequestedURI(),

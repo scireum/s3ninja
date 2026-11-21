@@ -25,6 +25,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Handles AWS S3 POST policies validation and parsing.
@@ -90,6 +91,36 @@ import java.util.Map;
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-post-example.html">AWS S3 POST Example</a>
  */
 public class S3Policy {
+
+    /**
+     * Holds the operator of a condition given as array, e.g. <tt>eq</tt> or <tt>starts-with</tt>.
+     */
+    private static final String CONDITION_OPERATOR = "operator";
+
+    /**
+     * Holds the name of the form field a condition given as array is about.
+     */
+    private static final String CONDITION_FIELD = "field";
+
+    /**
+     * Holds the value a condition given as array compares with, or the maximum of a size range.
+     */
+    private static final String CONDITION_VALUE = "value";
+
+    /**
+     * Names the form field which states the type of the uploaded object.
+     */
+    private static final String FIELD_CONTENT_TYPE = "Content-Type";
+
+    /**
+     * Names the form field which states where to redirect to after a successful upload.
+     */
+    private static final String FIELD_SUCCESS_ACTION_REDIRECT = "success_action_redirect";
+
+    /**
+     * Names the form field which states the status to answer a successful upload with.
+     */
+    private static final String FIELD_SUCCESS_ACTION_STATUS = "success_action_status";
 
     private static final String CONTENT_LENGTH_RANGE = "content-length-range";
     private static final Logger LOG = LoggerFactory.getLogger(S3Policy.class);
@@ -173,37 +204,50 @@ public class S3Policy {
     private List<Map<String, Object>> parseConditions(JsonNode conditionsNode) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (conditionsNode instanceof ArrayNode arrayNode) {
-            arrayNode.forEach(condition -> {
-                if (condition.isArray() && CONTENT_LENGTH_RANGE.equals(condition.get(0).asString(""))) {
-                    // Format: ["content-length-range", 0, 1048576], which names no field but the permitted sizes.
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    conditionMap.put("operator", CONTENT_LENGTH_RANGE);
-                    conditionMap.put("field", CONTENT_LENGTH_RANGE);
-                    conditionMap.put("minimum", condition.get(1).asString(""));
-                    conditionMap.put("value", condition.get(2).asString(""));
-                    result.add(conditionMap);
-                } else if (condition.isArray()) {
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    conditionMap.put("operator", condition.get(0).asString(""));
-                    String field = condition.get(1).asString("");
-                    if (field.startsWith("$") && field.length() > 1) {
-                        field = field.substring(1); // Remove '$' prefix
-                    }
-                    conditionMap.put("field", field);
-                    conditionMap.put("value", condition.get(2).asString(""));
-                    result.add(conditionMap);
-                } else if (condition.isObject()) {
-                    if (condition.isEmpty()) {
-                        throw new IllegalArgumentException("A condition must name a field.");
-                    }
-                    Map<String, Object> conditionMap = new HashMap<>();
-                    condition.properties()
-                             .forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
-                    result.add(conditionMap);
-                }
-            });
+            arrayNode.forEach(condition -> parseCondition(condition).ifPresent(result::add));
         }
         return result;
+    }
+
+    /**
+     * Parses a single condition of a policy.
+     *
+     * @param condition the condition, given as array or as object
+     * @return the condition as map, or an empty optional if it is of neither form
+     */
+    private Optional<Map<String, Object>> parseCondition(JsonNode condition) {
+        if (condition.isArray() && CONTENT_LENGTH_RANGE.equals(condition.get(0).asString(""))) {
+            // Format: ["content-length-range", 0, 1048576], which names no field but the permitted sizes.
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CONDITION_OPERATOR, CONTENT_LENGTH_RANGE);
+            conditionMap.put(CONDITION_FIELD, CONTENT_LENGTH_RANGE);
+            conditionMap.put("minimum", condition.get(1).asString(""));
+            conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
+            return Optional.of(conditionMap);
+        }
+
+        if (condition.isArray()) {
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CONDITION_OPERATOR, condition.get(0).asString(""));
+            String field = condition.get(1).asString("");
+            if (field.startsWith("$") && field.length() > 1) {
+                field = field.substring(1); // Remove '$' prefix
+            }
+            conditionMap.put(CONDITION_FIELD, field);
+            conditionMap.put(CONDITION_VALUE, condition.get(2).asString(""));
+            return Optional.of(conditionMap);
+        }
+
+        if (condition.isObject()) {
+            if (condition.isEmpty()) {
+                throw new IllegalArgumentException("A condition must name a field.");
+            }
+            Map<String, Object> conditionMap = new HashMap<>();
+            condition.properties().forEach(entry -> conditionMap.put(entry.getKey(), entry.getValue().asString("")));
+            return Optional.of(conditionMap);
+        }
+
+        return Optional.empty();
     }
 
     /**
@@ -280,11 +324,11 @@ public class S3Policy {
      * @return true if the condition is satisfied, false otherwise
      */
     private boolean validateCondition(Map<String, Object> condition, WebContext webContext, Bucket bucket, String key) {
-        if (condition.containsKey("operator")) {
+        if (condition.containsKey(CONDITION_OPERATOR)) {
             // Format: ["eq", "$key", "user/eric/"]
-            String operator = (String) condition.get("operator");
-            String field = (String) condition.get("field");
-            String value = (String) condition.get("value");
+            String operator = (String) condition.get(CONDITION_OPERATOR);
+            String field = (String) condition.get(CONDITION_FIELD);
+            String value = (String) condition.get(CONDITION_VALUE);
 
             String actualValue = getFieldValue(field, webContext, bucket, key);
             return switch (operator) {
@@ -295,7 +339,7 @@ public class S3Policy {
                 default -> false;
             };
         } else {
-            // Format: {"success_action_redirect": "https://example.com/success"}
+            // A condition given as object names a field and the exact value it has to have.
             Map.Entry<String, Object> entry = condition.entrySet().iterator().next();
             String field = entry.getKey();
             String expectedValue = (String) entry.getValue();
@@ -331,13 +375,42 @@ public class S3Policy {
         return switch (field) {
             case "bucket" -> bucket.getName();
             case "key" -> key;
-            case "content-length-range" -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
+            case CONTENT_LENGTH_RANGE -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
             // The type of the object is a field of the form. The header describes the form itself.
-            case "Content-Type" -> webContext.get("Content-Type").asString(webContext.getHeader("Content-Type"));
-            case "success_action_redirect" -> webContext.get("success_action_redirect").asString();
-            case "success_action_status" -> webContext.get("success_action_status").asString();
+            case FIELD_CONTENT_TYPE ->
+                    webContext.get(FIELD_CONTENT_TYPE).asString(webContext.getHeader(HttpHeaderNames.CONTENT_TYPE));
+            case FIELD_SUCCESS_ACTION_REDIRECT -> webContext.get(FIELD_SUCCESS_ACTION_REDIRECT).asString();
+            case FIELD_SUCCESS_ACTION_STATUS -> webContext.get(FIELD_SUCCESS_ACTION_STATUS).asString();
             default -> webContext.get(field).asString("");
         };
+    }
+
+    /**
+     * Determines if an upload of the given size meets the <tt>content-length-range</tt> condition of this policy.
+     *
+     * @param size the size of the uploaded content in bytes
+     * @return <tt>true</tt> if the policy states no such condition or the size lies within its range,
+     * <tt>false</tt> otherwise
+     */
+    public boolean isPermittedSize(long size) {
+        return !isBelowMinimumSize(size) && conditions.stream()
+                                                      .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get(
+                                                              CONDITION_OPERATOR)))
+                                                      .allMatch(condition -> size <= Value.of(condition.get(
+                                                              CONDITION_VALUE)).asLong(Long.MAX_VALUE));
+    }
+
+    /**
+     * Determines if an upload of the given size is smaller than the <tt>content-length-range</tt> condition of this
+     * policy permits.
+     *
+     * @param size the size of the uploaded content in bytes
+     * @return <tt>true</tt> if the policy states a minimum which the size does not reach, <tt>false</tt> otherwise
+     */
+    public boolean isBelowMinimumSize(long size) {
+        return conditions.stream()
+                         .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get(CONDITION_OPERATOR)))
+                         .anyMatch(condition -> size < Value.of(condition.get("minimum")).asLong(0));
     }
 
     /**
@@ -355,40 +428,12 @@ public class S3Policy {
      *
      * @return the maximum allowed file size in bytes, or -1 if no content-length-range condition is specified
      */
-    /**
-     * Determines if an upload of the given size meets the <tt>content-length-range</tt> condition of this policy.
-     *
-     * @param size the size of the uploaded content in bytes
-     * @return <tt>true</tt> if the policy states no such condition or the size lies within its range,
-     * <tt>false</tt> otherwise
-     */
-    public boolean isPermittedSize(long size) {
-        return !isBelowMinimumSize(size) && conditions.stream()
-                                                      .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get(
-                                                              "operator")))
-                                                      .allMatch(condition -> size <= Value.of(condition.get("value"))
-                                                                                          .asLong(Long.MAX_VALUE));
-    }
-
-    /**
-     * Determines if an upload of the given size is smaller than the <tt>content-length-range</tt> condition of this
-     * policy permits.
-     *
-     * @param size the size of the uploaded content in bytes
-     * @return <tt>true</tt> if the policy states a minimum which the size does not reach, <tt>false</tt> otherwise
-     */
-    public boolean isBelowMinimumSize(long size) {
-        return conditions.stream()
-                         .filter(condition -> CONTENT_LENGTH_RANGE.equals(condition.get("operator")))
-                         .anyMatch(condition -> size < Value.of(condition.get("minimum")).asLong(0));
-    }
-
     public long getMaxFileSize() {
         return conditions.stream()
-                         .filter(condition -> condition.containsKey("operator") && "content-length-range".equals(
-                                 condition.get("field")))
+                         .filter(condition -> condition.containsKey(CONDITION_OPERATOR) && CONTENT_LENGTH_RANGE.equals(
+                                 condition.get(CONDITION_FIELD)))
                          .findFirst()
-                         .map(condition -> Value.of(condition.get("value")).asLong(-1))
+                         .map(condition -> Value.of(condition.get(CONDITION_VALUE)).asLong(-1))
                          .orElse(-1L);
     }
 
@@ -419,9 +464,9 @@ public class S3Policy {
      */
     public HttpResponseStatus getSuccessResponse() {
         String status = conditions.stream()
-                                  .filter(condition -> condition.containsKey("success_action_status"))
+                                  .filter(condition -> condition.containsKey(FIELD_SUCCESS_ACTION_STATUS))
                                   .findFirst()
-                                  .map(condition -> (String) condition.get("success_action_status"))
+                                  .map(condition -> (String) condition.get(FIELD_SUCCESS_ACTION_STATUS))
                                   .orElse("204");
 
         return switch (status) {
@@ -466,9 +511,9 @@ public class S3Policy {
      */
     public String getSuccessRedirect() {
         return conditions.stream()
-                         .filter(condition -> condition.containsKey("success_action_redirect"))
+                         .filter(condition -> condition.containsKey(FIELD_SUCCESS_ACTION_REDIRECT))
                          .findFirst()
-                         .map(condition -> (String) condition.get("success_action_redirect"))
+                         .map(condition -> (String) condition.get(FIELD_SUCCESS_ACTION_REDIRECT))
                          .orElse(null);
     }
 }

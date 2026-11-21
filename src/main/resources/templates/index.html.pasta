@@ -154,9 +154,9 @@
                         },
                         body: params
                     })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
+                        .then(response => response.json().then(data => ({ok: response.ok, data: data})))
+                        .then(({ok, data}) => {
+                            if (ok) {
                                 currentToken = data.token;
                                 document.getElementById('session-token-value').textContent = data.token;
                                 document.getElementById('token-container').style.display = 'block';

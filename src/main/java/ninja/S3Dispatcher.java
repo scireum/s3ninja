@@ -45,13 +45,22 @@ import java.util.Set;
 public class S3Dispatcher implements WebDispatcher {
 
     /**
+     * Names the parameter which addresses the multipart uploads of a bucket.
+     */
+    private static final String PARAMETER_UPLOADS = "uploads";
+
+    /**
+     * Names the parameter which states the number of a part of a multipart upload.
+     */
+    private static final String PARAMETER_PART_NUMBER = "partNumber";
+
+    /**
      * Logger for S3 dispatcher operations including session tokens.
      */
     protected static final Log LOG = Log.get("s3dispatcher");
 
     private static final String UI_PATH = "ui";
     private static final String UI_PATH_PREFIX = "ui/";
-    private static final String API_PATH = ".api/";
     private static final String API_PATH_PREFIX = ".api/";
 
     static final String HTTP_HEADER_NAME_ETAG = "ETag";
@@ -159,32 +168,13 @@ public class S3Dispatcher implements WebDispatcher {
     public Callback<WebContext> preparePreDispatch(WebContext webContext) {
         S3Request request = parseRequest(webContext);
 
-        if (request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX)) {
-            return null;
-        }
-        if (request.uri.equals(API_PATH) || request.uri.startsWith(API_PATH_PREFIX)) {
-            return null;
-        }
-        if (hasInvalidBucketName(request)) {
-            // Answered by dispatch(...).
-            return null;
-        }
-        if (Strings.isFilled(request.query)
-            && !Strings.areEqual(request.query, "uploads")
-            && !Strings.areEqual(request.query, "delete")) {
-            // Handled by dispatch(...) once the body has arrived.
+        // Invalid bucket names are answered by dispatch(...), as are queries once their body has arrived.
+        if (isUiOrApiRequest(request) || hasInvalidBucketName(request) || isQueryAnsweredAfterBody(request)) {
             return null;
         }
 
-        // Check for presigned POST to set content handler
-        if (HttpMethod.POST.equals(webContext.getRequest().method())) {
-            String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
-                if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
-                    InputStreamHandler handler = createInputStreamHandler(webContext);
-                    webContext.setContentHandler(handler);
-                }
-            }
+        if (isFormUpload(webContext)) {
+            webContext.setContentHandler(createInputStreamHandler(webContext));
         }
 
         if (Strings.isEmpty(request.bucket) || Strings.isEmpty(request.key)) {
@@ -222,10 +212,7 @@ public class S3Dispatcher implements WebDispatcher {
     public DispatchDecision dispatch(WebContext webContext) throws Exception {
         S3Request request = parseRequest(webContext);
 
-        if (request.uri.equals(UI_PATH)
-            || request.uri.startsWith(UI_PATH_PREFIX)
-            || request.uri.equals(API_PATH)
-            || request.uri.startsWith(API_PATH_PREFIX)) {
+        if (isUiOrApiRequest(request)) {
             return DispatchDecision.CONTINUE;
         }
 
@@ -248,6 +235,42 @@ public class S3Dispatcher implements WebDispatcher {
 
     private boolean hasInvalidBucketName(S3Request request) {
         return Strings.isFilled(request.bucket) && !Bucket.isValidName(request.bucket);
+    }
+
+    /**
+     * Determines if the request addresses the web UI or its API instead of the S3 API.
+     * <p>
+     * The UI is served at <tt>/ui</tt> and below it, its API below <tt>/.api/</tt>.
+     */
+    private boolean isUiOrApiRequest(S3Request request) {
+        return request.uri.equals(UI_PATH) || request.uri.startsWith(UI_PATH_PREFIX) || request.uri.startsWith(
+                API_PATH_PREFIX);
+    }
+
+    /**
+     * Determines if the request addresses a sub-resource which is processed by dispatch(...) once the body of the
+     * request has arrived.
+     * <p>
+     * Initiating a multipart upload and deleting several objects are excepted, as they are routed like requests to
+     * objects.
+     */
+    private boolean isQueryAnsweredAfterBody(S3Request request) {
+        return Strings.isFilled(request.query)
+               && !Strings.areEqual(request.query, PARAMETER_UPLOADS)
+               && !Strings.areEqual(request.query, "delete");
+    }
+
+    /**
+     * Determines if the request is a browser-based upload, i.e. a POST of a form which carries a policy.
+     */
+    private boolean isFormUpload(WebContext webContext) {
+        if (!HttpMethod.POST.equals(webContext.getRequest().method())) {
+            return false;
+        }
+        String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+        return contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data") && (
+                webContext.hasParameter("policy")
+                || webContext.hasParameter("Policy"));
     }
 
     /**
@@ -281,18 +304,12 @@ public class S3Dispatcher implements WebDispatcher {
         }
 
         if (Strings.isEmpty(request.key)) {
-            // Check for presigned POST
-            if (HttpMethod.POST.equals(webContext.getRequest().method())) {
-                String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-                if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
-                    if (webContext.hasParameter("policy") || webContext.hasParameter("Policy")) {
-                        request.query = "presigned-post";
-                        forwardQueryToProcessor(webContext, request);
-                        return DispatchDecision.DONE;
-                    }
-                }
+            if (isFormUpload(webContext)) {
+                request.query = "presigned-post";
+                forwardQueryToProcessor(webContext, request);
+            } else {
+                bucketHandler.bucket(webContext, request.bucket);
             }
-            bucketHandler.bucket(webContext, request.bucket);
             return DispatchDecision.DONE;
         }
 
@@ -313,10 +330,13 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private boolean isListMultipartUploads(WebContext webContext, S3Request request) {
         return HttpMethod.GET.equals(webContext.getRequest().method())
-               && Strings.isFilled(request.bucket)
-               && Strings.isEmpty(request.key)
-               && webContext.hasParameter("uploads")
+               && isBucketRequest(request)
+               && webContext.hasParameter(PARAMETER_UPLOADS)
                && !isQueryForProcessor(request);
+    }
+
+    private boolean isBucketRequest(S3Request request) {
+        return Strings.isFilled(request.bucket) && Strings.isEmpty(request.key);
     }
 
     /**
@@ -325,7 +345,7 @@ public class S3Dispatcher implements WebDispatcher {
      */
     private boolean isQueryForProcessor(S3Request request) {
         return Strings.isFilled(request.query)
-               && !Strings.areEqual(request.query, "uploads")
+               && !Strings.areEqual(request.query, PARAMETER_UPLOADS)
                && globalContext.getPart(request.query, S3QueryProcessor.class) != null;
     }
 
@@ -480,48 +500,71 @@ public class S3Dispatcher implements WebDispatcher {
 
         HttpMethod method = webContext.getRequest().method();
         if (HttpMethod.PUT.equals(method)) {
-            Value copy = webContext.getHeaderValue("x-amz-copy-source");
-            if (webContext.hasParameter("partNumber") != Strings.isFilled(uploadId)) {
-                // Without this check, a part lacking its upload ID would be stored as the object itself.
-                ByteStreams.exhaust(in);
-                responder.signalObjectError(webContext,
-                                            bucket.getName(),
-                                            key,
-                                            S3ErrorCode.InvalidArgument,
-                                            "Uploading a part requires both partNumber and uploadId.");
-            } else if (webContext.hasParameter("partNumber")) {
-                // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
-                String partNumber = webContext.get("partNumber").asString();
-                if (copy.isFilled()) {
-                    multipartUploadHandler.uploadPartCopy(webContext,
-                                                          bucket,
-                                                          key,
-                                                          uploadId,
-                                                          partNumber,
-                                                          copy.asString(),
-                                                          in);
-                } else {
-                    multipartUploadHandler.uploadPart(webContext, bucket, key, uploadId, partNumber, in);
-                }
-            } else if (copy.isFilled()) {
-                objectHandler.copyObject(webContext, bucket, key, copy.asString());
-            } else {
-                objectHandler.putObject(webContext, bucket, key, in);
-            }
+            writeObjectByPut(webContext, bucket, key, uploadId, in);
         } else if (HttpMethod.POST.equals(method)) {
-            // S3 Multipart Upload API endpoints (different from Browser-Based Presigned POST)
-            if (webContext.hasParameter("uploads")) {
-                // POST /bucket/key?uploads - Initiate Multipart Upload
-                multipartUploadHandler.startMultipartUpload(webContext, bucket, key);
-            } else if (Strings.isFilled(uploadId)) {
-                // POST /bucket/key?uploadId=X - Complete Multipart Upload
-                multipartUploadHandler.completeMultipartUpload(webContext, bucket, key, uploadId, in);
-            } else {
-                // POST /bucket/key - Policy-based POST upload (with key in URL)
-                postObjectHandler.handlePostObject(webContext, bucket, key, in);
-            }
+            writeObjectByPost(webContext, bucket, key, uploadId, in);
         } else {
             responder.signalMethodNotAllowed(webContext, bucket.getName(), key);
+        }
+    }
+
+    /**
+     * Handles a PUT to an object, which stores it, copies another one onto it, or stores a part of a multipart
+     * upload.
+     */
+    private void writeObjectByPut(WebContext webContext,
+                                  Bucket bucket,
+                                  String key,
+                                  String uploadId,
+                                  InputStreamHandler in) throws IOException {
+        Value copy = webContext.getHeaderValue("x-amz-copy-source");
+        if (webContext.hasParameter(PARAMETER_PART_NUMBER) != Strings.isFilled(uploadId)) {
+            // Without this check, a part lacking its upload ID would be stored as the object itself.
+            ByteStreams.exhaust(in);
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        key,
+                                        S3ErrorCode.InvalidArgument,
+                                        "Uploading a part requires both partNumber and uploadId.");
+        } else if (webContext.hasParameter(PARAMETER_PART_NUMBER)) {
+            // PUT /bucket/key?uploadId=X&partNumber=Y - Upload part in S3 Multipart Upload
+            String partNumber = webContext.get(PARAMETER_PART_NUMBER).asString();
+            if (copy.isFilled()) {
+                multipartUploadHandler.uploadPartCopy(webContext,
+                                                      bucket,
+                                                      key,
+                                                      uploadId,
+                                                      partNumber,
+                                                      copy.asString(),
+                                                      in);
+            } else {
+                multipartUploadHandler.uploadPart(webContext, bucket, key, uploadId, partNumber, in);
+            }
+        } else if (copy.isFilled()) {
+            objectHandler.copyObject(webContext, bucket, key, copy.asString());
+        } else {
+            objectHandler.putObject(webContext, bucket, key, in);
+        }
+    }
+
+    /**
+     * Handles a POST to an object, which initiates or completes a multipart upload, or is a browser-based upload.
+     */
+    private void writeObjectByPost(WebContext webContext,
+                                   Bucket bucket,
+                                   String key,
+                                   String uploadId,
+                                   InputStreamHandler in) throws IOException {
+        // S3 Multipart Upload API endpoints (different from Browser-Based Presigned POST)
+        if (webContext.hasParameter(PARAMETER_UPLOADS)) {
+            // POST /bucket/key?uploads - Initiate Multipart Upload
+            multipartUploadHandler.startMultipartUpload(webContext, bucket, key);
+        } else if (Strings.isFilled(uploadId)) {
+            // POST /bucket/key?uploadId=X - Complete Multipart Upload
+            multipartUploadHandler.completeMultipartUpload(webContext, bucket, key, uploadId, in);
+        } else {
+            // POST /bucket/key - Policy-based POST upload (with key in URL)
+            postObjectHandler.handlePostObject(webContext, bucket, key, in);
         }
     }
 

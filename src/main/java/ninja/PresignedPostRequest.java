@@ -9,7 +9,6 @@
 package ninja;
 
 import sirius.kernel.commons.Strings;
-import sirius.kernel.health.Exceptions;
 import sirius.web.http.WebContext;
 
 /**

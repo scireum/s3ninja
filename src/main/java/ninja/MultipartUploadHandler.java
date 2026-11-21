@@ -53,6 +53,11 @@ import java.util.regex.Pattern;
 @Register(classes = MultipartUploadHandler.class)
 public class MultipartUploadHandler {
 
+    /**
+     * Names the element of a response which carries the ID of a multipart upload.
+     */
+    private static final String RESPONSE_UPLOAD_ID = "UploadId";
+
     private static final String ERROR_MULTIPART_UPLOAD_DOES_NOT_EXIST =
             "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.";
     private static final String ERROR_INVALID_PART =
@@ -144,7 +149,7 @@ public class MultipartUploadHandler {
         out.beginOutput("InitiateMultipartUploadResult");
         out.property(S3Dispatcher.RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
-        out.property("UploadId", upload.getUploadId());
+        out.property(RESPONSE_UPLOAD_ID, upload.getUploadId());
         out.endOutput();
         responder.signalObjectSuccess(webContext);
     }
@@ -208,7 +213,7 @@ public class MultipartUploadHandler {
         for (MultipartUpload upload : uploads) {
             out.beginObject("Upload");
             out.property("Key", upload.getKey());
-            out.property("UploadId", upload.getUploadId());
+            out.property(RESPONSE_UPLOAD_ID, upload.getUploadId());
             responder.outputOwnerInfo(out, "Initiator");
             responder.outputOwnerInfo(out, "Owner");
             out.property("StorageClass", "STANDARD");
@@ -475,17 +480,20 @@ public class MultipartUploadHandler {
         MultipartUpload.Part stagedPart = null;
         byte[] md5;
         Instant lastModified;
-        Optional<Lock> sourceLock = objectHandler.lockCopySource(webContext, source.get());
-        if (sourceLock.isEmpty()) {
-            return;
-        }
+        long offset = firstByte;
+        long length = lastByte - firstByte + 1;
         try {
-            try (FileInputStream in = new FileInputStream(source.get().getFile())) {
-                ByteStreams.skipFully(in, firstByte);
-                stagedPart = upload.get().stagePart(number.get(), ByteStreams.limit(in, lastByte - firstByte + 1));
-            } finally {
-                sourceLock.get().unlock();
+            Optional<MultipartUpload.Part> copiedPart =
+                    objectHandler.readCopySource(webContext, source.get(), sourceObject -> {
+                        try (FileInputStream in = new FileInputStream(sourceObject.getFile())) {
+                            ByteStreams.skipFully(in, offset);
+                            return upload.get().stagePart(number.get(), ByteStreams.limit(in, length));
+                        }
+                    });
+            if (copiedPart.isEmpty()) {
+                return;
             }
+            stagedPart = copiedPart.get();
 
             // Read from the staged file, as a published part can be replaced or removed by another request at once.
             md5 = stagedPart.md5();
@@ -543,7 +551,7 @@ public class MultipartUploadHandler {
                                  Bucket bucket,
                                  String id,
                                  final String uploadId,
-                                 InputStreamHandler in) throws IOException {
+                                 InputStreamHandler in) {
         // Checked before reading the body, so that a request for an upload which does not exist costs next to nothing.
         if (multipartUploads.find(bucket.getName(), id, uploadId).isEmpty()) {
             in.exhaust();
@@ -712,16 +720,10 @@ public class MultipartUploadHandler {
     private Optional<Tuple<S3ErrorCode, String>> verifyRequestedParts(MultipartUpload upload,
                                                                       List<Tuple<Integer, String>> requestedParts,
                                                                       Map<MultipartUpload.Part, String> parts) {
-        int previousPartNumber = 0;
-        for (Tuple<Integer, String> requestedPart : requestedParts) {
-            if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
-                || requestedPart.getFirst() > MultipartUpload.MAX_PART_NUMBER) {
-                return Optional.of(Tuple.create(S3ErrorCode.InvalidArgument, ERROR_INVALID_PART_NUMBER));
-            }
-            if (requestedPart.getFirst() <= previousPartNumber) {
-                return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
-            }
-            previousPartNumber = requestedPart.getFirst();
+        // All numbers are checked before any part is hashed, so that these errors take precedence.
+        Optional<Tuple<S3ErrorCode, String>> numberError = verifyPartNumbers(requestedParts);
+        if (numberError.isPresent()) {
+            return numberError;
         }
 
         for (Tuple<Integer, String> requestedPart : requestedParts) {
@@ -738,13 +740,34 @@ public class MultipartUploadHandler {
         }
 
         // Only the last part may be smaller than the minimum, which is why this cannot be checked on upload.
-        MultipartUpload.Part lastPart = upload.getPart(previousPartNumber).orElse(null);
+        MultipartUpload.Part lastPart = upload.getPart(requestedParts.getLast().getFirst()).orElse(null);
         for (MultipartUpload.Part part : parts.keySet()) {
             if (!part.equals(lastPart) && part.size() < multipartUploads.getMinPartSize()) {
                 return Optional.of(Tuple.create(S3ErrorCode.EntityTooSmall, ERROR_ENTITY_TOO_SMALL));
             }
         }
 
+        return Optional.empty();
+    }
+
+    /**
+     * Checks that the requested part numbers lie within the range S3 permits, and are given in ascending order.
+     *
+     * @param requestedParts the number and the entity tag of each part, in the order given by the client
+     * @return the error to answer the request with, or an empty optional if the numbers are valid
+     */
+    private Optional<Tuple<S3ErrorCode, String>> verifyPartNumbers(List<Tuple<Integer, String>> requestedParts) {
+        int previousPartNumber = 0;
+        for (Tuple<Integer, String> requestedPart : requestedParts) {
+            if (requestedPart.getFirst() < MultipartUpload.MIN_PART_NUMBER
+                || requestedPart.getFirst() > MultipartUpload.MAX_PART_NUMBER) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidArgument, ERROR_INVALID_PART_NUMBER));
+            }
+            if (requestedPart.getFirst() <= previousPartNumber) {
+                return Optional.of(Tuple.create(S3ErrorCode.InvalidPartOrder, ERROR_INVALID_PART_ORDER));
+            }
+            previousPartNumber = requestedPart.getFirst();
+        }
         return Optional.empty();
     }
 
@@ -864,7 +887,7 @@ public class MultipartUploadHandler {
         out.beginOutput("ListPartsResult");
         out.property(S3Dispatcher.RESPONSE_BUCKET, bucket.getName());
         out.property("Key", id);
-        out.property("UploadId", uploadId);
+        out.property(RESPONSE_UPLOAD_ID, uploadId);
 
         responder.outputOwnerInfo(out, "Initiator");
         responder.outputOwnerInfo(out, "Owner");

@@ -37,6 +37,11 @@ import java.util.regex.Matcher;
 public class RequestAuthenticator {
 
     /**
+     * Names the header, form field or parameter which carries a session token.
+     */
+    private static final String SECURITY_TOKEN = "X-Amz-Security-Token";
+
+    /**
      * Session tokens for UI access.
      * LocalCache handles automatic expiration after 24 hours.
      */
@@ -129,15 +134,15 @@ public class RequestAuthenticator {
         String token = webContext.getHeader("X-Session-Token");
         if (Strings.isEmpty(token)) {
             // Check X-Amz-Security-Token (AWS standard for temporary credentials)
-            token = webContext.getHeader("X-Amz-Security-Token");
+            token = webContext.getHeader(SECURITY_TOKEN);
         }
         if (Strings.isEmpty(token)) {
             // Check as form field (for POST requests)
-            token = webContext.get("X-Amz-Security-Token").asString();
+            token = webContext.get(SECURITY_TOKEN).asString();
         }
         if (Strings.isEmpty(token)) {
             // Also accept the lowercase form field commonly used by AWS clients
-            token = webContext.get("x-amz-security-token").asString(webContext.get("X-Amz-Security-Token").asString());
+            token = webContext.get("x-amz-security-token").asString(webContext.get(SECURITY_TOKEN).asString());
         }
         if (Strings.isEmpty(token)) {
             // Check as query parameter

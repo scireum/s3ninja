@@ -21,6 +21,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.Base64;
 import java.util.regex.Matcher;
 
 /**
@@ -35,6 +36,11 @@ import java.util.regex.Matcher;
  */
 @Register(classes = PostPolicyVerifier.class)
 public class PostPolicyVerifier {
+
+    /**
+     * Names the algorithm signature version 4 derives its keys and signatures with.
+     */
+    private static final String HMAC_SHA256 = "HmacSHA256";
 
     private static final String ALGORITHM_VERSION_4 = "AWS4-HMAC-SHA256";
     /**
@@ -163,12 +169,12 @@ public class PostPolicyVerifier {
 
         try {
             byte[] secretKey = ("AWS4" + storage.getAwsSecretKey()).getBytes(StandardCharsets.UTF_8);
-            byte[] dateKey = hmac("HmacSHA256", secretKey, credentialMatcher.group(2));
-            byte[] regionKey = hmac("HmacSHA256", dateKey, credentialMatcher.group(3));
-            byte[] serviceKey = hmac("HmacSHA256", regionKey, credentialMatcher.group(4));
-            byte[] signingKey = hmac("HmacSHA256", serviceKey, "aws4_request");
+            byte[] dateKey = hmac(HMAC_SHA256, secretKey, credentialMatcher.group(2));
+            byte[] regionKey = hmac(HMAC_SHA256, dateKey, credentialMatcher.group(3));
+            byte[] serviceKey = hmac(HMAC_SHA256, regionKey, credentialMatcher.group(4));
+            byte[] signingKey = hmac(HMAC_SHA256, serviceKey, "aws4_request");
 
-            String expectedSignature = BaseEncoding.base16().lowerCase().encode(hmac("HmacSHA256", signingKey, policy));
+            String expectedSignature = BaseEncoding.base16().lowerCase().encode(hmac(HMAC_SHA256, signingKey, policy));
             return expectedSignature.equals(signature);
         } catch (GeneralSecurityException exception) {
             Exceptions.handle(Storage.LOG, exception);
@@ -179,7 +185,7 @@ public class PostPolicyVerifier {
     private boolean matchesVersion2(String policy, String signature) {
         try {
             byte[] secretKey = storage.getAwsSecretKey().getBytes(StandardCharsets.UTF_8);
-            return BaseEncoding.base64().encode(hmac("HmacSHA1", secretKey, policy)).equals(signature);
+            return Base64.getEncoder().encodeToString(hmac("HmacSHA1", secretKey, policy)).equals(signature);
         } catch (GeneralSecurityException exception) {
             Exceptions.handle(Storage.LOG, exception);
             return false;

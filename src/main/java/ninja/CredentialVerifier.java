@@ -36,6 +36,11 @@ import java.util.regex.Matcher;
 public class CredentialVerifier {
 
     /**
+     * Names the parameter which carries the signature of a URL signed with signature version 4.
+     */
+    private static final String PARAMETER_SIGNATURE_VERSION_4 = "X-Amz-Signature";
+
+    /**
      * Contains the difference S3 tolerates between the time a request was signed at and its own clock.
      */
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(15);
@@ -84,7 +89,7 @@ public class CredentialVerifier {
             return Optional.of(Tuple.create(S3ErrorCode.AccessDenied, ERROR_DATE_MISSING));
         }
 
-        if (webContext.get("X-Amz-Signature").isFilled()) {
+        if (webContext.get(PARAMETER_SIGNATURE_VERSION_4).isFilled()) {
             // A value which is missing or no number is read as -1, and is refused like a negative one.
             long validSeconds = webContext.get("X-Amz-Expires").asLong(-1);
             if (validSeconds < 0 || validSeconds > MAX_PRESIGNED_SECONDS) {
@@ -110,7 +115,7 @@ public class CredentialVerifier {
      */
     private boolean isVersion2UrlWithoutExpiry(WebContext webContext) {
         return webContext.get("Signature").isFilled()
-               && webContext.get("X-Amz-Signature").isEmptyString()
+               && webContext.get(PARAMETER_SIGNATURE_VERSION_4).isEmptyString()
                && webContext.get("Expires").asLong(-1) < 0;
     }
 
@@ -120,7 +125,7 @@ public class CredentialVerifier {
      * The time is part of what is signed, so no signature can be computed for such a request.
      */
     private boolean isVersion4WithoutDate(WebContext webContext) {
-        boolean version4 = webContext.get("X-Amz-Signature").isFilled()
+        boolean version4 = webContext.get(PARAMETER_SIGNATURE_VERSION_4).isFilled()
                            || Aws4HashCalculator.AWS_AUTH4_PATTERN.matcher(webContext.getHeaderValue(HttpHeaderNames.AUTHORIZATION)
                                                                                      .asString("")).matches();
         return version4 && parseAmazonDate(webContext.getHeaderValue("x-amz-date")
@@ -182,7 +187,7 @@ public class CredentialVerifier {
      * with version 2 states the second at which it expires.
      */
     private boolean isExpiredPresignedUrl(WebContext webContext, Instant now) {
-        if (webContext.get("X-Amz-Signature").isFilled()) {
+        if (webContext.get(PARAMETER_SIGNATURE_VERSION_4).isFilled()) {
             Optional<Instant> signedAt = parseAmazonDate(webContext.get("X-Amz-Date").asString());
             long validSeconds = webContext.get("X-Amz-Expires").asLong(-1);
             return signedAt.isPresent() && validSeconds >= 0 && now.isAfter(signedAt.get().plusSeconds(validSeconds));
@@ -216,7 +221,7 @@ public class CredentialVerifier {
 
         try {
             return Optional.of(LocalDateTime.parse(date, AMAZON_DATE_FORMAT).toInstant(ZoneOffset.UTC));
-        } catch (DateTimeParseException exception) {
+        } catch (DateTimeParseException _) {
             return Optional.empty();
         }
     }

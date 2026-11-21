@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -42,15 +43,15 @@ public class PresignedPostService {
     private Storage storage;
 
     /**
-     * Generate presigned POST DTO and concatenate all the below fields.
-     * "key"
-     * "policy"
-     * "x-amz-algorithm"
-     * "x-amz-credential"
-     * "x-amz-date"
-     * "x-amz-signature",
-     * "x-amz-security-token"
+     * Generates the fields of a browser-based upload, signed with signature version 4.
+     * <p>
+     * The fields are <tt>key</tt>, <tt>policy</tt>, <tt>x-amz-algorithm</tt>, <tt>x-amz-credential</tt>,
+     * <tt>x-amz-date</tt> and <tt>x-amz-signature</tt>, plus <tt>x-amz-security-token</tt> if the request carries a
+     * session token at all, even an empty one. As for S3, the signature covers the policy in its Base64 encoding.
      *
+     * @param request what to generate the upload for: bucket, key, region, validity and credentials
+     * @return the URL to post to, the fields to send along, and, for inspection, the policy in both encodings and its
+     * signature
      */
     public PresignedPostResponse generate(PresignedPostRequest request) {
         validate(request);
@@ -63,7 +64,7 @@ public class PresignedPostService {
 
         ObjectNode policyJson = buildPolicy(request, credential, xAmzDate, expiration);
         String policyString = policyJson.toString();
-        String policyBase64 = BaseEncoding.base64().encode(policyString.getBytes(StandardCharsets.UTF_8));
+        String policyBase64 = Base64.getEncoder().encodeToString(policyString.getBytes(StandardCharsets.UTF_8));
         // As for S3, the policy is signed the way it is sent, i.e. in its Base64 encoding.
         String signature = signPolicy(policyBase64.getBytes(StandardCharsets.UTF_8), date, request.region());
 

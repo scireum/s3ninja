@@ -336,14 +336,26 @@ public class MultipartUpload {
         try (FileOutputStream outStream = new FileOutputStream(assembledFile);
              FileChannel out = outStream.getChannel()) {
             for (Part part : parts) {
-                try (FileInputStream inStream = new FileInputStream(part.file());
-                     FileChannel in = inStream.getChannel()) {
-                    long position = 0;
-                    long size = in.size();
-                    while (position < size) {
-                        position += in.transferTo(position, size - position, out);
-                    }
-                }
+                appendPart(part, out);
+            }
+        }
+    }
+
+    /**
+     * Appends the content of the given part to the assembled object.
+     * <p>
+     * A single transfer may move fewer bytes than asked for, so the part is transferred until all of it is written.
+     *
+     * @param part the part to append
+     * @param out  the channel of the assembled object, positioned at its end
+     * @throws IOException if the part cannot be read or the object cannot be written
+     */
+    private static void appendPart(Part part, FileChannel out) throws IOException {
+        try (FileInputStream inStream = new FileInputStream(part.file()); FileChannel in = inStream.getChannel()) {
+            long position = 0;
+            long size = in.size();
+            while (position < size) {
+                position += in.transferTo(position, size - position, out);
             }
         }
     }

@@ -145,15 +145,7 @@ public class MultipartUploads implements Startable, EveryHour {
             }
 
             for (Bucket bucket : storage.getBuckets()) {
-                File[] assemblingFiles = bucket.getFolder()
-                                               .listFiles(file -> isAssemblingFile(file)
-                                                                  && file.lastModified()
-                                                                     < abandonedBefore.toEpochMilli());
-                if (assemblingFiles != null) {
-                    for (File assemblingFile : assemblingFiles) {
-                        sirius.kernel.commons.Files.delete(assemblingFile);
-                    }
-                }
+                removeAssemblingFiles(bucket, abandonedBefore);
             }
         } catch (Exception exception) {
             // Leftovers only waste space, so failing to remove them must not keep the system from starting.
@@ -183,6 +175,20 @@ public class MultipartUploads implements Startable, EveryHour {
             }
         } catch (Exception exception) {
             Exceptions.handle(Storage.LOG, exception);
+        }
+    }
+
+    /**
+     * Removes the files of the given bucket into which objects were received or assembled, but never published.
+     */
+    private void removeAssemblingFiles(Bucket bucket, Instant abandonedBefore) {
+        File[] assemblingFiles = bucket.getFolder()
+                                       .listFiles(file -> isAssemblingFile(file)
+                                                          && file.lastModified() < abandonedBefore.toEpochMilli());
+        if (assemblingFiles != null) {
+            for (File assemblingFile : assemblingFiles) {
+                sirius.kernel.commons.Files.delete(assemblingFile);
+            }
         }
     }
 

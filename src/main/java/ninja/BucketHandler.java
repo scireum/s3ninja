@@ -107,130 +107,162 @@ public class BucketHandler {
         }
 
         HttpMethod method = webContext.getRequest().method();
-
         if (HttpMethod.HEAD.equals(method)) {
-            if (bucket.exists()) {
-                responder.signalObjectSuccess(webContext);
-                webContext.respondWith().status(HttpResponseStatus.OK);
-            } else {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.NoSuchBucket,
-                                            S3Dispatcher.ERROR_BUCKET_DOES_NOT_EXIST);
-            }
+            headBucket(webContext, bucket);
         } else if (HttpMethod.GET.equals(method)) {
-            if (bucket.exists()) {
-                listObjects(webContext, bucket);
-            } else {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.NoSuchBucket,
-                                            S3Dispatcher.ERROR_BUCKET_DOES_NOT_EXIST);
-            }
+            getBucket(webContext, bucket);
         } else if (HttpMethod.DELETE.equals(method)) {
-            if (!bucket.exists()) {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.NoSuchBucket,
-                                            S3Dispatcher.ERROR_BUCKET_DOES_NOT_EXIST);
-            } else {
-                if (bucket.countObjects("") > 0) {
-                    responder.signalObjectError(webContext,
-                                                bucketName,
-                                                null,
-                                                S3ErrorCode.BucketNotEmpty,
-                                                ERROR_BUCKET_IS_NOT_EMPTY);
-                    return;
-                }
-
-                if (!bucket.delete()) {
-                    responder.signalObjectError(webContext,
-                                                bucketName,
-                                                null,
-                                                S3ErrorCode.InternalError,
-                                                S3Dispatcher.ERROR_FILE_SYSTEM_ACCESS);
-                    return;
-                }
-                multipartUploads.abortAll(bucketName);
-
-                responder.signalObjectSuccess(webContext);
-                webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
-            }
+            deleteBucket(webContext, bucket);
         } else if (HttpMethod.POST.equals(method)) {
-            String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
-            if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) {
-                // Start multipart upload
-                if (bucket.exists()) {
-                    String objectKey = extractKeyFromMultipartForm(webContext);
-                    if (!Strings.isFilled(objectKey)) {
-                        responder.signalObjectError(webContext,
-                                                    bucketName,
-                                                    null,
-                                                    S3ErrorCode.InvalidRequest,
-                                                    "Please provide an object key.");
-                        return;
-                    }
-                    multipartUploadHandler.startMultipartUpload(webContext, bucket, objectKey);
-                } else {
-                    responder.signalObjectError(webContext,
-                                                bucketName,
-                                                null,
-                                                S3ErrorCode.InternalError,
-                                                "Presigned POST not supported.");
-                }
-            } else {
-                // Traditional bucket POST operations (creating bucket)
-                if (bucket.exists()) {
-                    responder.signalObjectError(webContext,
-                                                bucketName,
-                                                null,
-                                                S3ErrorCode.BucketAlreadyOwnedByYou,
-                                                ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
-                }
-            }
+            postToBucket(webContext, bucket);
         } else if (HttpMethod.PUT.equals(method)) {
-            // S3 refuses to create a bucket which its owner has created already, except in its oldest region. There
-            // it answers with success for legacy compatibility, and resets the access control list of the bucket.
-            boolean recreatedInLegacyRegion = bucket.exists() && credentialVerifier.determineRegion(webContext)
-                                                                                   .filter(LEGACY_REGION::equals)
-                                                                                   .isPresent();
-            if (bucket.exists() && !recreatedInLegacyRegion) {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.BucketAlreadyOwnedByYou,
-                                            ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
-                return;
-            }
-
-            if (recreatedInLegacyRegion ? !bucket.makePrivate() : !bucket.create()) {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.InternalError,
-                                            S3Dispatcher.ERROR_FILE_SYSTEM_ACCESS);
-                return;
-            }
-
-            // in order to allow creation of public buckets, we support a single canned access control list
-            String cannedAccessControlList = webContext.getHeader("x-amz-acl");
-            if (Strings.areEqual(cannedAccessControlList, "public-read-write") && !bucket.makePublic()) {
-                responder.signalObjectError(webContext,
-                                            bucketName,
-                                            null,
-                                            S3ErrorCode.InternalError,
-                                            S3Dispatcher.ERROR_FILE_SYSTEM_ACCESS);
-                return;
-            }
-
-            responder.signalObjectSuccess(webContext);
-            webContext.respondWith().status(HttpResponseStatus.OK);
+            createBucket(webContext, bucket);
         } else {
             responder.signalMethodNotAllowed(webContext, bucketName, null);
         }
+    }
+
+    /**
+     * Handles HEAD /bucket
+     */
+    private void headBucket(WebContext webContext, Bucket bucket) {
+        if (bucket.exists()) {
+            responder.signalObjectSuccess(webContext);
+            webContext.respondWith().status(HttpResponseStatus.OK);
+        } else {
+            signalNoSuchBucket(webContext, bucket);
+        }
+    }
+
+    /**
+     * Handles GET /bucket
+     */
+    private void getBucket(WebContext webContext, Bucket bucket) {
+        if (bucket.exists()) {
+            listObjects(webContext, bucket);
+        } else {
+            signalNoSuchBucket(webContext, bucket);
+        }
+    }
+
+    /**
+     * Handles DELETE /bucket
+     * <p>
+     * Only an empty bucket is deleted, along with the multipart uploads which are still open for it.
+     */
+    private void deleteBucket(WebContext webContext, Bucket bucket) {
+        if (!bucket.exists()) {
+            signalNoSuchBucket(webContext, bucket);
+            return;
+        }
+        if (bucket.countObjects("") > 0) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.BucketNotEmpty,
+                                        ERROR_BUCKET_IS_NOT_EMPTY);
+            return;
+        }
+        if (!bucket.delete()) {
+            signalFileSystemError(webContext, bucket);
+            return;
+        }
+        multipartUploads.abortAll(bucket.getName());
+
+        responder.signalObjectSuccess(webContext);
+        webContext.respondWith().status(HttpResponseStatus.NO_CONTENT);
+    }
+
+    /**
+     * Handles POST /bucket which is no browser-based upload.
+     * <p>
+     * A form names the object to start a multipart upload for. Any other POST would create the bucket, which is
+     * refused if it exists already.
+     */
+    private void postToBucket(WebContext webContext, Bucket bucket) {
+        String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
+        boolean isForm = contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data");
+        if (!isForm) {
+            if (bucket.exists()) {
+                responder.signalObjectError(webContext,
+                                            bucket.getName(),
+                                            null,
+                                            S3ErrorCode.BucketAlreadyOwnedByYou,
+                                            ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
+            }
+            return;
+        }
+
+        if (!bucket.exists()) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.InternalError,
+                                        "Presigned POST not supported.");
+            return;
+        }
+
+        String objectKey = extractKeyFromMultipartForm(webContext);
+        if (!Strings.isFilled(objectKey)) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.InvalidRequest,
+                                        "Please provide an object key.");
+            return;
+        }
+        multipartUploadHandler.startMultipartUpload(webContext, bucket, objectKey);
+    }
+
+    /**
+     * Handles PUT /bucket
+     * <p>
+     * S3 refuses to create a bucket which its owner has created already, except in its oldest region. There it
+     * answers with success for legacy compatibility, and resets the access control list of the bucket.
+     */
+    private void createBucket(WebContext webContext, Bucket bucket) {
+        boolean recreatedInLegacyRegion = bucket.exists() && credentialVerifier.determineRegion(webContext)
+                                                                               .filter(LEGACY_REGION::equals)
+                                                                               .isPresent();
+        if (bucket.exists() && !recreatedInLegacyRegion) {
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.BucketAlreadyOwnedByYou,
+                                        ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
+            return;
+        }
+
+        if (recreatedInLegacyRegion ? !bucket.makePrivate() : !bucket.create()) {
+            signalFileSystemError(webContext, bucket);
+            return;
+        }
+
+        // in order to allow creation of public buckets, we support a single canned access control list
+        String cannedAccessControlList = webContext.getHeader("x-amz-acl");
+        if (Strings.areEqual(cannedAccessControlList, "public-read-write") && !bucket.makePublic()) {
+            signalFileSystemError(webContext, bucket);
+            return;
+        }
+
+        responder.signalObjectSuccess(webContext);
+        webContext.respondWith().status(HttpResponseStatus.OK);
+    }
+
+    private void signalNoSuchBucket(WebContext webContext, Bucket bucket) {
+        responder.signalObjectError(webContext,
+                                    bucket.getName(),
+                                    null,
+                                    S3ErrorCode.NoSuchBucket,
+                                    S3Dispatcher.ERROR_BUCKET_DOES_NOT_EXIST);
+    }
+
+    private void signalFileSystemError(WebContext webContext, Bucket bucket) {
+        responder.signalObjectError(webContext,
+                                    bucket.getName(),
+                                    null,
+                                    S3ErrorCode.InternalError,
+                                    S3Dispatcher.ERROR_FILE_SYSTEM_ACCESS);
     }
 
     private String extractKeyFromMultipartForm(WebContext webContext) {

@@ -1,8 +1,10 @@
 name: Publish Docker Image
 on:
   push:
+    # Only version tags are published, as the image also moves latest and the job announces a new version. Other tags,
+    # such as the sonarqube-* tags which merely trigger an analysis, publish nothing.
     tags:
-      - '**'
+      - '*.*.*'
 
 jobs:
   publish:

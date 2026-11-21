@@ -8,6 +8,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.multipart.HttpData;
 import ninja.Bucket;
 import ninja.PostPolicyVerifier;
+import ninja.S3Policy;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
@@ -26,6 +27,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Handles presigned POST uploads.
@@ -35,6 +38,12 @@ import java.util.Map;
  */
 @Register(name = "presigned-post")
 public class PresignedPostQueryProcessor implements S3QueryProcessor {
+
+    /**
+     * Lists the form fields which describe the upload itself, and are therefore not stored along with the object.
+     */
+    private static final Set<String> FIELDS_NOT_STORED =
+            Set.of("policy", "X-Amz-Signature", "X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date", "key", "file");
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
@@ -48,55 +57,15 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                              @Nullable String key,
                              @Nonnull String query) {
         try {
-            // Extract key from form data
             String objectKey = extractKeyFromMultipartForm(webContext);
-            if (Strings.isEmpty(objectKey)) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 null,
-                                                 S3ErrorCode.InvalidRequest,
-                                                 "Missing key in form data");
-                return;
-            }
-            if (!StoredObject.isStorableKey(objectKey)) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 objectKey,
-                                                 S3ErrorCode.KeyTooLongError,
-                                                 "Your key is too long");
-                return;
-            }
-
-            // Nothing but its policy authorizes this request, as it has been let through without a signature of
-            // its own.
-            PostPolicyVerifier.Result verification = postPolicyVerifier.verify(webContext, bucket, objectKey);
-            if (!verification.isValid()) {
-                errorSynthesizer.synthesiseError(webContext,
-                                                 bucket.getName(),
-                                                 objectKey,
-                                                 verification.errorCode(),
-                                                 verification.message());
+            Optional<S3Policy> policy = verifyForm(webContext, bucket, objectKey);
+            if (policy.isEmpty()) {
                 return;
             }
 
             // Obtain file content: getContent() for raw body, or multipart "file" part when getContent() is null
-            InputStream contentStream = null;
             HttpData filePart = webContext.getHttpData("file");
-            if (webContext.getContent() != null) {
-                contentStream = webContext.getContent();
-            } else if (filePart != null) {
-                // Try to get file first, but fall back to ByteBuf if getFile() throws IOException
-                // (happens when data is stored in memory, not as a file)
-                try {
-                    File partFile = filePart.getFile();
-                    if (partFile != null && partFile.exists()) {
-                        contentStream = new FileInputStream(partFile);
-                    }
-                } catch (IOException _) {
-                    // Data is not stored in a file, will use getByteBuf() later
-                }
-            }
-
+            InputStream contentStream = webContext.getContent() != null ? webContext.getContent() : openFile(filePart);
             if (contentStream == null && (filePart == null || filePart.getByteBuf() == null)) {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
@@ -107,7 +76,7 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             }
 
             long contentSize = filePart != null ? filePart.length() : webContext.getContentSize();
-            S3ErrorCode sizeError = postPolicyVerifier.verifySize(verification.policy(), contentSize);
+            S3ErrorCode sizeError = postPolicyVerifier.verifySize(policy.get(), contentSize);
             if (sizeError != null) {
                 errorSynthesizer.synthesiseError(webContext,
                                                  bucket.getName(),
@@ -127,68 +96,11 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                 return;
             }
 
-            // Create object and store content
             StoredObject object = bucket.getObject(objectKey);
+            writeContent(object, contentStream, filePart);
+            object.setProperties(collectProperties(webContext, object));
 
-            try (FileOutputStream out = new FileOutputStream(object.getFile())) {
-                if (contentStream != null) {
-                    ByteStreams.copy(contentStream, out);
-                } else {
-                    ByteBuf buf = filePart.getByteBuf();
-                    if (buf != null && buf.readableBytes() > 0) {
-                        buf.getBytes(buf.readerIndex(), out, buf.readableBytes());
-                    }
-                }
-            } finally {
-                if (contentStream instanceof FileInputStream) {
-                    try {
-                        contentStream.close();
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-
-            // Calculate MD5 hash and ETag
-            byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
-            String etag = BaseEncoding.base16().encode(hash).toLowerCase();
-
-            // Collect properties from form data
-            Map<String, String> properties = Maps.newHashMap();
-            properties.put("ETag", etag);
-
-            // Set content type if provided
-            String contentType = webContext.get("Content-Type").asString();
-            if (Strings.isFilled(contentType)) {
-                properties.put("Content-Type", contentType);
-            }
-
-            // Store additional form parameters as metadata (excluding AWS and internal parameters)
-            for (String paramName : webContext.getParameterNames()) {
-                if (!"policy".equals(paramName)
-                    && !"X-Amz-Signature".equals(paramName)
-                    && !"X-Amz-Algorithm".equals(paramName)
-                    && !"X-Amz-Credential".equals(paramName)
-                    && !"X-Amz-Date".equals(paramName)
-                    && !"key".equals(paramName)
-                    && !"file".equals(paramName)) {
-                    String value = webContext.get(paramName).asString();
-                    if (Strings.isFilled(value)) {
-                        properties.put(paramName, value);
-                    }
-                }
-            }
-
-            object.setProperties(properties);
-
-            // The object is stored at this point, so the request has succeeded whatever status the form asks for. As
-            // for S3, a value which is not valid is answered like none at all, with 204.
-            HttpResponseStatus status = switch (webContext.get("success_action_status").asString("204")) {
-                case "200" -> HttpResponseStatus.OK;
-                case "201" -> HttpResponseStatus.CREATED;
-                default -> HttpResponseStatus.NO_CONTENT;
-            };
-
-            webContext.respondWith().status(status);
+            webContext.respondWith().status(determineSuccessStatus(webContext));
         } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
@@ -197,6 +109,150 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
                                              "Internal error processing POST upload: " + Exceptions.handle(exception)
                                                                                                    .getMessage());
         }
+    }
+
+    /**
+     * Verifies the key and the policy of the form, and answers the request with an error if they are not in order.
+     *
+     * @param webContext the request carrying the form
+     * @param bucket     the bucket to upload into
+     * @param objectKey  the key named by the form, if any
+     * @return the policy of the form, or an empty optional if the request has been answered with an error
+     */
+    private Optional<S3Policy> verifyForm(WebContext webContext, Bucket bucket, @Nullable String objectKey) {
+        if (Strings.isEmpty(objectKey)) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             null,
+                                             S3ErrorCode.InvalidRequest,
+                                             "Missing key in form data");
+            return Optional.empty();
+        }
+        if (!StoredObject.isStorableKey(objectKey)) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             objectKey,
+                                             S3ErrorCode.KeyTooLongError,
+                                             "Your key is too long");
+            return Optional.empty();
+        }
+
+        // Nothing but its policy authorizes this request, as it has been let through without a signature of its own.
+        PostPolicyVerifier.Result verification = postPolicyVerifier.verify(webContext, bucket, objectKey);
+        if (!verification.isValid()) {
+            errorSynthesizer.synthesiseError(webContext,
+                                             bucket.getName(),
+                                             objectKey,
+                                             verification.errorCode(),
+                                             verification.message());
+            return Optional.empty();
+        }
+        return Optional.of(verification.policy());
+    }
+
+    /**
+     * Opens the file in which the uploaded part of the form has been stored.
+     *
+     * @param filePart the uploaded part of the form, if any
+     * @return the content of the part, or <tt>null</tt> if there is no part or it is kept in memory instead of a file
+     */
+    @Nullable
+    private InputStream openFile(@Nullable HttpData filePart) {
+        if (filePart == null) {
+            return null;
+        }
+        try {
+            File partFile = filePart.getFile();
+            if (partFile != null && partFile.exists()) {
+                return new FileInputStream(partFile);
+            }
+        } catch (IOException _) {
+            // Data is not stored in a file, will use getByteBuf() later
+        }
+        return null;
+    }
+
+    /**
+     * Writes the uploaded content into the file of the object.
+     *
+     * @param object        the object to write
+     * @param contentStream the content as stream, or <tt>null</tt> to take it from the buffer of the part
+     * @param filePart      the uploaded part of the form, whose buffer holds the content if there is no stream
+     * @throws IOException if the content cannot be written
+     */
+    private void writeContent(StoredObject object, @Nullable InputStream contentStream, HttpData filePart)
+            throws IOException {
+        try (FileOutputStream out = new FileOutputStream(object.getFile())) {
+            if (contentStream != null) {
+                ByteStreams.copy(contentStream, out);
+            } else {
+                ByteBuf buf = filePart.getByteBuf();
+                if (buf != null && buf.readableBytes() > 0) {
+                    buf.getBytes(buf.readerIndex(), out, buf.readableBytes());
+                }
+            }
+        } finally {
+            if (contentStream instanceof FileInputStream) {
+                closeQuietly(contentStream);
+            }
+        }
+    }
+
+    private void closeQuietly(InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException exception) {
+            // Closing the file of an uploaded part cannot fail in a way which matters once its content is stored.
+            Exceptions.ignore(exception);
+        }
+    }
+
+    /**
+     * Collects the properties to store along with the uploaded object: its entity tag, its content type and the
+     * further fields of the form.
+     *
+     * @param webContext the request carrying the form
+     * @param object     the object which has been written
+     * @return the properties of the object
+     */
+    private Map<String, String> collectProperties(WebContext webContext, StoredObject object) {
+        byte[] hash = Hasher.md5().hashFile(object.getFile()).toHash();
+        String etag = BaseEncoding.base16().encode(hash).toLowerCase();
+
+        Map<String, String> properties = Maps.newHashMap();
+        properties.put("ETag", etag);
+
+        // Set content type if provided
+        String contentType = webContext.get("Content-Type").asString();
+        if (Strings.isFilled(contentType)) {
+            properties.put("Content-Type", contentType);
+        }
+
+        // Store additional form parameters as metadata (excluding AWS and internal parameters)
+        for (String paramName : webContext.getParameterNames()) {
+            // Checked first, so that the uploaded file is never read as the value of a field.
+            if (!FIELDS_NOT_STORED.contains(paramName)) {
+                String value = webContext.get(paramName).asString();
+                if (Strings.isFilled(value)) {
+                    properties.put(paramName, value);
+                }
+            }
+        }
+        return properties;
+    }
+
+    /**
+     * Determines the status to answer a successful upload with.
+     * <p>
+     * The object is stored at this point, so the request has succeeded whatever status the form asks for. As for S3,
+     * a value which is not valid is answered like none at all, with 204.
+     */
+    private HttpResponseStatus determineSuccessStatus(WebContext webContext) {
+        return switch (webContext.get("success_action_status").asString("204")) {
+            case "200" -> HttpResponseStatus.OK;
+            case "201" -> HttpResponseStatus.CREATED;
+            default -> HttpResponseStatus.NO_CONTENT;
+        };
     }
 
     /**

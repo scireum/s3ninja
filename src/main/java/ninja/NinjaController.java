@@ -184,23 +184,7 @@ public class NinjaController extends BasicController {
 
         // handle /ui/[bucket]?create
         if (webContext.hasParameter("create")) {
-            assertPostRequest(webContext);
-
-            if (bucket.exists()) {
-                UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
-                webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
-                return;
-            }
-
-            if (!bucket.create()) {
-                throw Exceptions.createHandled()
-                                .to(Storage.LOG)
-                                .withDirectMessage("Failed creating bucket. Missing file system permission?")
-                                .handle();
-            }
-
-            UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
-            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            createBucket(webContext, bucket);
             return;
         }
 
@@ -212,12 +196,7 @@ public class NinjaController extends BasicController {
         }
 
         // we only accept known paths below /ui as return address
-        String address = webContext.getParameter("return");
-        if (Strings.areEqual(address, "/ui") || Strings.areEqual(address, "/ui/") || Strings.areEqual(address, "ui")) {
-            address = "/ui";
-        } else {
-            address = "/ui/" + bucket.getEncodedName();
-        }
+        String address = determineReturnAddress(webContext, bucket);
 
         // handle /ui/[bucket]?make-public
         if (webContext.hasParameter("make-public")) {
@@ -454,6 +433,42 @@ public class NinjaController extends BasicController {
                       .property("message", handled.getMessage())
                       .endResult();
         }
+    }
+
+    /**
+     * Handles <tt>/ui/[bucket]?create</tt>, which creates the bucket unless it exists already.
+     */
+    private void createBucket(WebContext webContext, Bucket bucket) {
+        assertPostRequest(webContext);
+
+        if (bucket.exists()) {
+            UserContext.message(Message.error().withTextMessage("Bucket does already exist."));
+            webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+            return;
+        }
+
+        if (!bucket.create()) {
+            throw Exceptions.createHandled()
+                            .to(Storage.LOG)
+                            .withDirectMessage("Failed creating bucket. Missing file system permission?")
+                            .handle();
+        }
+
+        UserContext.message(Message.info().withTextMessage("Bucket successfully created."));
+        webContext.respondWith().redirectTemporarily("/ui/" + bucket.getEncodedName());
+    }
+
+    /**
+     * Determines where to return to after changing a bucket.
+     * <p>
+     * Only known paths below <tt>/ui</tt> are accepted: the list of buckets, or the bucket itself.
+     */
+    private String determineReturnAddress(WebContext webContext, Bucket bucket) {
+        String address = webContext.getParameter("return");
+        if (Strings.areEqual(address, "/ui") || Strings.areEqual(address, "/ui/") || Strings.areEqual(address, "ui")) {
+            return "/ui";
+        }
+        return "/ui/" + bucket.getEncodedName();
     }
 
     /**

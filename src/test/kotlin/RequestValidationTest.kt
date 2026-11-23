@@ -487,7 +487,6 @@ class RequestValidationTest {
             val headers = mapOf("Content-Type" to "text/plain")
 
             assertEquals("PreconditionFailed", errorCodeOf("POST", "/$BUCKET?noAuth=1", headers))
-            // A bucket which does not exist got no answer at all.
             assertEquals("NoSuchBucket", errorCodeOf("POST", "/missing-bucket?noAuth=1", headers))
 
             cleanupBuckets(client, BUCKET)

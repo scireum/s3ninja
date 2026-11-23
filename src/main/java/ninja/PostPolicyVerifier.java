@@ -9,6 +9,7 @@
 package ninja;
 
 import com.google.common.io.BaseEncoding;
+import io.netty.handler.codec.http.multipart.Attribute;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import io.netty.handler.codec.http.multipart.InterfaceHttpPostRequestDecoder;
 import ninja.errors.S3ErrorCode;
@@ -25,10 +26,10 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 
 /**
@@ -178,19 +179,36 @@ public class PostPolicyVerifier {
     }
 
     /**
-     * Reads a field of a form, ignoring it if it only comes after the file, as S3 does.
+     * Reads a field of a form, as S3 does: names are compared without regard to case, and only the first field of
+     * that name before the file counts, as every field after the file is ignored.
      * <p>
-     * Parameters of the query are read as well, as a form may also be sent as the query of an upload.
+     * Parameters of the query are read if the form has no such field, as a form may also be sent as the query of an
+     * upload.
      *
      * @param webContext the request carrying the form
      * @param name       the name of the field
-     * @return the value of the field, which is empty if the form has no such field before its file
+     * @return the value of the field, which is empty if neither the form before its file nor the query has one
      */
     public static Value readFormField(WebContext webContext, String name) {
-        if (determineFieldsAfterFile(webContext).contains(name)) {
-            return Value.EMPTY;
+        InterfaceHttpPostRequestDecoder decoder = webContext.getPostDecoder();
+        if (decoder == null) {
+            return webContext.get(name);
         }
-        return webContext.get(name);
+        try {
+            for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
+                if (FIELD_FILE.equalsIgnoreCase(data.getName())) {
+                    break;
+                }
+                if (data instanceof Attribute attribute && name.equalsIgnoreCase(attribute.getName())) {
+                    return Value.of(attribute.getValue());
+                }
+            }
+        } catch (Exception exception) {
+            // A form which cannot be decoded is refused when its fields are read.
+            Exceptions.ignore(exception);
+        }
+        // The body joins all fields of a name, including those after the file, so it may only be asked for the query.
+        return determineFieldsAfterFile(webContext).contains(name) ? Value.EMPTY : webContext.get(name);
     }
 
     /**
@@ -200,7 +218,8 @@ public class PostPolicyVerifier {
      * no condition, and are not stored along with the object.
      *
      * @param webContext the request carrying the form
-     * @return the names of the fields which only come after the file, or an empty set if the request is no form
+     * @return the names of the fields which only come after the file, compared without regard to case, or an empty
+     * set if the request is no form
      */
     public static Set<String> determineFieldsAfterFile(WebContext webContext) {
         InterfaceHttpPostRequestDecoder decoder = webContext.getPostDecoder();
@@ -208,14 +227,14 @@ public class PostPolicyVerifier {
             return Set.of();
         }
 
-        Set<String> fieldsBeforeFile = new HashSet<>();
-        Set<String> fieldsAfterFile = new HashSet<>();
+        Set<String> fieldsBeforeFile = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> fieldsAfterFile = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         boolean fileSeen = false;
         try {
             for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
                 if (fileSeen) {
                     fieldsAfterFile.add(data.getName());
-                } else if (FIELD_FILE.equals(data.getName())) {
+                } else if (FIELD_FILE.equalsIgnoreCase(data.getName())) {
                     fileSeen = true;
                 } else {
                     fieldsBeforeFile.add(data.getName());
@@ -226,7 +245,7 @@ public class PostPolicyVerifier {
             Exceptions.ignore(exception);
             return Set.of();
         }
-        fieldsAfterFile.removeAll(fieldsBeforeFile);
+        fieldsAfterFile.removeIf(fieldsBeforeFile::contains);
         return fieldsAfterFile;
     }
 

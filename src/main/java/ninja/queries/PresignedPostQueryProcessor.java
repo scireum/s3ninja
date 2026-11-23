@@ -268,7 +268,7 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
         for (String paramName : webContext.getParameterNames()) {
             // Checked first, so that the uploaded file is never read as the value of a field.
             if (!FIELDS_NOT_STORED.contains(paramName) && !fieldsAfterFile.contains(paramName)) {
-                String value = webContext.get(paramName).asString();
+                String value = PostPolicyVerifier.readFormField(webContext, paramName).asString();
                 if (Strings.isFilled(value)) {
                     properties.put(paramName, value);
                 }

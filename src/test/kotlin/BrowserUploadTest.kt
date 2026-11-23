@@ -351,6 +351,30 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Fields after the file are ignored whatever the case of their names`() {
+        val late = mapOf("content-type" to "text/html", "Success_Action_Status" to "201")
+        val answer = postFormForAnswer("/$BUCKET", signedFields(KEY), late)
+
+        assertEquals(204, answer.status)
+        val contentType =
+            createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.contentType() }
+        assertTrue(contentType != "text/html", contentType)
+    }
+
+    @Test
+    fun `Field repeated after the file keeps the value it has before the file`() {
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
+        fields["x-amz-meta-color"] = "blue"
+        val late = mapOf("key" to "other.txt", "x-amz-meta-color" to "red")
+
+        assertEquals(204, postFormForAnswer("/$BUCKET", fields, late).status)
+        assertEquals(CONTENT, readObject(KEY))
+        val metadata = createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.metadata() }
+        assertEquals("blue", metadata["color"])
+        assertFailsWith<S3Exception> { readObject("other.txt") }
+    }
+
+    @Test
     fun `Form with fields its policy covers or which are to be ignored is accepted`() {
         val covered = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
         covered["x-amz-meta-color"] = "blue"

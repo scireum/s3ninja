@@ -339,7 +339,42 @@ public class ObjectHandler {
             return;
         }
 
-        String etag;
+        Optional<String> etag = copyIntoObject(webContext, bucket, key, sourceObject, object, replaceMetadata);
+        if (etag.isEmpty()) {
+            return;
+        }
+
+        XMLStructuredOutput structuredOutput =
+                webContext.respondWith().addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag.get())).xml();
+        structuredOutput.beginOutput("CopyObjectResult");
+        structuredOutput.beginObject("LastModified");
+        structuredOutput.text(S3Dispatcher.ISO8601_INSTANT.format(object.getLastModifiedInstant()));
+        structuredOutput.endObject();
+        structuredOutput.beginObject(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
+        structuredOutput.text(quoteEtag(etag.get()));
+        structuredOutput.endObject();
+        structuredOutput.endOutput();
+        responder.signalObjectSuccess(webContext);
+    }
+
+    /**
+     * Copies the source object of a copy request into the target object, if the conditions of the request permit.
+     *
+     * @param webContext      the context describing the current request
+     * @param bucket          the bucket of the target object
+     * @param key             the key of the target object
+     * @param sourceObject    the object to copy from
+     * @param object          the object to copy into
+     * @param replaceMetadata whether the metadata is taken from the request instead of from the source
+     * @return the entity tag of the copy, without quotes, or an empty optional if the request has been answered with
+     * an error
+     */
+    private Optional<String> copyIntoObject(WebContext webContext,
+                                            Bucket bucket,
+                                            String key,
+                                            StoredObject sourceObject,
+                                            StoredObject object,
+                                            boolean replaceMetadata) throws IOException {
         File copiedFile = new File(bucket.getFolder(), "$" + UUID.randomUUID() + RECEIVING_FILE_SUFFIX);
         try {
             Optional<Map<String, String>> copiedProperties = readCopySource(webContext, sourceObject, lockedSource -> {
@@ -353,34 +388,21 @@ public class ObjectHandler {
                 return properties;
             });
             if (copiedProperties.isEmpty()) {
-                return;
+                return Optional.empty();
             }
             Map<String, String> properties = copiedProperties.get();
-            etag = properties.get(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
-
             if (!replaceIfPermitted(webContext, object, copiedFile, properties)) {
                 responder.signalObjectError(webContext,
                                             bucket.getName(),
                                             key,
                                             S3ErrorCode.PreconditionFailed,
                                             S3Dispatcher.ERROR_PRECONDITION_FAILED);
-                return;
+                return Optional.empty();
             }
+            return Optional.of(properties.get(S3Dispatcher.HTTP_HEADER_NAME_ETAG));
         } finally {
             sirius.kernel.commons.Files.delete(copiedFile);
         }
-
-        XMLStructuredOutput structuredOutput =
-                webContext.respondWith().addHeader(S3Dispatcher.HTTP_HEADER_NAME_ETAG, quoteEtag(etag)).xml();
-        structuredOutput.beginOutput("CopyObjectResult");
-        structuredOutput.beginObject("LastModified");
-        structuredOutput.text(S3Dispatcher.ISO8601_INSTANT.format(object.getLastModifiedInstant()));
-        structuredOutput.endObject();
-        structuredOutput.beginObject(S3Dispatcher.HTTP_HEADER_NAME_ETAG);
-        structuredOutput.text(quoteEtag(etag));
-        structuredOutput.endObject();
-        structuredOutput.endOutput();
-        responder.signalObjectSuccess(webContext);
     }
 
     /**

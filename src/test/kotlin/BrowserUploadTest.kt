@@ -203,6 +203,20 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Form is checked against a condition on the type of its object`() {
+        val imagesOnly = listOf("""["starts-with", "${'$'}Content-Type", "image/"]""")
+        val image = signedFields(KEY, furtherConditions = imagesOnly).also { it["Content-Type"] = "image/png" }
+        val text = signedFields("other.txt", furtherConditions = imagesOnly).also { it["Content-Type"] = "text/plain" }
+
+        assertEquals(204, postForm("/$BUCKET", image))
+        val contentType =
+            createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.contentType() }
+        assertEquals("image/png", contentType)
+        assertEquals(403, postForm("/$BUCKET", text))
+        assertFailsWith<S3Exception> { readObject("other.txt") }
+    }
+
+    @Test
     fun `Upload sent to the URL of an object is answered like a form`() {
         val answer = postContentForAnswer("/$BUCKET/$KEY?${asQuery(withStatus(KEY, "201"))}", CONTENT)
 
@@ -230,6 +244,22 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Upload sent to the URL of an object which cannot be stored is answered with its error`() {
+        val otherDigest =
+            BaseEncoding.base64().encode(BaseEncoding.base16().lowerCase().decode(md5Hex("other".toByteArray())))
+        val answer = postContentForAnswer(
+            "/$BUCKET/$KEY?${asQuery(withStatus(KEY, "201"))}",
+            CONTENT,
+            mapOf("Content-MD5" to otherDigest)
+        )
+
+        assertEquals(400, answer.status)
+        assertTrue(answer.body.contains("<Code>BadDigest</Code>"), answer.body)
+        assertEquals(null, answer.etag)
+        assertFailsWith<S3Exception> { readObject(KEY) }
+    }
+
+    @Test
     fun `Name of the uploaded file is filled in where the key of the form contains a variable for it`() {
         val formKey = "uploads/\${filename}"
         val prefixCondition = """["starts-with", "${'$'}key", "uploads/"]"""
@@ -247,6 +277,17 @@ class BrowserUploadTest {
 
         assertEquals(403, postForm("/$BUCKET", signedFields(formKey, keyCondition = literalCondition)))
         assertFailsWith<S3Exception> { readObject("uploads/test.txt") }
+    }
+
+    @Test
+    fun `Variable for the name of the file is removed if the upload names no file`() {
+        // As for S3, which fills in an empty string, e.g. for a form of a browser without a chosen file name.
+        val formKey = "upload-\${filename}.txt"
+        val prefixCondition = """["starts-with", "${'$'}key", "upload-"]"""
+        val fields = signedFields(formKey, keyCondition = prefixCondition)
+
+        assertEquals(204, postFormForAnswer("/$BUCKET", fields, filename = "").status)
+        assertEquals(CONTENT, readObject("upload-.txt"))
     }
 
     @Test
@@ -440,13 +481,14 @@ class BrowserUploadTest {
     private fun postFormForAnswer(
         path: String,
         fields: Map<String, String>,
-        fieldsAfterFile: Map<String, String> = emptyMap()
+        fieldsAfterFile: Map<String, String> = emptyMap(),
+        filename: String = "test.txt"
     ): Answer {
         val body = buildString {
             fields.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
             }
-            append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\n")
+            append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$filename\"\r\n")
             append("Content-Type: text/plain\r\n\r\n$CONTENT\r\n")
             fieldsAfterFile.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
@@ -456,8 +498,12 @@ class BrowserUploadTest {
         return post(path, "multipart/form-data; boundary=$BOUNDARY", body)
     }
 
-    private fun postContentForAnswer(pathAndQuery: String, content: String): Answer {
-        return post(pathAndQuery, "text/plain", content)
+    private fun postContentForAnswer(
+        pathAndQuery: String,
+        content: String,
+        headers: Map<String, String> = emptyMap()
+    ): Answer {
+        return post(pathAndQuery, "text/plain", content, headers)
     }
 
     /**
@@ -468,12 +514,18 @@ class BrowserUploadTest {
         return post(pathAndQuery, "text/plain", content).status
     }
 
-    private fun post(pathAndQuery: String, contentType: String, body: String): Answer {
+    private fun post(
+        pathAndQuery: String,
+        contentType: String,
+        body: String,
+        headers: Map<String, String> = emptyMap()
+    ): Answer {
         val connection = URI(BaseSdkSupportTest.ENDPOINT + pathAndQuery).toURL().openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.instanceFollowRedirects = false
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", contentType)
+        headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
         connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
         val status = connection.responseCode
         val stream = if (status >= 400) connection.errorStream else connection.inputStream

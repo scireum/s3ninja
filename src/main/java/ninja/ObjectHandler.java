@@ -368,6 +368,8 @@ public class ObjectHandler {
      * @param replaceMetadata whether the metadata is taken from the request instead of from the source
      * @return the entity tag of the copy, without quotes, or an empty optional if the request has been answered with
      * an error
+     * @throws IOException if the source cannot be read or the copy cannot be written. The request has not been
+     *                     answered then, which is left to the dispatcher, as for every other unexpected error.
      */
     private Optional<String> copyIntoObject(WebContext webContext,
                                             Bucket bucket,

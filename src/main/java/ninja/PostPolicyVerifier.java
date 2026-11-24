@@ -58,10 +58,15 @@ public class PostPolicyVerifier {
             "Your proposed upload does not meet the content-length-range condition of its policy.";
 
     /**
+     * Names the form field which carries the policy of an upload.
+     */
+    private static final String FIELD_POLICY = "policy";
+
+    /**
      * Lists, in lower case, the form fields which no condition of the policy has to cover.
      */
     private static final Set<String> FIELDS_EXEMPT_FROM_POLICY =
-            Set.of("policy", "x-amz-signature", "signature", "awsaccesskeyid", "file");
+            Set.of(FIELD_POLICY, "x-amz-signature", "signature", "awsaccesskeyid", "file");
 
     /**
      * Starts the names of form fields which S3 ignores, and which therefore need no condition.
@@ -106,7 +111,7 @@ public class PostPolicyVerifier {
      * @return <tt>true</tt> if a policy is sent along as form field or parameter, <tt>false</tt> otherwise
      */
     public boolean hasPolicy(WebContext webContext) {
-        return Strings.isFilled(readField(webContext, "policy", "Policy"));
+        return Strings.isFilled(readFormField(webContext, FIELD_POLICY).getString());
     }
 
     /**
@@ -118,10 +123,10 @@ public class PostPolicyVerifier {
      * @return the policy if the upload is to be served, or the error to refuse it with
      */
     public Result verify(WebContext webContext, Bucket bucket, String key) {
-        String policy = readField(webContext, "policy", "Policy");
-        String signatureVersion4 = readField(webContext, "x-amz-signature", "X-Amz-Signature");
-        String algorithm = readField(webContext, "x-amz-algorithm", "X-Amz-Algorithm");
-        String signatureVersion2 = readField(webContext, "signature", "Signature");
+        String policy = readFormField(webContext, FIELD_POLICY).getString();
+        String signatureVersion4 = readFormField(webContext, "x-amz-signature").getString();
+        String algorithm = readFormField(webContext, "x-amz-algorithm").getString();
+        String signatureVersion2 = readFormField(webContext, "signature").getString();
 
         boolean signedWithVersion4 = Strings.isFilled(signatureVersion4) && Strings.isFilled(algorithm);
         if (Strings.isEmpty(policy) || (!signedWithVersion4 && Strings.isEmpty(signatureVersion2))) {
@@ -281,16 +286,8 @@ public class PostPolicyVerifier {
         return policy.isBelowMinimumSize(size) ? S3ErrorCode.EntityTooSmall : S3ErrorCode.EntityTooLarge;
     }
 
-    /**
-     * Reads a form field which clients send in either of two spellings.
-     */
-    private String readField(WebContext webContext, String name, String alternativeName) {
-        String value = readFormField(webContext, name).getString();
-        return Strings.isFilled(value) ? value : readFormField(webContext, alternativeName).getString();
-    }
-
     private boolean matchesVersion4(WebContext webContext, String policy, String algorithm, String signature) {
-        String credential = readField(webContext, "x-amz-credential", "X-Amz-Credential");
+        String credential = readFormField(webContext, "x-amz-credential").getString();
         if (!ALGORITHM_VERSION_4.equals(algorithm) || Strings.isEmpty(credential)) {
             return false;
         }

@@ -409,6 +409,23 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Condition naming several fields has to be met by all of them`() {
+        val bucketAndOwner = """{"bucket": "$BUCKET", "x-amz-meta-owner": "alice"}"""
+        val ownerAndOtherBucket = """{"x-amz-meta-owner": "alice", "bucket": "other-bucket"}"""
+        val wrongOwner = signedFields(KEY, bucketCondition = bucketAndOwner).also { it["x-amz-meta-owner"] = "mallory" }
+        val wrongBucket =
+            signedFields(KEY, bucketCondition = ownerAndOtherBucket).also { it["x-amz-meta-owner"] = "alice" }
+        val bothMet = signedFields(KEY, bucketCondition = bucketAndOwner).also { it["x-amz-meta-owner"] = "alice" }
+
+        assertEquals(403, postForm("/$BUCKET", wrongOwner))
+        assertEquals(403, postForm("/$BUCKET", wrongBucket))
+        assertFailsWith<S3Exception> { readObject(KEY) }
+        assertEquals(204, postForm("/$BUCKET", bothMet))
+        val metadata = createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) }.metadata() }
+        assertEquals("alice", metadata["owner"])
+    }
+
+    @Test
     fun `Form with fields its policy covers or which are to be ignored is accepted`() {
         val covered = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
         covered["x-amz-meta-color"] = "blue"

@@ -324,13 +324,12 @@ public class S3Policy {
                 default -> false;
             };
         } else {
-            // A condition given as object names a field and the exact value it has to have.
-            Map.Entry<String, Object> entry = condition.entrySet().iterator().next();
-            String field = entry.getKey();
-            String expectedValue = (String) entry.getValue();
-
-            String actualValue = getFieldValue(field, webContext, bucket, key);
-            return expectedValue.equals(actualValue);
+            // A condition given as object names fields and the exact values they have to have. Every field it names
+            // counts as covered, so every one of them has to match.
+            return condition.entrySet()
+                            .stream()
+                            .allMatch(entry -> entry.getValue()
+                                                    .equals(getFieldValue(entry.getKey(), webContext, bucket, key)));
         }
     }
 

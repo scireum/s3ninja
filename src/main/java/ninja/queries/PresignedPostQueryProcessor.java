@@ -10,6 +10,7 @@ import ninja.Bucket;
 import ninja.BrowserUploadResponder;
 import ninja.PostPolicyVerifier;
 import ninja.S3Policy;
+import ninja.StoredHeaders;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
@@ -44,12 +45,6 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
      * Names the variable which a key may contain, to be replaced with the name of the uploaded file.
      */
     private static final String FILENAME_VARIABLE = "${filename}";
-
-    /**
-     * Lists the form fields which describe the upload itself, and are therefore not stored along with the object.
-     */
-    private static final Set<String> FIELDS_NOT_STORED =
-            Set.of("policy", "X-Amz-Signature", "X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date", "key", "file");
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
@@ -262,12 +257,12 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             properties.put("Content-Type", contentType);
         }
 
-        // Store additional form parameters as metadata (excluding AWS and internal parameters, and fields after the
-        // file, which S3 ignores)
+        // As for S3, only fields which describe the object are stored, so that no field can replace the entity tag.
+        // Checksums are left out, as they are not verified here. Fields after the file are ignored, as by S3.
         Set<String> fieldsAfterFile = PostPolicyVerifier.determineFieldsAfterFile(webContext);
         for (String paramName : webContext.getParameterNames()) {
             // Checked first, so that the uploaded file is never read as the value of a field.
-            if (!FIELDS_NOT_STORED.contains(paramName) && !fieldsAfterFile.contains(paramName)) {
+            if (isStoredField(paramName) && !fieldsAfterFile.contains(paramName)) {
                 String value = PostPolicyVerifier.readFormField(webContext, paramName).asString();
                 if (Strings.isFilled(value)) {
                     properties.put(paramName, value);
@@ -275,6 +270,10 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             }
         }
         return properties;
+    }
+
+    private boolean isStoredField(String fieldName) {
+        return StoredHeaders.isStored(fieldName) && !StoredHeaders.isChecksum(fieldName);
     }
 
     /**

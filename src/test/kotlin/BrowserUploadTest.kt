@@ -375,6 +375,22 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Only fields which describe the object are stored, so that none replaces its entity tag`() {
+        val permitted = listOf("""{"ETag": "forged"}""", """{"Cache-Control": "no-cache"}""")
+        val fields = signedFields(KEY, furtherConditions = permitted)
+        fields["ETag"] = "forged"
+        fields["Cache-Control"] = "no-cache"
+
+        val answer = postFormForAnswer("/$BUCKET", fields)
+
+        assertEquals(204, answer.status)
+        assertEquals(ETAG, answer.etag)
+        val head = createClient().use { client -> client.headObject { it.bucket(BUCKET).key(KEY) } }
+        assertEquals(ETAG, head.eTag())
+        assertEquals("no-cache", head.cacheControl())
+    }
+
+    @Test
     fun `Form with fields its policy covers or which are to be ignored is accepted`() {
         val covered = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
         covered["x-amz-meta-color"] = "blue"

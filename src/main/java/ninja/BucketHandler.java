@@ -176,20 +176,23 @@ public class BucketHandler {
     /**
      * Handles POST /bucket which is no browser-based upload.
      * <p>
-     * A form names the object to start a multipart upload for. Any other POST would create the bucket, which is
-     * refused if it exists already.
+     * A form names the object to start a multipart upload for. Any other POST is refused, as by S3: with
+     * <tt>NoSuchBucket</tt> if the bucket does not exist, and with <tt>PreconditionFailed</tt> otherwise.
      */
     private void postToBucket(WebContext webContext, Bucket bucket) {
         String contentType = webContext.getHeader(HttpHeaderNames.CONTENT_TYPE);
         boolean isForm = contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data");
+        if (!isForm && !bucket.exists()) {
+            signalNoSuchBucket(webContext, bucket);
+            return;
+        }
         if (!isForm) {
-            if (bucket.exists()) {
-                responder.signalObjectError(webContext,
-                                            bucket.getName(),
-                                            null,
-                                            S3ErrorCode.BucketAlreadyOwnedByYou,
-                                            ERROR_BUCKET_ALREADY_OWNED_BY_YOU);
-            }
+            // As for S3, which creates buckets by PUT only.
+            responder.signalObjectError(webContext,
+                                        bucket.getName(),
+                                        null,
+                                        S3ErrorCode.PreconditionFailed,
+                                        "Bucket POST must be of the enclosure-type multipart/form-data");
             return;
         }
 

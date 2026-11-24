@@ -4,11 +4,13 @@ import com.google.common.collect.Maps;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.multipart.FileUpload;
 import io.netty.handler.codec.http.multipart.HttpData;
 import ninja.Bucket;
+import ninja.BrowserUploadResponder;
 import ninja.PostPolicyVerifier;
 import ninja.S3Policy;
+import ninja.StoredHeaders;
 import ninja.StoredObject;
 import ninja.errors.S3ErrorCode;
 import ninja.errors.S3ErrorSynthesizer;
@@ -40,10 +42,9 @@ import java.util.Set;
 public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
     /**
-     * Lists the form fields which describe the upload itself, and are therefore not stored along with the object.
+     * Names the variable which a key may contain, to be replaced with the name of the uploaded file.
      */
-    private static final Set<String> FIELDS_NOT_STORED =
-            Set.of("policy", "X-Amz-Signature", "X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date", "key", "file");
+    private static final String FILENAME_VARIABLE = "${filename}";
 
     @Part
     private S3ErrorSynthesizer errorSynthesizer;
@@ -51,20 +52,24 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
     @Part
     private PostPolicyVerifier postPolicyVerifier;
 
+    @Part
+    private BrowserUploadResponder browserUploadResponder;
+
     @Override
     public void processQuery(@Nonnull WebContext webContext,
                              @Nonnull Bucket bucket,
                              @Nullable String key,
                              @Nonnull String query) {
         try {
-            String objectKey = extractKeyFromMultipartForm(webContext);
+            String formKey = extractKeyFromMultipartForm(webContext);
+            HttpData filePart = webContext.getHttpData("file");
+            String objectKey = replaceFilename(formKey, filePart);
             Optional<S3Policy> policy = verifyForm(webContext, bucket, objectKey);
             if (policy.isEmpty()) {
                 return;
             }
 
             // Obtain file content: getContent() for raw body, or multipart "file" part when getContent() is null
-            HttpData filePart = webContext.getHttpData("file");
             InputStream contentStream = webContext.getContent() != null ? webContext.getContent() : openFile(filePart);
             if (contentStream == null && (filePart == null || filePart.getByteBuf() == null)) {
                 errorSynthesizer.synthesiseError(webContext,
@@ -98,9 +103,10 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
             StoredObject object = bucket.getObject(objectKey);
             writeContent(object, contentStream, filePart);
-            object.setProperties(collectProperties(webContext, object));
+            Map<String, String> properties = collectProperties(webContext, object);
+            object.setProperties(properties);
 
-            webContext.respondWith().status(determineSuccessStatus(webContext));
+            browserUploadResponder.respond(webContext, bucket, objectKey, properties.get("ETag"));
         } catch (IOException exception) {
             errorSynthesizer.synthesiseError(webContext,
                                              bucket.getName(),
@@ -113,10 +119,15 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
 
     /**
      * Verifies the key and the policy of the form, and answers the request with an error if they are not in order.
+     * <p>
+     * As for S3, the conditions of the policy are evaluated for the key with the name of the uploaded file filled in.
+     * A condition for a key named as <tt>uploads/${filename}</tt> therefore has to be
+     * <tt>["starts-with", "$key", "uploads/"]</tt>.
      *
      * @param webContext the request carrying the form
      * @param bucket     the bucket to upload into
-     * @param objectKey  the key named by the form, if any
+     * @param objectKey  the key to store the object under, i.e. the key of the form with the name of the uploaded
+     *                   file filled in
      * @return the policy of the form, or an empty optional if the request has been answered with an error
      */
     private Optional<S3Policy> verifyForm(WebContext webContext, Bucket bucket, @Nullable String objectKey) {
@@ -148,6 +159,24 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
             return Optional.empty();
         }
         return Optional.of(verification.policy());
+    }
+
+    /**
+     * Fills in the name of the uploaded file where the key of the form contains <tt>${filename}</tt>.
+     * <p>
+     * As for S3, the variable is replaced with an empty string if the form names no file.
+     *
+     * @param formKey  the key as stated by the form, if any
+     * @param filePart the uploaded part of the form, if any
+     * @return the key to store the object under
+     */
+    @Nullable
+    private String replaceFilename(@Nullable String formKey, @Nullable HttpData filePart) {
+        if (formKey == null || !formKey.contains(FILENAME_VARIABLE)) {
+            return formKey;
+        }
+        String filename = filePart instanceof FileUpload upload ? upload.getFilename() : null;
+        return formKey.replace(FILENAME_VARIABLE, filename == null ? "" : filename);
     }
 
     /**
@@ -223,16 +252,18 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
         properties.put("ETag", etag);
 
         // Set content type if provided
-        String contentType = webContext.get("Content-Type").asString();
+        String contentType = PostPolicyVerifier.readFormField(webContext, "Content-Type").asString();
         if (Strings.isFilled(contentType)) {
             properties.put("Content-Type", contentType);
         }
 
-        // Store additional form parameters as metadata (excluding AWS and internal parameters)
+        // As for S3, only fields which describe the object are stored, so that no field can replace the entity tag.
+        // Checksums are left out, as they are not verified here. Fields after the file are ignored, as by S3.
+        Set<String> fieldsAfterFile = PostPolicyVerifier.determineFieldsAfterFile(webContext);
         for (String paramName : webContext.getParameterNames()) {
             // Checked first, so that the uploaded file is never read as the value of a field.
-            if (!FIELDS_NOT_STORED.contains(paramName)) {
-                String value = webContext.get(paramName).asString();
+            if (isStoredField(paramName) && !fieldsAfterFile.contains(paramName)) {
+                String value = PostPolicyVerifier.readFormField(webContext, paramName).asString();
                 if (Strings.isFilled(value)) {
                     properties.put(paramName, value);
                 }
@@ -241,18 +272,8 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
         return properties;
     }
 
-    /**
-     * Determines the status to answer a successful upload with.
-     * <p>
-     * The object is stored at this point, so the request has succeeded whatever status the form asks for. As for S3,
-     * a value which is not valid is answered like none at all, with 204.
-     */
-    private HttpResponseStatus determineSuccessStatus(WebContext webContext) {
-        return switch (webContext.get("success_action_status").asString("204")) {
-            case "200" -> HttpResponseStatus.OK;
-            case "201" -> HttpResponseStatus.CREATED;
-            default -> HttpResponseStatus.NO_CONTENT;
-        };
+    private boolean isStoredField(String fieldName) {
+        return StoredHeaders.isStored(fieldName) && !StoredHeaders.isChecksum(fieldName);
     }
 
     /**
@@ -262,21 +283,9 @@ public class PresignedPostQueryProcessor implements S3QueryProcessor {
      * @return the extracted key or null if not found
      */
     private String extractKeyFromMultipartForm(WebContext webContext) {
-        // First try the standard parameter (works for both form fields and query params)
-        String key = webContext.getParameter("key");
-        if (Strings.isFilled(key)) {
-            return key;
-        }
-
-        // Try to get it from request parameter (different method for multipart)
-        if (webContext.hasParameter("key")) {
-            key = webContext.get("key").asString();
-            if (Strings.isFilled(key)) {
-                return key;
-            }
-        }
-
-        return null;
+        // Works for both form fields and parameters of the query.
+        String key = PostPolicyVerifier.readFormField(webContext, "key").getString();
+        return Strings.isFilled(key) ? key : null;
     }
 }
 

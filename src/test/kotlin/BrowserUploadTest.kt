@@ -244,6 +244,15 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Upload sent to the URL of an object finds its fields whatever the case of their names`() {
+        val fields = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
+        fields["X-Amz-Meta-Color"] = "blue"
+
+        assertEquals(204, postContent("/$BUCKET/$KEY?${asQuery(fields)}", CONTENT))
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
     fun `Upload sent to the URL of an object which cannot be stored is answered with its error`() {
         val otherDigest =
             BaseEncoding.base64().encode(BaseEncoding.base16().lowerCase().decode(md5Hex("other".toByteArray())))

@@ -192,7 +192,7 @@ public class PostPolicyVerifier {
     public static Value readFormField(WebContext webContext, String name) {
         InterfaceHttpPostRequestDecoder decoder = webContext.getPostDecoder();
         if (decoder == null) {
-            return webContext.get(name);
+            return readQueryParameter(webContext, name);
         }
         try {
             for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
@@ -208,7 +208,19 @@ public class PostPolicyVerifier {
             Exceptions.ignore(exception);
         }
         // The body joins all fields of a name, including those after the file, so it may only be asked for the query.
-        return determineFieldsAfterFile(webContext).contains(name) ? Value.EMPTY : webContext.get(name);
+        return determineFieldsAfterFile(webContext).contains(name) ? Value.EMPTY : readQueryParameter(webContext, name);
+    }
+
+    /**
+     * Reads a parameter of the query, comparing names without regard to case as for the fields of a form body.
+     */
+    private static Value readQueryParameter(WebContext webContext, String name) {
+        return webContext.getParameterNames()
+                         .stream()
+                         .filter(name::equalsIgnoreCase)
+                         .findFirst()
+                         .map(webContext::get)
+                         .orElse(Value.EMPTY);
     }
 
     /**

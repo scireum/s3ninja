@@ -391,6 +391,23 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `Conditions on bucket and key apply to the request, whatever the case of their names`() {
+        // A form field of that name must not stand in for the bucket the form is sent to.
+        val otherBucket = signedFields(KEY, bucketCondition = """{"Bucket": "other-bucket"}""")
+        otherBucket["bucket"] = "other-bucket"
+        val ownBucket = signedFields(
+            KEY,
+            bucketCondition = """["eq", "${'$'}Bucket", "$BUCKET"]""",
+            keyCondition = """["eq", "${'$'}Key", "$KEY"]"""
+        )
+
+        assertEquals(403, postForm("/$BUCKET", otherBucket))
+        assertFailsWith<S3Exception> { readObject(KEY) }
+        assertEquals(204, postForm("/$BUCKET", ownBucket))
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
     fun `Form with fields its policy covers or which are to be ignored is accepted`() {
         val covered = signedFields(KEY, furtherConditions = listOf("""{"x-amz-meta-color": "blue"}"""))
         covered["x-amz-meta-color"] = "blue"
@@ -435,7 +452,8 @@ class BrowserUploadTest {
         key: String,
         expiration: Instant = Instant.now().plusSeconds(3600),
         furtherConditions: List<String> = emptyList(),
-        keyCondition: String = keyEquals(key)
+        keyCondition: String = keyEquals(key),
+        bucketCondition: String = """{"bucket": "$BUCKET"}"""
     ): MutableMap<String, String> {
         val now = Instant.now().atZone(ZoneOffset.UTC)
         val date = DateTimeFormatter.ofPattern("yyyyMMdd").format(now)
@@ -448,7 +466,8 @@ class BrowserUploadTest {
                 """{"x-amz-algorithm": "AWS4-HMAC-SHA256"}""",
                 """{"x-amz-credential": "$credential"}""",
                 """{"x-amz-date": "$timestamp"}"""
-            ) + furtherConditions
+            ) + furtherConditions,
+            bucketCondition
         )
 
         return linkedMapOf(
@@ -481,8 +500,13 @@ class BrowserUploadTest {
         return """["eq", "${'$'}key", "$key"]"""
     }
 
-    private fun encodePolicy(expiration: Instant, keyCondition: String, furtherConditions: List<String>): String {
-        val conditions = listOf("""{"bucket": "$BUCKET"}""", keyCondition) + furtherConditions
+    private fun encodePolicy(
+        expiration: Instant,
+        keyCondition: String,
+        furtherConditions: List<String>,
+        bucketCondition: String = """{"bucket": "$BUCKET"}"""
+    ): String {
+        val conditions = listOf(bucketCondition, keyCondition) + furtherConditions
         val policy = """{"expiration": "$expiration", "conditions": [${conditions.joinToString(", ")}]}"""
         return BaseEncoding.base64().encode(policy.toByteArray(StandardCharsets.UTF_8))
     }

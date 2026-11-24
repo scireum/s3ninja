@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -106,16 +107,6 @@ public class S3Policy {
      * Names the form field which states the type of the uploaded object.
      */
     private static final String FIELD_CONTENT_TYPE = "Content-Type";
-
-    /**
-     * Names the form field which states where to redirect to after a successful upload.
-     */
-    private static final String FIELD_SUCCESS_ACTION_REDIRECT = "success_action_redirect";
-
-    /**
-     * Names the form field which states the status to answer a successful upload with.
-     */
-    private static final String FIELD_SUCCESS_ACTION_STATUS = "success_action_status";
 
     private static final String CONTENT_LENGTH_RANGE = "content-length-range";
 
@@ -366,17 +357,24 @@ public class S3Policy {
      * @return the field value as a string, or null if not present
      */
     private String getFieldValue(String field, WebContext webContext, Bucket bucket, String key) {
-        return switch (field) {
-            case "bucket" -> bucket.getName();
-            case "key" -> key;
-            case CONTENT_LENGTH_RANGE -> webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
+        // Names are compared without regard to case, as for the fields of the form. Otherwise a condition such as
+        // {"Bucket": ...} would be met by a field of the form instead of by the bucket the form is sent to.
+        String name = field.toLowerCase(Locale.ROOT);
+        if ("bucket".equals(name)) {
+            return bucket.getName();
+        }
+        if ("key".equals(name)) {
+            return key;
+        }
+        if (CONTENT_LENGTH_RANGE.equals(name)) {
+            return webContext.getHeaderValue(HttpHeaderNames.CONTENT_LENGTH).asString();
+        }
+        if (FIELD_CONTENT_TYPE.equalsIgnoreCase(name)) {
             // The type of the object is a field of the form. The header describes the form itself.
-            case FIELD_CONTENT_TYPE -> PostPolicyVerifier.readFormField(webContext, FIELD_CONTENT_TYPE)
-                                                         .asString(webContext.getHeader(HttpHeaderNames.CONTENT_TYPE));
-            case FIELD_SUCCESS_ACTION_REDIRECT, FIELD_SUCCESS_ACTION_STATUS ->
-                    PostPolicyVerifier.readFormField(webContext, field).asString();
-            default -> PostPolicyVerifier.readFormField(webContext, field).asString("");
-        };
+            return PostPolicyVerifier.readFormField(webContext, FIELD_CONTENT_TYPE)
+                                     .asString(webContext.getHeader(HttpHeaderNames.CONTENT_TYPE));
+        }
+        return PostPolicyVerifier.readFormField(webContext, field).asString("");
     }
 
     /**

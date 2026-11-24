@@ -395,16 +395,17 @@ class BrowserUploadTest {
         // A form field of that name must not stand in for the bucket the form is sent to.
         val otherBucket = signedFields(KEY, bucketCondition = """{"Bucket": "other-bucket"}""")
         otherBucket["bucket"] = "other-bucket"
+        // The key of the form differs from the key it is stored under, which the condition has to be evaluated for.
         val ownBucket = signedFields(
-            KEY,
+            "uploads/\${filename}",
             bucketCondition = """["eq", "${'$'}Bucket", "$BUCKET"]""",
-            keyCondition = """["eq", "${'$'}Key", "$KEY"]"""
+            keyCondition = """["eq", "${'$'}Key", "uploads/test.txt"]"""
         )
 
         assertEquals(403, postForm("/$BUCKET", otherBucket))
         assertFailsWith<S3Exception> { readObject(KEY) }
         assertEquals(204, postForm("/$BUCKET", ownBucket))
-        assertEquals(CONTENT, readObject(KEY))
+        assertEquals(CONTENT, readObject("uploads/test.txt"))
     }
 
     @Test

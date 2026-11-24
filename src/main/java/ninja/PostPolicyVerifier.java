@@ -58,10 +58,15 @@ public class PostPolicyVerifier {
             "Your proposed upload does not meet the content-length-range condition of its policy.";
 
     /**
+     * Names the form field which carries the policy of an upload.
+     */
+    private static final String FIELD_POLICY = "policy";
+
+    /**
      * Lists, in lower case, the form fields which no condition of the policy has to cover.
      */
     private static final Set<String> FIELDS_EXEMPT_FROM_POLICY =
-            Set.of("policy", "x-amz-signature", "signature", "awsaccesskeyid", "file");
+            Set.of(FIELD_POLICY, "x-amz-signature", "signature", "awsaccesskeyid", "file");
 
     /**
      * Starts the names of form fields which S3 ignores, and which therefore need no condition.
@@ -106,7 +111,7 @@ public class PostPolicyVerifier {
      * @return <tt>true</tt> if a policy is sent along as form field or parameter, <tt>false</tt> otherwise
      */
     public boolean hasPolicy(WebContext webContext) {
-        return Strings.isFilled(readFormField(webContext, "policy").getString());
+        return Strings.isFilled(readFormField(webContext, FIELD_POLICY).getString());
     }
 
     /**
@@ -118,7 +123,7 @@ public class PostPolicyVerifier {
      * @return the policy if the upload is to be served, or the error to refuse it with
      */
     public Result verify(WebContext webContext, Bucket bucket, String key) {
-        String policy = readFormField(webContext, "policy").getString();
+        String policy = readFormField(webContext, FIELD_POLICY).getString();
         String signatureVersion4 = readFormField(webContext, "x-amz-signature").getString();
         String algorithm = readFormField(webContext, "x-amz-algorithm").getString();
         String signatureVersion2 = readFormField(webContext, "signature").getString();

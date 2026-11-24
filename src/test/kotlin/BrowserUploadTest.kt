@@ -350,6 +350,14 @@ class BrowserUploadTest {
     }
 
     @Test
+    fun `File is found whatever the case of its field name`() {
+        val answer = postFormForAnswer("/$BUCKET", signedFields(KEY), fileField = "File")
+
+        assertEquals(204, answer.status, answer.body)
+        assertEquals(CONTENT, readObject(KEY))
+    }
+
+    @Test
     fun `Fields after the file are ignored, as by S3`() {
         val late = mapOf("x-amz-meta-late" to "ignored", "success_action_status" to "201")
         val answer = postFormForAnswer("/$BUCKET", signedFields(KEY), late)
@@ -573,13 +581,14 @@ class BrowserUploadTest {
         path: String,
         fields: Map<String, String>,
         fieldsAfterFile: Map<String, String> = emptyMap(),
-        filename: String = "test.txt"
+        filename: String = "test.txt",
+        fileField: String = "file"
     ): Answer {
         val body = buildString {
             fields.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
             }
-            append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$filename\"\r\n")
+            append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$fileField\"; filename=\"$filename\"\r\n")
             append("Content-Type: text/plain\r\n\r\n$CONTENT\r\n")
             fieldsAfterFile.forEach { (name, value) ->
                 append("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n")
